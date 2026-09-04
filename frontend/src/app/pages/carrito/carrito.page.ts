@@ -101,7 +101,12 @@ export class CarritoPage implements OnInit {
       .subscribe({
         next: (checkout) => {
           this.enviando.set(false);
-          this.router.navigateByUrl(checkout.url_pago);
+          if (checkout.url_pago.startsWith('http')) {
+            // Stripe: pagina de pago alojada por la pasarela, fuera del router de Angular
+            window.location.href = checkout.url_pago;
+          } else {
+            this.router.navigateByUrl(checkout.url_pago);
+          }
         },
         error: (error: HttpErrorResponse) => {
           this.enviando.set(false);

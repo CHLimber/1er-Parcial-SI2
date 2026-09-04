@@ -1,12 +1,58 @@
 from uuid import uuid4
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.core.config import settings
 from app.core.db import get_connection
 from app.modules.pagos.schemas import WebhookIn, WebhookOut
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
+
+stripe.api_key = settings.stripe_secret_key
+
+
+@router.post("/webhook/stripe", response_model=WebhookOut, include_in_schema=False)
+async def webhook_stripe(
+    request: Request,
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> WebhookOut:
+    """Webhook real de Stripe (CU06). El payload llega firmado en el header Stripe-Signature y se
+    valida contra STRIPE_WEBHOOK_SECRET antes de confiar en nada -- sin esa validacion cualquiera
+    podria llamar a este endpoint y aprobar un pago sin haber pagado."""
+    payload = await request.body()
+    firma = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, firma, settings.stripe_webhook_secret)
+    except (ValueError, stripe.error.SignatureVerificationError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Firma de webhook invalida"
+        ) from error
+
+    tipo = event["type"]
+    sesion = event["data"]["object"]
+
+    if tipo == "checkout.session.completed":
+        if sesion.get("payment_status") != "paid":
+            # metodo de pago asincrono (p.ej. transferencia): esperamos el evento de resultado
+            return WebhookOut(procesado=False, mensaje="Pago asincrono pendiente de confirmacion")
+        aprobado = True
+    elif tipo == "checkout.session.async_payment_succeeded":
+        aprobado = True
+    elif tipo in ("checkout.session.async_payment_failed", "checkout.session.expired"):
+        # E1: timeout/expiracion de la sesion de pago -- se trata como rechazo
+        aprobado = False
+    else:
+        return WebhookOut(procesado=False, mensaje=f"Evento ignorado: {tipo}")
+
+    return await _procesar_evento(
+        conn,
+        pasarela="STRIPE",
+        id_transaccion=sesion["id"],
+        evento_id=event["id"],
+        aprobado=aprobado,
+    )
 
 
 @router.post("/webhook/{pasarela}", response_model=WebhookOut)
@@ -15,16 +61,34 @@ async def webhook_pasarela(
     body: WebhookIn,
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> WebhookOut:
-    """Notificacion asincrona de la pasarela de pago (CU06). Sin autenticacion de usuario -- como
-    en un webhook real, quien llama es el servidor de la pasarela, no el navegador del cliente."""
+    """Notificacion simulada de Libelula (CU06): no existe un sandbox real para esta pasarela
+    boliviana, asi que el resultado se dispara a mano desde la pantalla de pago-simulado. Stripe
+    ya no pasa por aca -- usa el webhook real y firmado en /pagos/webhook/stripe (registrado antes
+    que esta ruta generica para que "stripe" no quede capturado por el path param {pasarela})."""
     pasarela = pasarela.upper()
-    if pasarela not in ("STRIPE", "LIBELULA"):
+    if pasarela != "LIBELULA":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasarela desconocida")
 
+    return await _procesar_evento(
+        conn,
+        pasarela=pasarela,
+        id_transaccion=body.id_transaccion,
+        evento_id=body.evento_id,
+        aprobado=body.estado == "APROBADO",
+    )
+
+
+async def _procesar_evento(
+    conn: asyncpg.Connection,
+    pasarela: str,
+    id_transaccion: str,
+    evento_id: str,
+    aprobado: bool,
+) -> WebhookOut:
     pago = await conn.fetchrow(
         "SELECT id, venta_id FROM pago WHERE pasarela = $1 AND id_transaccion = $2",
         pasarela,
-        body.id_transaccion,
+        id_transaccion,
     )
     if pago is None:
         raise HTTPException(
@@ -35,7 +99,7 @@ async def webhook_pasarela(
         try:
             await conn.execute(
                 "INSERT INTO evento_pasarela (evento_externo_id, pasarela, pago_id) VALUES ($1, $2, $3)",
-                body.evento_id,
+                evento_id,
                 pasarela,
                 pago["id"],
             )
@@ -61,7 +125,7 @@ async def webhook_pasarela(
             pago["venta_id"],
         )
 
-        if body.estado == "RECHAZADO":
+        if not aprobado:
             return await _procesar_rechazo(conn, pago["id"], venta)
 
         return await _procesar_aprobacion(conn, pago["id"], venta)

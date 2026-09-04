@@ -1,9 +1,12 @@
+import asyncio
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import asyncpg
+import stripe
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.config import settings
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario
 from app.modules.ventas.schemas import (
@@ -19,6 +22,47 @@ from app.modules.ventas.schemas import (
 router = APIRouter(prefix="/ventas", tags=["ventas"])
 
 IVA_TASA = Decimal("0.13")
+
+stripe.api_key = settings.stripe_secret_key
+
+
+async def _crear_sesion_stripe(venta_id: UUID, numero: str, total: Decimal) -> tuple[str, str]:
+    """CU06 paso 1: envia la orden de cobro a la pasarela. Devuelve (id_transaccion, url_pago)."""
+    try:
+        sesion = await asyncio.to_thread(
+            stripe.checkout.Session.create,
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "bob",
+                        "product_data": {"name": f"Pedido {numero} - FashionStore"},
+                        "unit_amount": int(total * 100),
+                    },
+                    "quantity": 1,
+                }
+            ],
+            success_url=f"{settings.frontend_url}/compra/{venta_id}",
+            cancel_url=f"{settings.frontend_url}/carrito",
+            metadata={"venta_id": str(venta_id), "numero": numero},
+        )
+    except stripe.error.StripeError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo iniciar el pago con Stripe: {error}",
+        ) from error
+    return sesion.id, sesion.url
+
+
+async def _url_pago_pendiente(pasarela: str, id_transaccion: str, venta_id: UUID) -> str:
+    if pasarela != "STRIPE":
+        return f"/pago-simulado/{venta_id}"
+    try:
+        sesion = await asyncio.to_thread(stripe.checkout.Session.retrieve, id_transaccion)
+    except stripe.error.StripeError:
+        return f"/pago-simulado/{venta_id}"
+    return sesion.url or f"/pago-simulado/{venta_id}"
 
 
 def _exigir_cliente(usuario: dict) -> None:
@@ -130,13 +174,16 @@ async def iniciar_checkout(
         carrito["id"],
     )
     if pendiente is not None:
+        url_pago = await _url_pago_pendiente(
+            pendiente["pasarela"], pendiente["id_transaccion"], pendiente["venta_id"]
+        )
         return CheckoutOut(
             venta_id=pendiente["venta_id"],
             numero=pendiente["numero"],
             pago_id=pendiente["pago_id"],
             pasarela=pendiente["pasarela"],
             id_transaccion=pendiente["id_transaccion"],
-            url_pago=f"/pago-simulado/{pendiente['venta_id']}",
+            url_pago=url_pago,
             subtotal=float(pendiente["subtotal"]),
             descuento=float(pendiente["descuento"]),
             iva=float(pendiente["iva"]),
@@ -249,7 +296,12 @@ async def iniciar_checkout(
             iva,
             total,
         )
-        id_transaccion = f"SIM-{uuid4().hex}"
+        if body.pasarela == "STRIPE":
+            id_transaccion, url_pago = await _crear_sesion_stripe(venta["id"], venta["numero"], total)
+        else:
+            id_transaccion = f"SIM-{uuid4().hex}"
+            url_pago = f"/pago-simulado/{venta['id']}"
+
         pago = await conn.fetchrow(
             """
             INSERT INTO pago (venta_id, metodo, pasarela, monto, id_transaccion)
@@ -268,7 +320,7 @@ async def iniciar_checkout(
         pago_id=pago["id"],
         pasarela=pago["pasarela"],
         id_transaccion=pago["id_transaccion"],
-        url_pago=f"/pago-simulado/{venta['id']}",
+        url_pago=url_pago,
         subtotal=float(venta["subtotal"]),
         descuento=float(venta["descuento"]),
         iva=float(venta["iva"]),
