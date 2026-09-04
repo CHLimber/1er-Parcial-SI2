@@ -94,12 +94,87 @@
   color: var(--flame-dark);
 }
 
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+  padding: 1rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+}
+
+.filtros__campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 9rem;
+}
+
+.filtros__campo--busqueda {
+  flex: 1 1 14rem;
+}
+
+.filtros__campo label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.filtros__campo input,
+.filtros__campo select {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.filtros__acciones {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.filtros__boton {
+  padding: 0.6rem 1.1rem;
+  border: none;
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.filtros__boton:hover {
+  background: var(--flame);
+}
+
+.filtros__limpiar {
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--paper-line);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.filtros__limpiar:hover {
+  border-color: var(--flame);
+  color: var(--flame-dark);
+}
+
 .grilla {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 20rem));
+  justify-content: start;
   gap: 1px;
   background: var(--paper-line);
   border: 1px solid var(--paper-line);
@@ -111,6 +186,50 @@
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.prenda:hover {
+  box-shadow: inset 0 0 0 2px var(--flame);
+}
+
+.prenda--agotada {
+  opacity: 0.7;
+}
+
+.prenda__imagen-cont {
+  position: relative;
+  margin: -1.25rem -1.25rem 0.6rem;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.prenda__imagen {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.prenda__badge {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  background: var(--ink);
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.5rem;
+}
+
+.prenda__tallas {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
 }
 
 .prenda__categoria {

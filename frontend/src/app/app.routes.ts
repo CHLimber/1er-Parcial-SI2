@@ -18,6 +18,12 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/tienda/tienda.page').then((m) => m.TiendaPage),
     canActivate: [authGuard],
   },
+  {
+    path: 'producto/:slug',
+    loadComponent: () =>
+      import('./pages/producto-detalle/producto-detalle.page').then((m) => m.ProductoDetallePage),
+    canActivate: [authGuard],
+  },
   { path: '', pathMatch: 'full', redirectTo: 'tienda' },
   { path: '**', redirectTo: 'tienda' },
 ];

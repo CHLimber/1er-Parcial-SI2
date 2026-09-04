@@ -1,0 +1,266 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.cabecera__marca {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 1.35rem;
+}
+
+.cabecera__volver {
+  font-size: 0.85rem;
+  color: var(--white);
+  text-decoration: none;
+}
+
+.cabecera__volver:hover {
+  color: var(--flame);
+}
+
+.contenido {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.estado {
+  color: var(--ink-soft);
+}
+
+.estado--error {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.boton {
+  padding: 0.7rem 1.2rem;
+  border: none;
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.boton:hover {
+  background: var(--flame);
+}
+
+.detalle {
+  display: grid;
+  grid-template-columns: minmax(0, 22rem) 1fr;
+  gap: clamp(1.5rem, 4vw, 3rem);
+}
+
+.detalle__imagen-cont {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+}
+
+.detalle__imagen {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.detalle__badge {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  background: var(--ink);
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.6rem;
+}
+
+.detalle__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.detalle__categoria {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.detalle__nombre {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  color: var(--ink);
+}
+
+.detalle__precio {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--flame-dark);
+}
+
+.detalle__descripcion {
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0.5rem 0 0;
+}
+
+.detalle__material {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.selector {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.selector__etiqueta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.selector__opciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.selector__talla {
+  min-width: 2.6rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.selector__talla:hover {
+  border-color: var(--ink);
+}
+
+.selector__talla--activa {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.selector__color {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 2px solid var(--paper-line);
+  cursor: pointer;
+  padding: 0;
+}
+
+.selector__color--activo {
+  border-color: var(--flame);
+  box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--flame);
+}
+
+.disponibilidad {
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--paper-line);
+}
+
+.disponibilidad__titulo {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 1rem;
+}
+
+.disponibilidad__estado {
+  color: var(--ink-soft);
+}
+
+.sucursales {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--paper-line);
+  border: 1px solid var(--paper-line);
+}
+
+.sucursal {
+  background: var(--white);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sucursal__info {
+  display: flex;
+  flex-direction: column;
+}
+
+.sucursal__nombre {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sucursal__ciudad {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.sucursal__situacion {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.sucursal__situacion--disponible {
+  color: #2f7d4f;
+}
+
+.sucursal__situacion--agotada {
+  color: var(--flame-dark);
+}
+
+@media (max-width: 720px) {
+  .detalle {
+    grid-template-columns: 1fr;
+  }
+}

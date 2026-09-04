@@ -1,0 +1,109 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+  </header>
+
+  <main class="contenido">
+    @if (cargando()) {
+      <p class="estado">Cargando producto…</p>
+    } @else if (noEncontrado() || !producto()) {
+      <div class="estado estado--error">
+        <p>No encontramos esta prenda en el catálogo.</p>
+        <button type="button" class="boton" (click)="volverAlCatalogo()">Volver al catálogo</button>
+      </div>
+    } @else {
+      @let p = producto()!;
+
+      <div class="detalle">
+        <div class="detalle__imagen-cont">
+          @if (p.imagen_url) {
+            <img class="detalle__imagen" [src]="p.imagen_url" [alt]="p.nombre" />
+          }
+          @if (p.agotado) {
+            <span class="detalle__badge">Agotado en todas las sucursales</span>
+          }
+        </div>
+
+        <div class="detalle__info">
+          <span class="detalle__categoria">{{ p.categoria }} · {{ p.marca ?? 'FashionStore' }}</span>
+          <h1 class="detalle__nombre">{{ p.nombre }}</h1>
+          <span class="detalle__precio">{{ formatearPrecio(p.precio_base) }}</span>
+
+          @if (p.descripcion) {
+            <p class="detalle__descripcion">{{ p.descripcion }}</p>
+          }
+          @if (p.material) {
+            <p class="detalle__material">Material: {{ p.material }}</p>
+          }
+
+          @if (tallas().length > 0) {
+            <div class="selector">
+              <span class="selector__etiqueta">Talla</span>
+              <div class="selector__opciones">
+                @for (talla of tallas(); track talla) {
+                  <button
+                    type="button"
+                    class="selector__talla"
+                    [class.selector__talla--activa]="tallaSeleccionada() === talla"
+                    (click)="elegirTalla(talla)"
+                  >
+                    {{ talla }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
+          @if (colores().length > 0) {
+            <div class="selector">
+              <span class="selector__etiqueta">Color</span>
+              <div class="selector__opciones">
+                @for (color of colores(); track color.nombre) {
+                  <button
+                    type="button"
+                    class="selector__color"
+                    [class.selector__color--activo]="colorSeleccionado() === color.nombre"
+                    [style.background]="color.codigoHex"
+                    [title]="color.nombre"
+                    (click)="elegirColor(color.nombre)"
+                  >
+                    <span class="visualmente-oculto">{{ color.nombre }}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
+          <section class="disponibilidad">
+            <h2 class="disponibilidad__titulo">Disponibilidad por sucursal</h2>
+
+            @if (!varianteSeleccionada()) {
+              <p class="disponibilidad__estado">Esa combinación de talla y color no existe.</p>
+            } @else if (varianteSeleccionada()!.disponibilidad.length === 0) {
+              <p class="disponibilidad__estado">Agotado en todas las sucursales.</p>
+            } @else {
+              <ul class="sucursales">
+                @for (fila of varianteSeleccionada()!.disponibilidad; track fila.sucursal_id) {
+                  <li class="sucursal">
+                    <div class="sucursal__info">
+                      <span class="sucursal__nombre">{{ fila.sucursal }}</span>
+                      <span class="sucursal__ciudad">{{ formatearCiudad(fila.ciudad) }}</span>
+                    </div>
+                    <span
+                      class="sucursal__situacion"
+                      [class.sucursal__situacion--disponible]="fila.situacion === 'DISPONIBLE'"
+                      [class.sucursal__situacion--agotada]="fila.situacion !== 'DISPONIBLE'"
+                    >
+                      {{ fila.disponible > 0 ? fila.disponible + ' unid.' : etiquetaSituacion(fila.situacion) }}
+                    </span>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        </div>
+      </div>
+    }
+  </main>
+</div>

@@ -15,24 +15,91 @@
 
   <main class="contenido">
     <h1 class="saludo">Hola, {{ usuario()?.nombre }}</h1>
-    <p class="saludo__linea">Sesión iniciada correctamente. Esto es lo último que llegó a las sucursales.</p>
+    <p class="saludo__linea">Explorá el catálogo y consultá qué sucursal tiene stock de cada prenda.</p>
 
     <section class="catalogo">
       <h2 class="catalogo__titulo">Catálogo</h2>
+
+      <form class="filtros" (ngSubmit)="buscar()">
+        <div class="filtros__campo filtros__campo--busqueda">
+          <label for="q">Buscar</label>
+          <input id="q" type="search" name="q" [(ngModel)]="q" placeholder="Nombre de la prenda" />
+        </div>
+
+        <div class="filtros__campo">
+          <label for="categoria">Categoría</label>
+          <select id="categoria" name="categoria" [(ngModel)]="categoriaSlug">
+            <option value="">Todas</option>
+            @for (categoria of filtros()?.categorias ?? []; track categoria.id) {
+              <option [value]="categoria.slug">{{ categoria.nombre }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="filtros__campo">
+          <label for="talla">Talla</label>
+          <select id="talla" name="talla" [(ngModel)]="tallaId">
+            <option [ngValue]="null">Todas</option>
+            @for (talla of filtros()?.tallas ?? []; track talla.id) {
+              <option [ngValue]="talla.id">{{ talla.codigo }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="filtros__campo">
+          <label for="color">Color</label>
+          <select id="color" name="color" [(ngModel)]="colorId">
+            <option [ngValue]="null">Todos</option>
+            @for (color of filtros()?.colores ?? []; track color.id) {
+              <option [ngValue]="color.id">{{ color.nombre }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="filtros__campo">
+          <label for="temporada">Temporada</label>
+          <select id="temporada" name="temporada" [(ngModel)]="temporadaId">
+            <option value="">Todas</option>
+            @for (temporada of filtros()?.temporadas ?? []; track temporada.id) {
+              <option [value]="temporada.id">{{ temporada.nombre }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="filtros__acciones">
+          <button type="submit" class="filtros__boton">Filtrar</button>
+          @if (hayFiltrosActivos()) {
+            <button type="button" class="filtros__limpiar" (click)="limpiarFiltros()">Limpiar</button>
+          }
+        </div>
+      </form>
 
       @if (cargandoCatalogo()) {
         <p class="catalogo__estado">Cargando productos…</p>
       } @else if (errorCatalogo()) {
         <p class="catalogo__estado catalogo__estado--error">{{ errorCatalogo() }}</p>
       } @else if (productos().length === 0) {
-        <p class="catalogo__estado">Todavía no hay productos cargados.</p>
+        <p class="catalogo__estado">
+          No encontramos prendas con esos filtros. Probá ajustar la búsqueda o quitar algún filtro.
+        </p>
       } @else {
         <ul class="grilla">
           @for (producto of productos(); track producto.id) {
-            <li class="prenda">
+            <li class="prenda" [class.prenda--agotada]="producto.agotado" (click)="verProducto(producto)">
+              <div class="prenda__imagen-cont">
+                @if (producto.imagen_url) {
+                  <img class="prenda__imagen" [src]="producto.imagen_url" [alt]="producto.nombre" loading="lazy" />
+                }
+                @if (producto.agotado) {
+                  <span class="prenda__badge">Agotado</span>
+                }
+              </div>
               <span class="prenda__categoria">{{ producto.categoria }}</span>
               <h3 class="prenda__nombre">{{ producto.nombre }}</h3>
               <span class="prenda__marca">{{ producto.marca ?? 'FashionStore' }}</span>
+              @if (producto.tallas.length > 0) {
+                <span class="prenda__tallas">Tallas: {{ producto.tallas.join(', ') }}</span>
+              }
               <span class="prenda__precio">{{ formatearPrecio(producto.precio_base) }}</span>
             </li>
           }
