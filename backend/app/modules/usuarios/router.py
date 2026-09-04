@@ -2,10 +2,43 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.db import get_connection
-from app.core.security import create_access_token, verify_password
-from app.modules.usuarios.schemas import LoginRequest, TokenResponse, UsuarioOut
+from app.core.security import create_access_token, hash_password, verify_password
+from app.modules.usuarios.schemas import LoginRequest, RegistroRequest, TokenResponse, UsuarioOut
 
 router = APIRouter(prefix="/auth", tags=["usuarios"])
+
+
+@router.post("/registro", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def registro(
+    body: RegistroRequest,
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> TokenResponse:
+    try:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO usuario (email, password_hash, nombre, apellido, telefono, tipo)
+            VALUES ($1, $2, $3, $4, $5, 'CLIENTE')
+            RETURNING id, email, nombre, apellido, tipo
+            """,
+            body.email,
+            hash_password(body.password),
+            body.nombre,
+            body.apellido,
+            body.telefono,
+        )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ese correo ya esta registrado")
+
+    usuario = UsuarioOut(
+        id=row["id"],
+        email=row["email"],
+        nombre=row["nombre"],
+        apellido=row["apellido"],
+        tipo=row["tipo"],
+        rol=None,
+    )
+    token = create_access_token(subject=str(row["id"]), extra_claims={"tipo": row["tipo"]})
+    return TokenResponse(access_token=token, usuario=usuario)
 
 
 @router.post("/login", response_model=TokenResponse)

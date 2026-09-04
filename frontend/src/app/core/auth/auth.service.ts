@@ -3,7 +3,7 @@ import { Injectable, computed, signal } from '@angular/core';
 import { Observable, map, tap } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { LoginRequest, TokenResponse, UsuarioOut } from './auth.models';
+import { LoginRequest, RegistroRequest, TokenResponse, UsuarioOut } from './auth.models';
 
 const STORAGE_KEY = 'fashionstore.sesion';
 
@@ -27,6 +27,17 @@ export class AuthService {
 
   iniciarSesion(credenciales: LoginRequest): Observable<UsuarioOut> {
     return this.http.post<TokenResponse>(`${environment.apiUrl}/auth/login`, credenciales).pipe(
+      tap((respuesta) => {
+        const guardada: SesionGuardada = { token: respuesta.access_token, usuario: respuesta.usuario };
+        this.sesion.set(guardada);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(guardada));
+      }),
+      map((respuesta) => respuesta.usuario),
+    );
+  }
+
+  registrarse(datos: RegistroRequest): Observable<UsuarioOut> {
+    return this.http.post<TokenResponse>(`${environment.apiUrl}/auth/registro`, datos).pipe(
       tap((respuesta) => {
         const guardada: SesionGuardada = { token: respuesta.access_token, usuario: respuesta.usuario };
         this.sesion.set(guardada);

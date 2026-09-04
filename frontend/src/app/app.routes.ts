@@ -9,6 +9,11 @@ export const routes: Routes = [
     canActivate: [invitadoGuard],
   },
   {
+    path: 'registro',
+    loadComponent: () => import('./pages/registro/registro.page').then((m) => m.RegistroPage),
+    canActivate: [invitadoGuard],
+  },
+  {
     path: 'tienda',
     loadComponent: () => import('./pages/tienda/tienda.page').then((m) => m.TiendaPage),
     canActivate: [authGuard],

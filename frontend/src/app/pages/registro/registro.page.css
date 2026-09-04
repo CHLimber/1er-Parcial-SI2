@@ -78,7 +78,7 @@
 
 .tarjeta {
   width: 100%;
-  max-width: 24rem;
+  max-width: 26rem;
   background: var(--white);
   border: 1px solid var(--paper-line);
   padding: 2.25rem 2rem 2rem;
@@ -107,10 +107,17 @@
   gap: 1.15rem;
 }
 
+.formulario__fila {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.15rem;
+}
+
 .campo {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .campo label {
@@ -121,7 +128,15 @@
   color: var(--ink-soft);
 }
 
+.campo__opcional {
+  text-transform: none;
+  letter-spacing: normal;
+  color: rgba(86, 91, 107, 0.6);
+}
+
 .campo input {
+  width: 100%;
+  min-width: 0;
   font-family: var(--font-body);
   font-size: 1rem;
   padding: 0.7rem 0.8rem;
@@ -168,6 +183,12 @@
 
 .campo__alternar:hover {
   color: var(--ink);
+}
+
+.campo__ayuda {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
 }
 
 .campo__error {
@@ -243,5 +264,9 @@
   .tarjeta {
     border: none;
     padding: 2rem 0 0;
+  }
+
+  .formulario__fila {
+    grid-template-columns: 1fr;
   }
 }

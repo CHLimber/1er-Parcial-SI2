@@ -68,6 +68,10 @@
         <button type="submit" class="boton" [disabled]="cargando()">
           {{ cargando() ? 'Verificando…' : 'Iniciar sesión' }}
         </button>
+
+        <p class="formulario__enlace">
+          ¿No tenés cuenta? <a routerLink="/registro">Creá una</a>
+        </p>
       </form>
     </div>
   </section>
