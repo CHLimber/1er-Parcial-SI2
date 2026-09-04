@@ -1,0 +1,43 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+
+    <div class="cabecera__cuenta">
+      @if (usuario(); as u) {
+        <span class="cabecera__usuario">
+          {{ u.nombre }} {{ u.apellido }}
+          <span class="cabecera__rol">{{ esStaff() ? (u.rol ?? 'STAFF') : 'Cliente' }}</span>
+        </span>
+      }
+      <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <h1 class="saludo">Hola, {{ usuario()?.nombre }}</h1>
+    <p class="saludo__linea">Sesión iniciada correctamente. Esto es lo último que llegó a las sucursales.</p>
+
+    <section class="catalogo">
+      <h2 class="catalogo__titulo">Catálogo</h2>
+
+      @if (cargandoCatalogo()) {
+        <p class="catalogo__estado">Cargando productos…</p>
+      } @else if (errorCatalogo()) {
+        <p class="catalogo__estado catalogo__estado--error">{{ errorCatalogo() }}</p>
+      } @else if (productos().length === 0) {
+        <p class="catalogo__estado">Todavía no hay productos cargados.</p>
+      } @else {
+        <ul class="grilla">
+          @for (producto of productos(); track producto.id) {
+            <li class="prenda">
+              <span class="prenda__categoria">{{ producto.categoria }}</span>
+              <h3 class="prenda__nombre">{{ producto.nombre }}</h3>
+              <span class="prenda__marca">{{ producto.marca ?? 'FashionStore' }}</span>
+              <span class="prenda__precio">{{ formatearPrecio(producto.precio_base) }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  </main>
+</div>

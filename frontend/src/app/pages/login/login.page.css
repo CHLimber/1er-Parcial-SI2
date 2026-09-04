@@ -1,0 +1,235 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+}
+
+.portal {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+/* ---------- panel izquierdo: marca ---------- */
+
+.marca {
+  background: var(--ink);
+  color: var(--white);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(2rem, 4vw, 4.5rem);
+  position: relative;
+  overflow: hidden;
+}
+
+.marca::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.035) 0 1px,
+    transparent 1px 34px
+  );
+  pointer-events: none;
+}
+
+.marca__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.marca__eyebrow span {
+  color: var(--flame);
+  margin: 0 0.15em;
+}
+
+.marca__wordmark {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: clamp(3.5rem, 9vw, 7.5rem);
+  line-height: 0.86;
+  letter-spacing: 0.01em;
+  margin: 1.5rem 0;
+}
+
+.marca__linea {
+  max-width: 30ch;
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: rgba(255, 253, 249, 0.72);
+}
+
+/* ---------- panel derecho: acceso ---------- */
+
+.panel {
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1.5rem, 4vw, 3rem);
+}
+
+.tarjeta {
+  width: 100%;
+  max-width: 24rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  padding: 2.25rem 2rem 2rem;
+}
+
+.tarjeta__titulo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  font-size: 2rem;
+  color: var(--ink);
+}
+
+.tarjeta__subtitulo {
+  margin: 0.35rem 0 1.75rem;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+
+/* ---------- formulario ---------- */
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.campo label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.campo input {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.campo input::placeholder {
+  color: rgba(86, 91, 107, 0.55);
+}
+
+.campo input[aria-invalid='true'] {
+  border-color: var(--flame);
+}
+
+.campo__password {
+  display: flex;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+}
+
+.campo__password input {
+  flex: 1;
+  border: none;
+  background: transparent;
+}
+
+.campo__password input:focus-visible {
+  outline-offset: -2px;
+}
+
+.campo__alternar {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0 0.85rem;
+  cursor: pointer;
+}
+
+.campo__alternar:hover {
+  color: var(--ink);
+}
+
+.campo__error {
+  margin: 0;
+  color: var(--flame-dark);
+  font-size: 0.82rem;
+}
+
+.formulario__error {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-left: 3px solid var(--flame);
+  background: rgba(226, 84, 42, 0.08);
+  color: var(--flame-dark);
+  font-size: 0.88rem;
+}
+
+.boton {
+  margin-top: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: none;
+  background: var(--ink);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.boton:hover:not(:disabled) {
+  background: var(--flame);
+}
+
+.boton:disabled {
+  background: var(--ink-soft);
+  cursor: wait;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 860px) {
+  .portal {
+    grid-template-columns: 1fr;
+  }
+
+  .marca {
+    padding: 2rem 1.5rem;
+  }
+
+  .marca__wordmark {
+    font-size: clamp(2.75rem, 14vw, 4rem);
+    margin: 1rem 0;
+  }
+
+  .marca__linea {
+    display: none;
+  }
+
+  .tarjeta {
+    border: none;
+    padding: 2rem 0 0;
+  }
+}
