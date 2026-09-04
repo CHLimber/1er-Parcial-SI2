@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.db import connect_pool, disconnect_pool
 from app.modules.catalogo.router import router as catalogo_router
+from app.modules.reservas.router import router as reservas_router
+from app.modules.sucursales.router import router as sucursales_router
 from app.modules.usuarios.router import router as usuarios_router
 
 
@@ -28,6 +30,8 @@ app.add_middleware(
 
 app.include_router(usuarios_router)
 app.include_router(catalogo_router)
+app.include_router(sucursales_router)
+app.include_router(reservas_router)
 
 
 @app.get("/health")

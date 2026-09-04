@@ -43,6 +43,34 @@
   color: var(--gold);
 }
 
+.cabecera__reserva {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--white);
+  text-decoration: none;
+}
+
+.cabecera__reserva:hover {
+  color: var(--gold);
+}
+
+.cabecera__contador {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--flame);
+  color: var(--white);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+}
+
 .cabecera__salir {
   border: 1px solid rgba(255, 253, 249, 0.35);
   background: transparent;

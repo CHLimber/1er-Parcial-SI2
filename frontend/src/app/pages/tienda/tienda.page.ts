@@ -1,15 +1,16 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { FiltrosOut, ProductoOut } from '../../core/catalogo/catalogo.models';
+import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
 
 @Component({
   selector: 'app-tienda-page',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './tienda.page.html',
   styleUrl: './tienda.page.css',
 })
@@ -17,9 +18,11 @@ export class TiendaPage implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly catalogo = inject(CatalogoService);
   private readonly router = inject(Router);
+  private readonly reservaCarrito = inject(ReservaCarritoService);
 
   protected readonly usuario = this.auth.usuario;
   protected readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
+  protected readonly itemsEnReserva = this.reservaCarrito.cantidadTotal;
 
   protected readonly productos = signal<ProductoOut[]>([]);
   protected readonly cargandoCatalogo = signal(true);

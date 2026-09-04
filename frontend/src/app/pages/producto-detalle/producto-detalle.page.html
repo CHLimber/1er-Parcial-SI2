@@ -1,7 +1,15 @@
 <div class="pagina">
   <header class="cabecera">
     <span class="cabecera__marca">FashionStore</span>
-    <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    <div class="cabecera__acciones">
+      <a class="cabecera__reserva" routerLink="/reservar">
+        Mi reserva
+        @if (itemsEnReserva() > 0) {
+          <span class="cabecera__contador">{{ itemsEnReserva() }}</span>
+        }
+      </a>
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
   </header>
 
   <main class="contenido">
@@ -74,6 +82,22 @@
               </div>
             </div>
           }
+
+          <div class="reserva-accion">
+            <button
+              type="button"
+              class="boton"
+              [disabled]="!varianteSeleccionada()"
+              (click)="agregarAReserva()"
+            >
+              Agregar al vestidor (reservar)
+            </button>
+            @if (agregadoAReserva()) {
+              <p class="reserva-accion__confirmacion">
+                Agregado. <a routerLink="/reservar">Ver mi reserva →</a>
+              </p>
+            }
+          </div>
 
           <section class="disponibilidad">
             <h2 class="disponibilidad__titulo">Disponibilidad por sucursal</h2>

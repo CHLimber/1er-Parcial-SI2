@@ -1,0 +1,149 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__enlace" routerLink="/mis-reservas">Mis reservas</a>
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    @if (resultado(); as reserva) {
+      <section class="confirmacion">
+        <span class="confirmacion__etiqueta">Reserva registrada</span>
+        <h1 class="confirmacion__codigo">{{ reserva.codigo }}</h1>
+        <p class="confirmacion__linea">
+          {{ reserva.sucursal }} · {{ reserva.fecha_visita }} a las {{ reserva.hora_visita.slice(0, 5) }}
+        </p>
+        <p class="confirmacion__linea">
+          Estado: <strong>{{ reserva.estado }}</strong> · Presentate antes de que venza,
+          el compromiso de stock expira el {{ reserva.expira_en | date: 'short' }}.
+        </p>
+
+        <ul class="confirmacion__items">
+          @for (item of reserva.items; track item.id) {
+            <li>{{ item.cantidad }} × {{ item.producto }} ({{ item.talla }} · {{ item.color }})</li>
+          }
+        </ul>
+
+        @if (reserva.items_rechazados.length > 0) {
+          <div class="confirmacion__rechazados">
+            <p class="confirmacion__rechazados-titulo">
+              Estas prendas no se pudieron reservar:
+            </p>
+            <ul>
+              @for (r of reserva.items_rechazados; track r.variante_id) {
+                <li>{{ r.sku }} — {{ r.motivo }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        <div class="confirmacion__acciones">
+          <button type="button" class="boton" (click)="verMisReservas()">Ver mis reservas</button>
+          <button type="button" class="boton boton--secundario" (click)="volverAlCatalogo()">
+            Seguir viendo el catálogo
+          </button>
+        </div>
+      </section>
+    } @else {
+      <h1 class="titulo">Reservar prendas para probarte</h1>
+      <p class="subtitulo">
+        Elegí sucursal y horario aproximado; nosotros comprometemos el stock y avisamos a la tienda.
+      </p>
+
+      <section class="carrito">
+        <h2 class="carrito__titulo">Prendas seleccionadas ({{ cantidadTotal() }})</h2>
+
+        @if (items().length === 0) {
+          <p class="carrito__vacio">
+            Todavía no agregaste ninguna prenda. Volvé al
+            <a routerLink="/tienda">catálogo</a> y elegí las que querés probarte.
+          </p>
+        } @else {
+          <ul class="carrito__lista">
+            @for (item of items(); track item.varianteId) {
+              <li class="carrito__item">
+                @if (item.imagenUrl) {
+                  <img class="carrito__imagen" [src]="item.imagenUrl" [alt]="item.producto" />
+                }
+                <div class="carrito__info">
+                  <span class="carrito__nombre">{{ item.producto }}</span>
+                  <span class="carrito__variante">{{ item.talla }} · {{ item.color }} · {{ item.sku }}</span>
+                  <span class="carrito__precio">{{ formatearPrecio(item.precio) }}</span>
+                </div>
+                <div class="carrito__cantidad">
+                  <label [for]="'cantidad-' + item.varianteId" class="visualmente-oculto">Cantidad</label>
+                  <input
+                    [id]="'cantidad-' + item.varianteId"
+                    type="number"
+                    min="1"
+                    max="20"
+                    [ngModel]="item.cantidad"
+                    (ngModelChange)="cambiarCantidad(item, $event)"
+                  />
+                </div>
+                <button type="button" class="carrito__quitar" (click)="quitarItem(item)" aria-label="Quitar">
+                  ✕
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      @if (items().length > 0) {
+        <section class="formulario">
+          <h2 class="formulario__titulo">Sucursal y horario</h2>
+
+          @if (cargandoSucursales()) {
+            <p class="carrito__vacio">Cargando sucursales…</p>
+          } @else {
+            <div class="campo">
+              <label for="sucursal">Sucursal</label>
+              <select id="sucursal" name="sucursal" [(ngModel)]="sucursalId">
+                @for (sucursal of sucursales(); track sucursal.id) {
+                  <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
+                }
+              </select>
+              @if (sucursalSeleccionada(); as s) {
+                <p class="campo__ayuda">{{ formatearHorario(s) }} · {{ s.cantidad_vestidores }} vestidor(es)</p>
+              }
+            </div>
+
+            <div class="formulario__fila">
+              <div class="campo">
+                <label for="fecha">Fecha</label>
+                <input id="fecha" type="date" name="fecha" [min]="fechaMinima" [(ngModel)]="fecha" />
+              </div>
+              <div class="campo">
+                <label for="hora">Hora aproximada</label>
+                <input id="hora" type="time" name="hora" [(ngModel)]="hora" />
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="observaciones">Observaciones <span class="campo__opcional">(opcional)</span></label>
+              <textarea
+                id="observaciones"
+                name="observaciones"
+                rows="2"
+                maxlength="250"
+                [(ngModel)]="observaciones"
+                placeholder="Ej: voy con mi pareja, necesito dos vestidores"
+              ></textarea>
+            </div>
+
+            @if (errorMensaje()) {
+              <p class="formulario__error" role="alert">{{ errorMensaje() }}</p>
+            }
+
+            <button type="button" class="boton" [disabled]="enviando()" (click)="confirmar()">
+              {{ enviando() ? 'Reservando…' : 'Confirmar reserva' }}
+            </button>
+          }
+        </section>
+      }
+    }
+  </main>
+</div>

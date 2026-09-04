@@ -3,6 +3,15 @@
     <span class="cabecera__marca">FashionStore</span>
 
     <div class="cabecera__cuenta">
+      @if (!esStaff()) {
+        <a class="cabecera__reserva" routerLink="/reservar">
+          Mi reserva
+          @if (itemsEnReserva() > 0) {
+            <span class="cabecera__contador">{{ itemsEnReserva() }}</span>
+          }
+        </a>
+        <a class="cabecera__reserva" routerLink="/mis-reservas">Mis reservas</a>
+      }
       @if (usuario(); as u) {
         <span class="cabecera__usuario">
           {{ u.nombre }} {{ u.apellido }}

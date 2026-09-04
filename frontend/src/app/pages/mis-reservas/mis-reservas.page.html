@@ -1,0 +1,50 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__enlace" routerLink="/reservar">Nueva reserva</a>
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <h1 class="titulo">Mis reservas</h1>
+
+    @if (cargando()) {
+      <p class="estado">Cargando tus reservas…</p>
+    } @else if (error()) {
+      <p class="estado estado--error">{{ error() }}</p>
+    } @else if (reservas().length === 0) {
+      <p class="estado">
+        Todavía no reservaste ninguna prenda. Andá al
+        <a routerLink="/tienda">catálogo</a> para empezar.
+      </p>
+    } @else {
+      <ul class="lista">
+        @for (reserva of reservas(); track reserva.id) {
+          <li class="reserva">
+            <div class="reserva__cabecera">
+              <span class="reserva__codigo">{{ reserva.codigo }}</span>
+              <span class="reserva__estado" [class]="'reserva__estado--' + reserva.estado.toLowerCase()">
+                {{ etiquetaEstado(reserva.estado) }}
+              </span>
+            </div>
+            <p class="reserva__linea">
+              {{ reserva.sucursal }} · {{ reserva.fecha_visita }} a las {{ reserva.hora_visita.slice(0, 5) }}
+            </p>
+            @if (reserva.estado === 'PENDIENTE' || reserva.estado === 'CONFIRMADA') {
+              <p class="reserva__linea reserva__linea--vence">
+                Vence: {{ reserva.expira_en | date: 'short' }}
+              </p>
+            }
+            <ul class="reserva__items">
+              @for (item of reserva.items; track item.id) {
+                <li>{{ item.cantidad }} × {{ item.producto }} ({{ item.talla }} · {{ item.color }})</li>
+              }
+            </ul>
+          </li>
+        }
+      </ul>
+    }
+  </main>
+</div>

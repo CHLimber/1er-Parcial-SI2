@@ -24,6 +24,17 @@ export const routes: Routes = [
       import('./pages/producto-detalle/producto-detalle.page').then((m) => m.ProductoDetallePage),
     canActivate: [authGuard],
   },
+  {
+    path: 'reservar',
+    loadComponent: () => import('./pages/reservar/reservar.page').then((m) => m.ReservarPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'mis-reservas',
+    loadComponent: () =>
+      import('./pages/mis-reservas/mis-reservas.page').then((m) => m.MisReservasPage),
+    canActivate: [authGuard],
+  },
   { path: '', pathMatch: 'full', redirectTo: 'tienda' },
   { path: '**', redirectTo: 'tienda' },
 ];

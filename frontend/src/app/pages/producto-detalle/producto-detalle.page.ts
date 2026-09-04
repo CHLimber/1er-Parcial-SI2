@@ -3,6 +3,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { ProductoDetalleOut, VarianteOut } from '../../core/catalogo/catalogo.models';
+import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
 
 @Component({
   selector: 'app-producto-detalle-page',
@@ -15,6 +16,7 @@ export class ProductoDetallePage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly catalogo = inject(CatalogoService);
+  private readonly reservaCarrito = inject(ReservaCarritoService);
 
   protected readonly producto = signal<ProductoDetalleOut | null>(null);
   protected readonly cargando = signal(true);
@@ -22,6 +24,8 @@ export class ProductoDetallePage implements OnInit {
 
   protected readonly tallaSeleccionada = signal<string | null>(null);
   protected readonly colorSeleccionado = signal<string | null>(null);
+  protected readonly agregadoAReserva = signal(false);
+  protected readonly itemsEnReserva = this.reservaCarrito.cantidadTotal;
 
   protected readonly tallas = computed(() => {
     const producto = this.producto();
@@ -79,6 +83,31 @@ export class ProductoDetallePage implements OnInit {
 
   protected elegirColor(color: string): void {
     this.colorSeleccionado.set(color);
+  }
+
+  protected agregarAReserva(): void {
+    const producto = this.producto();
+    const variante = this.varianteSeleccionada();
+    if (!producto || !variante) return;
+
+    this.reservaCarrito.agregar({
+      varianteId: variante.id,
+      sku: variante.sku,
+      producto: producto.nombre,
+      productoSlug: producto.slug,
+      talla: variante.talla,
+      color: variante.color,
+      codigoHex: variante.codigo_hex,
+      precio: variante.precio,
+      imagenUrl: producto.imagen_url,
+      cantidad: 1,
+    });
+    this.agregadoAReserva.set(true);
+    setTimeout(() => this.agregadoAReserva.set(false), 2500);
+  }
+
+  protected irAReservar(): void {
+    this.router.navigateByUrl('/reservar');
   }
 
   protected volverAlCatalogo(): void {
