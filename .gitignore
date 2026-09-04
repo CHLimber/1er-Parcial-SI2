@@ -1,0 +1,22 @@
+# Backend (Python)
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.env
+*.pyc
+
+# Frontend (Angular / Node)
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Movil (Flutter)
+movil/.dart_tool/
+movil/build/
+movil/.flutter-plugin-dependencies
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
