@@ -35,6 +35,22 @@ export const routes: Routes = [
       import('./pages/mis-reservas/mis-reservas.page').then((m) => m.MisReservasPage),
     canActivate: [authGuard],
   },
+  {
+    path: 'carrito',
+    loadComponent: () => import('./pages/carrito/carrito.page').then((m) => m.CarritoPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'pago-simulado/:ventaId',
+    loadComponent: () =>
+      import('./pages/pago-simulado/pago-simulado.page').then((m) => m.PagoSimuladoPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'compra/:ventaId',
+    loadComponent: () => import('./pages/compra/compra.page').then((m) => m.CompraPage),
+    canActivate: [authGuard],
+  },
   { path: '', pathMatch: 'full', redirectTo: 'tienda' },
   { path: '**', redirectTo: 'tienda' },
 ];

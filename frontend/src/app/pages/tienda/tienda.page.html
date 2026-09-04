@@ -11,6 +11,12 @@
           }
         </a>
         <a class="cabecera__reserva" routerLink="/mis-reservas">Mis reservas</a>
+        <a class="cabecera__reserva" routerLink="/carrito">
+          Carrito
+          @if (itemsEnCarrito() > 0) {
+            <span class="cabecera__contador">{{ itemsEnCarrito() }}</span>
+          }
+        </a>
       }
       @if (usuario(); as u) {
         <span class="cabecera__usuario">

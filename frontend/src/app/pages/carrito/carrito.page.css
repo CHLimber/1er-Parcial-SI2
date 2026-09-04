@@ -1,0 +1,250 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.cabecera__marca {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 1.35rem;
+}
+
+.cabecera__acciones {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.cabecera__volver {
+  font-size: 0.85rem;
+  color: var(--white);
+  text-decoration: none;
+}
+
+.cabecera__volver:hover {
+  color: var(--flame);
+}
+
+.contenido {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  max-width: 48rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.titulo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  color: var(--ink);
+}
+
+.estado {
+  color: var(--ink-soft);
+}
+
+.estado a {
+  color: var(--flame-dark);
+  font-weight: 600;
+}
+
+.carrito__aviso {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--white);
+  border-left: 3px solid var(--gold);
+  color: var(--ink);
+}
+
+.carrito__lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--paper-line);
+  border: 1px solid var(--paper-line);
+}
+
+.carrito__item {
+  background: var(--white);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.carrito__imagen {
+  width: 3.2rem;
+  height: 4rem;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.carrito__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.carrito__nombre {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.carrito__variante {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.carrito__precio {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.carrito__cantidad input {
+  width: 3.5rem;
+  padding: 0.4rem;
+  border: 1px solid var(--paper-line);
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.carrito__subtotal {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--flame-dark);
+  min-width: 5rem;
+  text-align: right;
+}
+
+.carrito__quitar {
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.carrito__quitar:hover {
+  color: var(--flame-dark);
+}
+
+.carrito__total {
+  align-self: flex-end;
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  padding: 1.25rem;
+}
+
+.formulario__titulo {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.campo label,
+.campo__etiqueta {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.campo__opcional {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.campo input,
+.campo select {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.pasarelas {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.pasarela {
+  flex: 1;
+  padding: 0.7rem;
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pasarela--activa {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.formulario__error {
+  color: var(--flame-dark);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.boton {
+  padding: 0.7rem 1.2rem;
+  border: none;
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.boton:hover {
+  background: var(--flame);
+}
+
+.boton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { CarritoService } from '../../core/carrito/carrito.service';
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { FiltrosOut, ProductoOut } from '../../core/catalogo/catalogo.models';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
@@ -19,10 +20,12 @@ export class TiendaPage implements OnInit {
   private readonly catalogo = inject(CatalogoService);
   private readonly router = inject(Router);
   private readonly reservaCarrito = inject(ReservaCarritoService);
+  private readonly carritoService = inject(CarritoService);
 
   protected readonly usuario = this.auth.usuario;
   protected readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
   protected readonly itemsEnReserva = this.reservaCarrito.cantidadTotal;
+  protected readonly itemsEnCarrito = this.carritoService.cantidadItems;
 
   protected readonly productos = signal<ProductoOut[]>([]);
   protected readonly cargandoCatalogo = signal(true);
@@ -46,6 +49,9 @@ export class TiendaPage implements OnInit {
       error: () => this.filtros.set(null),
     });
     this.buscar();
+    if (!this.esStaff()) {
+      this.carritoService.refrescar();
+    }
   }
 
   protected buscar(): void {

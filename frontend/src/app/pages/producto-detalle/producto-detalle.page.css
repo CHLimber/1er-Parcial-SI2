@@ -96,6 +96,22 @@
   background: var(--flame);
 }
 
+.boton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.boton--secundario {
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--paper-line);
+}
+
+.boton--secundario:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
 .detalle {
   display: grid;
   grid-template-columns: minmax(0, 22rem) 1fr;
@@ -234,6 +250,12 @@
   align-items: flex-start;
 }
 
+.reserva-accion__botones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
 .reserva-accion__confirmacion {
   margin: 0;
   font-size: 0.85rem;
@@ -243,6 +265,12 @@
 .reserva-accion__confirmacion a {
   color: var(--flame-dark);
   font-weight: 600;
+}
+
+.reserva-accion__error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--flame-dark);
 }
 
 .disponibilidad {

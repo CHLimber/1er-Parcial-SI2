@@ -1,0 +1,148 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.cabecera__marca {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 1.35rem;
+}
+
+.cabecera__volver {
+  font-size: 0.85rem;
+  color: var(--white);
+  text-decoration: none;
+}
+
+.cabecera__volver:hover {
+  color: var(--flame);
+}
+
+.contenido {
+  padding: clamp(1.5rem, 4vw, 3rem);
+  max-width: 40rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.estado {
+  color: var(--ink-soft);
+}
+
+.confirmacion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.confirmacion--exito {
+  border-left: 4px solid #2f7d4f;
+}
+
+.confirmacion--error {
+  border-left: 4px solid var(--flame-dark);
+}
+
+.confirmacion__etiqueta {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.confirmacion__numero {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 4vw, 2.1rem);
+  color: var(--ink);
+}
+
+.confirmacion__linea {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.confirmacion__items {
+  margin: 0;
+  padding: 1rem 1.2rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  color: var(--ink);
+}
+
+.totales {
+  margin: 0;
+  padding: 1rem 1.2rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.totales div {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+}
+
+.totales dt {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
+
+.totales dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--ink);
+}
+
+.totales__total dt,
+.totales__total dd {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.boton {
+  padding: 0.7rem 1.2rem;
+  border: none;
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.boton:hover {
+  background: var(--flame);
+}
+
+.enlace-volver {
+  align-self: flex-start;
+  color: var(--flame-dark);
+  font-weight: 600;
+  background: none;
+  padding: 0;
+}

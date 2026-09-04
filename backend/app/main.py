@@ -5,10 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import connect_pool, disconnect_pool
+from app.modules.carrito.router import router as carrito_router
 from app.modules.catalogo.router import router as catalogo_router
+from app.modules.pagos.router import router as pagos_router
 from app.modules.reservas.router import router as reservas_router
 from app.modules.sucursales.router import router as sucursales_router
 from app.modules.usuarios.router import router as usuarios_router
+from app.modules.ventas.router import router as ventas_router
 
 
 @asynccontextmanager
@@ -32,6 +35,9 @@ app.include_router(usuarios_router)
 app.include_router(catalogo_router)
 app.include_router(sucursales_router)
 app.include_router(reservas_router)
+app.include_router(carrito_router)
+app.include_router(ventas_router)
+app.include_router(pagos_router)
 
 
 @app.get("/health")

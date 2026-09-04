@@ -1,0 +1,120 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <h1 class="titulo">Tu carrito</h1>
+
+    @if (cargando()) {
+      <p class="estado">Cargando tu carrito…</p>
+    } @else {
+      @let c = carrito();
+
+      @if (!c || c.items.length === 0) {
+        <p class="estado">
+          Todavía no agregaste ninguna prenda para comprar. Volvé al
+          <a routerLink="/tienda">catálogo</a> y elegí las que querés llevarte.
+        </p>
+      } @else {
+        @if (c.reserva_id) {
+          <p class="carrito__aviso">
+            Este carrito viene de tu reserva <strong>{{ c.reserva_codigo }}</strong>. Se retira en
+            la misma sucursal donde comprometiste el stock.
+          </p>
+        }
+
+        <ul class="carrito__lista">
+          @for (item of c.items; track item.id) {
+            <li class="carrito__item">
+              @if (item.imagen_url) {
+                <img class="carrito__imagen" [src]="item.imagen_url" [alt]="item.producto" />
+              }
+              <div class="carrito__info">
+                <span class="carrito__nombre">{{ item.producto }}</span>
+                <span class="carrito__variante">{{ item.talla }} · {{ item.color }} · {{ item.sku }}</span>
+                <span class="carrito__precio">{{ formatearPrecio(item.precio_unitario) }} c/u</span>
+              </div>
+              <div class="carrito__cantidad">
+                <label [for]="'cantidad-' + item.id" class="visualmente-oculto">Cantidad</label>
+                <input
+                  [id]="'cantidad-' + item.id"
+                  type="number"
+                  min="1"
+                  max="20"
+                  [ngModel]="item.cantidad"
+                  (ngModelChange)="cambiarCantidad(item, $event)"
+                />
+              </div>
+              <span class="carrito__subtotal">{{ formatearPrecio(item.subtotal) }}</span>
+              <button type="button" class="carrito__quitar" (click)="quitarItem(item)" aria-label="Quitar">
+                ✕
+              </button>
+            </li>
+          }
+        </ul>
+
+        <p class="carrito__total">Subtotal: <strong>{{ formatearPrecio(c.subtotal) }}</strong></p>
+
+        <section class="formulario">
+          <h2 class="formulario__titulo">Pago</h2>
+
+          @if (!c.reserva_id) {
+            <div class="campo">
+              <label for="sucursal">Sucursal de despacho</label>
+              <select id="sucursal" name="sucursal" [(ngModel)]="sucursalId">
+                @for (sucursal of sucursales(); track sucursal.id) {
+                  <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
+                }
+              </select>
+            </div>
+          }
+
+          <div class="campo">
+            <span class="campo__etiqueta">Pasarela de pago</span>
+            <div class="pasarelas">
+              <button
+                type="button"
+                class="pasarela"
+                [class.pasarela--activa]="pasarela === 'STRIPE'"
+                (click)="elegirPasarela('STRIPE')"
+              >
+                Stripe
+              </button>
+              <button
+                type="button"
+                class="pasarela"
+                [class.pasarela--activa]="pasarela === 'LIBELULA'"
+                (click)="elegirPasarela('LIBELULA')"
+              >
+                Libélula
+              </button>
+            </div>
+          </div>
+
+          <div class="campo">
+            <label for="cupon">Cupón <span class="campo__opcional">(opcional)</span></label>
+            <input
+              id="cupon"
+              type="text"
+              name="cupon"
+              [(ngModel)]="codigoCupon"
+              placeholder="Ej: BIENVENIDA10"
+            />
+          </div>
+
+          @if (errorMensaje()) {
+            <p class="formulario__error" role="alert">{{ errorMensaje() }}</p>
+          }
+
+          <button type="button" class="boton" [disabled]="enviando()" (click)="pagar()">
+            {{ enviando() ? 'Procesando…' : 'Pagar con ' + (pasarela === 'STRIPE' ? 'Stripe' : 'Libélula') }}
+          </button>
+        </section>
+      }
+    }
+  </main>
+</div>

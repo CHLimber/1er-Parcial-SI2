@@ -490,11 +490,15 @@ CREATE TABLE carrito (
     id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
     usuario_id      UUID           REFERENCES usuario(id) ON DELETE CASCADE,
     session_anonima VARCHAR(80),
+    reserva_id      UUID           REFERENCES reserva(id),
     estado          estado_carrito NOT NULL DEFAULT 'ACTIVO',
     creado_en       TIMESTAMPTZ    NOT NULL DEFAULT now(),
     actualizado_en  TIMESTAMPTZ    NOT NULL DEFAULT now(),
     CONSTRAINT ck_carrito_dueno CHECK (usuario_id IS NOT NULL OR session_anonima IS NOT NULL)
 );
+COMMENT ON COLUMN carrito.reserva_id IS
+    'Si el carrito nace de "comprar lo que reserve", ancla la reserva de origen: al pagar, la '
+    'venta libera y consume ese compromiso en vez de descontar contra stock libre.';
 CREATE UNIQUE INDEX ux_carrito_activo ON carrito(usuario_id)
     WHERE estado = 'ACTIVO' AND usuario_id IS NOT NULL;
  
@@ -516,6 +520,7 @@ CREATE TABLE venta (
     entrega           modo_entrega  NOT NULL DEFAULT 'RETIRO_SUCURSAL',
     direccion_id      UUID          REFERENCES direccion(id),
     reserva_id        UUID          REFERENCES reserva(id),
+    carrito_id        UUID          REFERENCES carrito(id),
     sesion_caja_id    UUID          REFERENCES sesion_caja(id),
     promocion_id      UUID          REFERENCES promocion(id),
     numero            VARCHAR(40)   NOT NULL UNIQUE,

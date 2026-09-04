@@ -1,0 +1,49 @@
+<div class="pagina">
+  <main class="contenido">
+    @if (cargando()) {
+      <p class="estado">Conectando con la pasarela…</p>
+    } @else if (noEncontrada() || !venta()) {
+      <div class="estado estado--error">
+        <p>No encontramos ese pedido.</p>
+        <a class="enlace" routerLink="/carrito">Volver al carrito</a>
+      </div>
+    } @else {
+      @let v = venta()!;
+
+      <section class="pasarela-card">
+        <span class="pasarela-card__marca">{{ v.pago?.pasarela === 'STRIPE' ? 'Stripe' : 'Libélula' }}</span>
+        <p class="pasarela-card__aviso">
+          Esta es una pasarela simulada para fines académicos: ningún cobro real ocurre acá.
+        </p>
+
+        <div class="pasarela-card__resumen">
+          <span>Pedido</span>
+          <strong>{{ v.numero }}</strong>
+        </div>
+        <div class="pasarela-card__resumen">
+          <span>Total a pagar</span>
+          <strong>{{ formatearPrecio(v.total) }}</strong>
+        </div>
+
+        <div class="pasarela-card__acciones">
+          <button
+            type="button"
+            class="boton"
+            [disabled]="procesando()"
+            (click)="simularPago('APROBADO')"
+          >
+            {{ procesando() ? 'Procesando…' : 'Simular pago aprobado' }}
+          </button>
+          <button
+            type="button"
+            class="boton boton--secundario"
+            [disabled]="procesando()"
+            (click)="simularPago('RECHAZADO')"
+          >
+            Simular pago rechazado
+          </button>
+        </div>
+      </section>
+    }
+  </main>
+</div>

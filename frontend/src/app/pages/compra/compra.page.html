@@ -1,0 +1,78 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    @if (cargando()) {
+      <p class="estado">Cargando tu pedido…</p>
+    } @else if (noEncontrada() || !venta()) {
+      <p class="estado estado--error">No encontramos ese pedido.</p>
+    } @else {
+      @let v = venta()!;
+
+      @switch (v.estado) {
+        @case ('PAGADA') {
+          <section class="confirmacion confirmacion--exito">
+            <span class="confirmacion__etiqueta">Compra confirmada</span>
+            <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+            @if (v.comprobante) {
+              <p class="confirmacion__linea">
+                Comprobante <strong>{{ v.comprobante.numero }}</strong> emitido el
+                {{ v.comprobante.emitido_en | date: 'short' }}.
+              </p>
+            }
+            <p class="confirmacion__linea">
+              {{ v.sucursal }} · {{ v.entrega === 'DOMICILIO' ? 'Envío a domicilio' : 'Retiro en sucursal' }}
+            </p>
+          </section>
+        }
+        @case ('ANULADA') {
+          <section class="confirmacion confirmacion--error">
+            <span class="confirmacion__etiqueta">Pago no completado</span>
+            <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+            <p class="confirmacion__linea">
+              @if (v.pago?.estado === 'RECHAZADO') {
+                Tu pago fue rechazado por la pasarela. Tu carrito sigue disponible para que vuelvas a intentarlo.
+              } @else {
+                Hubo un problema al confirmar tu pedido y se generó un reembolso. Escribinos si el monto no vuelve en unos días.
+              }
+            </p>
+            <a class="boton" routerLink="/carrito">Volver al carrito</a>
+          </section>
+        }
+        @default {
+          <section class="confirmacion">
+            <span class="confirmacion__etiqueta">Esperando confirmación de pago</span>
+            <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+            <p class="confirmacion__linea">
+              Todavía no recibimos la confirmación de la pasarela para este pedido.
+            </p>
+          </section>
+        }
+      }
+
+      @if (v.items.length > 0) {
+        <ul class="confirmacion__items">
+          @for (item of v.items; track item.variante_id) {
+            <li>{{ item.cantidad }} × {{ item.producto }} ({{ item.talla }} · {{ item.color }}) — {{ formatearPrecio(item.subtotal) }}</li>
+          }
+        </ul>
+
+        <dl class="totales">
+          <div><dt>Subtotal</dt><dd>{{ formatearPrecio(v.subtotal) }}</dd></div>
+          @if (v.descuento > 0) {
+            <div><dt>Descuento</dt><dd>-{{ formatearPrecio(v.descuento) }}</dd></div>
+          }
+          <div><dt>IVA (13%)</dt><dd>{{ formatearPrecio(v.iva) }}</dd></div>
+          <div class="totales__total"><dt>Total</dt><dd>{{ formatearPrecio(v.total) }}</dd></div>
+        </dl>
+      }
+
+      <a class="cabecera__volver enlace-volver" routerLink="/tienda">Seguir comprando</a>
+    }
+  </main>
+</div>

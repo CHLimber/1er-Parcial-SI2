@@ -1,6 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
+import { CarritoService } from '../../core/carrito/carrito.service';
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { ProductoDetalleOut, VarianteOut } from '../../core/catalogo/catalogo.models';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
@@ -17,6 +18,7 @@ export class ProductoDetallePage implements OnInit {
   private readonly router = inject(Router);
   private readonly catalogo = inject(CatalogoService);
   private readonly reservaCarrito = inject(ReservaCarritoService);
+  private readonly carritoService = inject(CarritoService);
 
   protected readonly producto = signal<ProductoDetalleOut | null>(null);
   protected readonly cargando = signal(true);
@@ -25,7 +27,10 @@ export class ProductoDetallePage implements OnInit {
   protected readonly tallaSeleccionada = signal<string | null>(null);
   protected readonly colorSeleccionado = signal<string | null>(null);
   protected readonly agregadoAReserva = signal(false);
+  protected readonly agregadoAlCarrito = signal(false);
+  protected readonly errorCarrito = signal<string | null>(null);
   protected readonly itemsEnReserva = this.reservaCarrito.cantidadTotal;
+  protected readonly itemsEnCarrito = this.carritoService.cantidadItems;
 
   protected readonly tallas = computed(() => {
     const producto = this.producto();
@@ -54,6 +59,8 @@ export class ProductoDetallePage implements OnInit {
   });
 
   ngOnInit(): void {
+    this.carritoService.refrescar();
+
     const slug = this.route.snapshot.paramMap.get('slug');
     if (!slug) {
       this.noEncontrado.set(true);
@@ -108,6 +115,26 @@ export class ProductoDetallePage implements OnInit {
 
   protected irAReservar(): void {
     this.router.navigateByUrl('/reservar');
+  }
+
+  protected comprarAhora(): void {
+    const variante = this.varianteSeleccionada();
+    if (!variante) return;
+
+    this.errorCarrito.set(null);
+    this.carritoService.agregarItem({ variante_id: variante.id, cantidad: 1 }).subscribe({
+      next: () => {
+        this.agregadoAlCarrito.set(true);
+        setTimeout(() => this.agregadoAlCarrito.set(false), 2500);
+      },
+      error: () => {
+        this.errorCarrito.set('No se pudo agregar la prenda al carrito. Puede que ya no tenga stock.');
+      },
+    });
+  }
+
+  protected irAlCarrito(): void {
+    this.router.navigateByUrl('/carrito');
   }
 
   protected volverAlCatalogo(): void {

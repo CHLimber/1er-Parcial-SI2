@@ -8,6 +8,12 @@
           <span class="cabecera__contador">{{ itemsEnReserva() }}</span>
         }
       </a>
+      <a class="cabecera__reserva" routerLink="/carrito">
+        Carrito
+        @if (itemsEnCarrito() > 0) {
+          <span class="cabecera__contador">{{ itemsEnCarrito() }}</span>
+        }
+      </a>
       <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
     </div>
   </header>
@@ -84,18 +90,36 @@
           }
 
           <div class="reserva-accion">
-            <button
-              type="button"
-              class="boton"
-              [disabled]="!varianteSeleccionada()"
-              (click)="agregarAReserva()"
-            >
-              Agregar al vestidor (reservar)
-            </button>
+            <div class="reserva-accion__botones">
+              <button
+                type="button"
+                class="boton"
+                [disabled]="!varianteSeleccionada()"
+                (click)="comprarAhora()"
+              >
+                Comprar ahora
+              </button>
+              <button
+                type="button"
+                class="boton boton--secundario"
+                [disabled]="!varianteSeleccionada()"
+                (click)="agregarAReserva()"
+              >
+                Agregar al vestidor (reservar)
+              </button>
+            </div>
+            @if (agregadoAlCarrito()) {
+              <p class="reserva-accion__confirmacion">
+                Agregado al carrito. <a routerLink="/carrito">Ver mi carrito →</a>
+              </p>
+            }
             @if (agregadoAReserva()) {
               <p class="reserva-accion__confirmacion">
                 Agregado. <a routerLink="/reservar">Ver mi reserva →</a>
               </p>
+            }
+            @if (errorCarrito()) {
+              <p class="reserva-accion__error">{{ errorCarrito() }}</p>
             }
           </div>
 
