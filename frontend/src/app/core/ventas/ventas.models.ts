@@ -78,3 +78,34 @@ export interface VentaResumenOut {
   fecha: string;
   sucursal: string;
 }
+
+export type MetodoPagoPos = 'EFECTIVO' | 'TARJETA' | 'QR';
+
+export interface VentaPosItemIn {
+  variante_id: string;
+  cantidad: number;
+}
+
+export interface VentaPosIn {
+  items: VentaPosItemIn[];
+  metodo_pago: MetodoPagoPos;
+  monto_recibido?: number | null;
+}
+
+export interface ItemRechazadoPosOut {
+  variante_id: string;
+  sku: string;
+  motivo: string;
+}
+
+export interface VentaPosOut {
+  venta_id: string;
+  numero: string;
+  comprobante_numero: string;
+  items: VentaItemOut[];
+  rechazados: ItemRechazadoPosOut[];
+  subtotal: number;
+  iva: number;
+  total: number;
+  vuelto: number | null;
+}

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.core.config import settings
 from app.core.db import get_connection
 from app.modules.pagos.schemas import WebhookIn, WebhookOut
+from app.modules.ventas.router import _alertar_stock_bajo
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -232,47 +233,8 @@ async def _procesar_aprobacion(conn: asyncpg.Connection, pago_id, venta: asyncpg
         "INSERT INTO comprobante (venta_id, numero) VALUES ($1, $2)", venta["id"], numero_comprobante
     )
 
-    await _alertar_stock_bajo(conn, venta)
+    await _alertar_stock_bajo(conn, venta["sucursal_id"], venta["id"])
 
     return WebhookOut(
         procesado=True, venta_estado="PAGADA", pago_estado="APROBADO", mensaje="Pago confirmado"
     )
-
-
-async def _alertar_stock_bajo(conn: asyncpg.Connection, venta: asyncpg.Record) -> None:
-    variante_ids = [
-        fila["variante_id"]
-        for fila in await conn.fetch(
-            "SELECT variante_id FROM venta_detalle WHERE venta_id = $1", venta["id"]
-        )
-    ]
-    bajos = await conn.fetch(
-        """
-        SELECT DISTINCT p.nombre AS producto
-        FROM inventario i
-        JOIN producto_variante pv ON pv.id = i.variante_id
-        JOIN producto p ON p.id = pv.producto_id
-        WHERE i.sucursal_id = $1 AND i.variante_id = ANY($2::uuid[])
-          AND i.disponible <= i.stock_minimo
-        """,
-        venta["sucursal_id"],
-        variante_ids,
-    )
-    if not bajos:
-        return
-
-    encargados = await conn.fetch(
-        "SELECT usuario_id FROM empleado WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'",
-        venta["sucursal_id"],
-    )
-    nombres = ", ".join(fila["producto"] for fila in bajos)
-    for encargado in encargados:
-        await conn.execute(
-            """
-            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-            VALUES ($1, 'STOCK', 'Stock bajo el minimo', $2, 'VENTA', $3)
-            """,
-            encargado["usuario_id"],
-            f"Quedo poco stock de: {nombres}",
-            venta["id"],
-        )

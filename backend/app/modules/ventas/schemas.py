@@ -83,3 +83,32 @@ class VentaResumenOut(BaseModel):
     total: float
     fecha: datetime
     sucursal: str
+
+
+class VentaPosItemIn(BaseModel):
+    variante_id: UUID
+    cantidad: int = Field(default=1, ge=1, le=50)
+
+
+class VentaPosIn(BaseModel):
+    items: list[VentaPosItemIn] = Field(min_length=1, max_length=50)
+    metodo_pago: Literal["EFECTIVO", "TARJETA", "QR"]
+    monto_recibido: float | None = Field(default=None, ge=0)
+
+
+class ItemRechazadoPosOut(BaseModel):
+    variante_id: UUID
+    sku: str
+    motivo: str
+
+
+class VentaPosOut(BaseModel):
+    venta_id: UUID
+    numero: str
+    comprobante_numero: str
+    items: list[VentaItemOut]
+    rechazados: list[ItemRechazadoPosOut]
+    subtotal: float
+    iva: float
+    total: float
+    vuelto: float | None

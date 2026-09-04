@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import connect_pool, disconnect_pool
+from app.modules.caja.router import router as caja_router
 from app.modules.carrito.router import router as carrito_router
 from app.modules.catalogo.router import router as catalogo_router
 from app.modules.pagos.router import router as pagos_router
@@ -38,6 +39,7 @@ app.include_router(reservas_router)
 app.include_router(carrito_router)
 app.include_router(ventas_router)
 app.include_router(pagos_router)
+app.include_router(caja_router)
 
 
 @app.get("/health")

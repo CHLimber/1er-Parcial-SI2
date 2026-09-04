@@ -30,3 +30,28 @@ async def get_current_usuario(
         raise sesion_invalida
 
     return {"id": fila["id"], "tipo": fila["tipo"]}
+
+
+async def get_cajero_actual(
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    """CU07: exige que el usuario sea STAFF con cargo CAJERO. No hay middleware de roles/permisos
+    todavia (ver CLAUDE.md), asi que se valida igual que _exigir_cliente en otros routers."""
+    if usuario["tipo"] != "STAFF":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un cajero puede operar la caja",
+        )
+
+    empleado = await conn.fetchrow(
+        "SELECT usuario_id, sucursal_id FROM empleado WHERE usuario_id = $1 AND activo AND cargo = 'CAJERO'",
+        usuario["id"],
+    )
+    if empleado is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu usuario no tiene el cargo de Cajero",
+        )
+
+    return {"usuario_id": empleado["usuario_id"], "sucursal_id": empleado["sucursal_id"]}

@@ -1,0 +1,192 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore · Caja</span>
+    <div class="cabecera__acciones">
+      @if (auth.usuario(); as u) {
+        <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
+      }
+      <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main class="contenido">
+    @if (cargando()) {
+      <p class="estado">Cargando caja…</p>
+    } @else if (!sesion()) {
+      <section class="formulario">
+        <h1 class="titulo">Abrir sesión de caja</h1>
+        <p class="estado">Necesitás abrir una caja antes de registrar ventas.</p>
+
+        @if (cajas().length === 0) {
+          <p class="estado">No hay cajas activas en tu sucursal.</p>
+        } @else {
+          <div class="campo">
+            <label for="caja">Caja</label>
+            <select id="caja" name="caja" [(ngModel)]="cajaSeleccionada">
+              @for (caja of cajas(); track caja.id) {
+                <option [value]="caja.id" [disabled]="caja.tiene_sesion_abierta">
+                  {{ caja.nombre }} {{ caja.tiene_sesion_abierta ? '(ocupada)' : '' }}
+                </option>
+              }
+            </select>
+          </div>
+
+          <div class="campo">
+            <label for="monto-inicial">Monto inicial en caja</label>
+            <input
+              id="monto-inicial"
+              type="number"
+              min="0"
+              step="0.01"
+              name="monto-inicial"
+              [(ngModel)]="montoInicial"
+            />
+          </div>
+
+          @if (errorApertura()) {
+            <p class="formulario__error" role="alert">{{ errorApertura() }}</p>
+          }
+
+          <button type="button" class="boton" [disabled]="abriendo()" (click)="abrirCaja()">
+            {{ abriendo() ? 'Abriendo…' : 'Abrir caja' }}
+          </button>
+        }
+      </section>
+    } @else if (comprobante(); as c) {
+      <section class="comprobante">
+        <h1 class="titulo">Venta registrada</h1>
+        <p class="comprobante__numero">Comprobante {{ c.comprobante_numero }} · Venta {{ c.numero }}</p>
+
+        <ul class="ticket__lista">
+          @for (item of c.items; track item.variante_id) {
+            <li class="ticket__item">
+              <div class="ticket__info">
+                <span class="ticket__nombre">{{ item.producto }}</span>
+                <span class="ticket__variante">{{ item.talla }} · {{ item.color }} · {{ item.sku }}</span>
+              </div>
+              <span class="ticket__cantidad">x{{ item.cantidad }}</span>
+              <span class="ticket__subtotal">{{ formatearPrecio(item.subtotal) }}</span>
+            </li>
+          }
+        </ul>
+
+        @if (c.rechazados.length > 0) {
+          <p class="formulario__error" role="alert">
+            No se pudieron vender: {{ c.rechazados.length }} línea(s) sin stock suficiente.
+          </p>
+        }
+
+        <div class="resumen">
+          <p>Subtotal <strong>{{ formatearPrecio(c.subtotal) }}</strong></p>
+          <p>IVA (13%) <strong>{{ formatearPrecio(c.iva) }}</strong></p>
+          <p class="resumen__total">Total <strong>{{ formatearPrecio(c.total) }}</strong></p>
+          @if (c.vuelto != null) {
+            <p>Vuelto <strong>{{ formatearPrecio(c.vuelto) }}</strong></p>
+          }
+        </div>
+
+        <button type="button" class="boton" (click)="nuevaVenta()">Nueva venta</button>
+      </section>
+    } @else {
+      <section class="pos">
+        <div class="pos__busqueda">
+          <label for="codigo" class="visualmente-oculto">SKU o código de barras</label>
+          <input
+            id="codigo"
+            type="text"
+            placeholder="Escaneá o escribí el SKU…"
+            name="codigo"
+            [(ngModel)]="codigoBusqueda"
+            (keyup.enter)="agregarProducto()"
+          />
+          <button type="button" class="boton" [disabled]="buscando()" (click)="agregarProducto()">
+            {{ buscando() ? 'Buscando…' : 'Agregar' }}
+          </button>
+        </div>
+        @if (errorBusqueda()) {
+          <p class="formulario__error" role="alert">{{ errorBusqueda() }}</p>
+        }
+
+        @if (ticket().length === 0) {
+          <p class="estado">Todavía no agregaste ninguna prenda a esta venta.</p>
+        } @else {
+          <ul class="ticket__lista">
+            @for (item of ticket(); track item.variante_id) {
+              <li class="ticket__item">
+                <div class="ticket__info">
+                  <span class="ticket__nombre">{{ item.producto }}</span>
+                  <span class="ticket__variante">{{ item.talla }} · {{ item.color }} · {{ item.sku }}</span>
+                  <span class="ticket__precio">{{ formatearPrecio(item.precio) }} c/u</span>
+                </div>
+                <div class="ticket__cantidad-input">
+                  <label [for]="'cantidad-' + item.variante_id" class="visualmente-oculto">Cantidad</label>
+                  <input
+                    [id]="'cantidad-' + item.variante_id"
+                    type="number"
+                    min="1"
+                    [max]="item.disponible"
+                    [ngModel]="item.cantidad"
+                    (ngModelChange)="cambiarCantidad(item, $event)"
+                  />
+                </div>
+                <span class="ticket__subtotal">{{ formatearPrecio(item.precio * item.cantidad) }}</span>
+                <button type="button" class="ticket__quitar" (click)="quitarItem(item)" aria-label="Quitar">
+                  ✕
+                </button>
+              </li>
+            }
+          </ul>
+
+          <div class="resumen">
+            <p>Subtotal <strong>{{ formatearPrecio(subtotal()) }}</strong></p>
+            <p>IVA (13%) <strong>{{ formatearPrecio(iva()) }}</strong></p>
+            <p class="resumen__total">Total <strong>{{ formatearPrecio(total()) }}</strong></p>
+          </div>
+
+          <div class="formulario">
+            <div class="campo">
+              <span class="campo__etiqueta">Forma de pago</span>
+              <div class="metodos">
+                @for (metodo of metodosDisponibles; track metodo) {
+                  <button
+                    type="button"
+                    class="metodo"
+                    [class.metodo--activo]="metodoPago === metodo"
+                    (click)="elegirMetodoPago(metodo)"
+                  >
+                    {{ metodo }}
+                  </button>
+                }
+              </div>
+            </div>
+
+            @if (metodoPago === 'EFECTIVO') {
+              <div class="campo">
+                <label for="monto-recibido">Monto recibido</label>
+                <input
+                  id="monto-recibido"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  name="monto-recibido"
+                  [(ngModel)]="montoRecibido"
+                />
+              </div>
+              @if (vuelto() != null) {
+                <p class="estado">Vuelto: <strong>{{ formatearPrecio(vuelto()!) }}</strong></p>
+              }
+            }
+
+            @if (errorCobro()) {
+              <p class="formulario__error" role="alert">{{ errorCobro() }}</p>
+            }
+
+            <button type="button" class="boton" [disabled]="cobrando()" (click)="cobrar()">
+              {{ cobrando() ? 'Cobrando…' : 'Cobrar ' + formatearPrecio(total()) }}
+            </button>
+          </div>
+        }
+      </section>
+    }
+  </main>
+</div>

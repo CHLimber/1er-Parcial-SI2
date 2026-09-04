@@ -8,14 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import settings
 from app.core.db import get_connection
-from app.core.deps import get_current_usuario
+from app.core.deps import get_cajero_actual, get_current_usuario
+from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.ventas.schemas import (
     CheckoutIn,
     CheckoutOut,
     ComprobanteOut,
+    ItemRechazadoPosOut,
     PagoOut,
     VentaItemOut,
     VentaOut,
+    VentaPosIn,
+    VentaPosOut,
     VentaResumenOut,
 )
 
@@ -476,3 +480,214 @@ async def obtener_venta(
             else None
         ),
     )
+
+
+@router.post("/pos", response_model=VentaPosOut, status_code=status.HTTP_201_CREATED)
+async def registrar_venta_pos(
+    body: VentaPosIn,
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> VentaPosOut:
+    """CU07: el Cajero cobra en el mostrador. A diferencia del checkout web (CU05/CU06) el cobro
+    ya se confirmo en persona -- no hay pasarela ni webhook, la venta se marca PAGADA de una."""
+    sesion = await obtener_sesion_abierta(conn, cajero["usuario_id"])
+    if sesion is None:
+        # E1: sesion de caja no abierta -- el cajero debe abrirla antes de vender
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Abri una sesion de caja antes de registrar una venta",
+        )
+
+    variante_ids = [item.variante_id for item in body.items]
+    filas = await conn.fetch(
+        """
+        SELECT pv.id AS variante_id, pv.sku, pv.activa, p.nombre AS producto,
+               t.codigo AS talla, c.nombre AS color,
+               COALESCE(pv.precio_oferta, pv.precio, p.precio_base) AS precio,
+               COALESCE(i.disponible, 0) AS disponible
+        FROM producto_variante pv
+        JOIN producto p ON p.id = pv.producto_id
+        JOIN talla t    ON t.id = pv.talla_id
+        JOIN color c    ON c.id = pv.color_id
+        LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
+        WHERE pv.id = ANY($1::uuid[])
+        """,
+        variante_ids,
+        cajero["sucursal_id"],
+    )
+    info_por_variante = {fila["variante_id"]: fila for fila in filas}
+
+    numero = f"V-{uuid4().hex[:10].upper()}"
+    aceptados: list[tuple] = []
+    rechazados: list[ItemRechazadoPosOut] = []
+
+    async with conn.transaction():
+        venta = await conn.fetchrow(
+            """
+            INSERT INTO venta (sucursal_id, canal, entrega, sesion_caja_id, numero,
+                                subtotal, descuento, iva, total, registrada_por_id)
+            VALUES ($1, 'POS', 'RETIRO_SUCURSAL', $2, $3, 0, 0, 0, 0, $4)
+            RETURNING id
+            """,
+            cajero["sucursal_id"],
+            sesion["id"],
+            numero,
+            cajero["usuario_id"],
+        )
+
+        for item in body.items:
+            info = info_por_variante.get(item.variante_id)
+            if info is None or not info["activa"]:
+                rechazados.append(
+                    ItemRechazadoPosOut(
+                        variante_id=item.variante_id,
+                        sku=info["sku"] if info else "?",
+                        motivo="Esa prenda ya no esta disponible en el catalogo",
+                    )
+                )
+                continue
+            if info["disponible"] < item.cantidad:
+                rechazados.append(
+                    ItemRechazadoPosOut(
+                        variante_id=item.variante_id,
+                        sku=info["sku"],
+                        motivo=f"Stock insuficiente en esta sucursal ({info['disponible']} disponible(s))",
+                    )
+                )
+                continue
+
+            precio = Decimal(str(info["precio"]))
+            subtotal_item = precio * item.cantidad
+            try:
+                async with conn.transaction():
+                    await conn.execute(
+                        """
+                        INSERT INTO venta_detalle (venta_id, variante_id, cantidad, precio_unitario, subtotal)
+                        VALUES ($1, $2, $3, $4, $5)
+                        """,
+                        venta["id"],
+                        item.variante_id,
+                        item.cantidad,
+                        precio,
+                        subtotal_item,
+                    )
+            except asyncpg.PostgresError:
+                # E2: stock insuficiente detectado recien al descontar (venta concurrente en otra caja)
+                rechazados.append(
+                    ItemRechazadoPosOut(
+                        variante_id=item.variante_id,
+                        sku=info["sku"],
+                        motivo="Otra venta se llevo el stock justo antes",
+                    )
+                )
+                continue
+
+            aceptados.append((item, info, subtotal_item))
+
+        if not aceptados:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "mensaje": "No se pudo vender ninguna prenda: sin stock en esta sucursal",
+                    "rechazados": [
+                        {"variante_id": str(r.variante_id), "sku": r.sku, "motivo": r.motivo}
+                        for r in rechazados
+                    ],
+                },
+            )
+
+        subtotal = sum((x[2] for x in aceptados), Decimal("0"))
+        iva = (subtotal * IVA_TASA).quantize(Decimal("0.01"))
+        total = (subtotal + iva).quantize(Decimal("0.01"))
+
+        await conn.execute(
+            "UPDATE venta SET subtotal = $1, iva = $2, total = $3, estado = 'PAGADA' WHERE id = $4",
+            subtotal,
+            iva,
+            total,
+            venta["id"],
+        )
+        await conn.execute(
+            """
+            INSERT INTO pago (venta_id, metodo, monto, estado, confirmado_en)
+            VALUES ($1, $2, $3, 'APROBADO', now())
+            """,
+            venta["id"],
+            body.metodo_pago,
+            total,
+        )
+        numero_comprobante = f"C-{uuid4().hex[:10].upper()}"
+        await conn.execute(
+            "INSERT INTO comprobante (venta_id, numero) VALUES ($1, $2)",
+            venta["id"],
+            numero_comprobante,
+        )
+
+    await _alertar_stock_bajo(conn, cajero["sucursal_id"], venta["id"])
+
+    vuelto = None
+    if body.metodo_pago == "EFECTIVO" and body.monto_recibido is not None:
+        vuelto = float(Decimal(str(body.monto_recibido)) - total)
+
+    return VentaPosOut(
+        venta_id=venta["id"],
+        numero=numero,
+        comprobante_numero=numero_comprobante,
+        items=[
+            VentaItemOut(
+                variante_id=item.variante_id,
+                sku=info["sku"],
+                producto=info["producto"],
+                talla=info["talla"],
+                color=info["color"],
+                cantidad=item.cantidad,
+                precio_unitario=float(info["precio"]),
+                subtotal=float(subtotal_item),
+            )
+            for item, info, subtotal_item in aceptados
+        ],
+        rechazados=rechazados,
+        subtotal=float(subtotal),
+        iva=float(iva),
+        total=float(total),
+        vuelto=vuelto,
+    )
+
+
+async def _alertar_stock_bajo(conn: asyncpg.Connection, sucursal_id: UUID, venta_id: UUID) -> None:
+    variante_ids = [
+        fila["variante_id"]
+        for fila in await conn.fetch(
+            "SELECT variante_id FROM venta_detalle WHERE venta_id = $1", venta_id
+        )
+    ]
+    bajos = await conn.fetch(
+        """
+        SELECT DISTINCT p.nombre AS producto
+        FROM inventario i
+        JOIN producto_variante pv ON pv.id = i.variante_id
+        JOIN producto p ON p.id = pv.producto_id
+        WHERE i.sucursal_id = $1 AND i.variante_id = ANY($2::uuid[])
+          AND i.disponible <= i.stock_minimo
+        """,
+        sucursal_id,
+        variante_ids,
+    )
+    if not bajos:
+        return
+
+    encargados = await conn.fetch(
+        "SELECT usuario_id FROM empleado WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'",
+        sucursal_id,
+    )
+    nombres = ", ".join(fila["producto"] for fila in bajos)
+    for encargado in encargados:
+        await conn.execute(
+            """
+            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+            VALUES ($1, 'STOCK', 'Stock bajo el minimo', $2, 'VENTA', $3)
+            """,
+            encargado["usuario_id"],
+            f"Quedo poco stock de: {nombres}",
+            venta_id,
+        )

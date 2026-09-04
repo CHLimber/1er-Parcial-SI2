@@ -18,3 +18,15 @@ export const invitadoGuard: CanActivateFn = () => {
   const router = inject(Router);
   return router.createUrlTree(['/tienda']);
 };
+
+export const cajeroGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  if (!auth.estaAutenticado()) return router.createUrlTree(['/login']);
+
+  const usuario = auth.usuario();
+  if (usuario?.tipo === 'STAFF' && usuario.rol === 'CAJERO') return true;
+
+  return router.createUrlTree(['/tienda']);
+};

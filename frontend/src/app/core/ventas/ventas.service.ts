@@ -3,7 +3,15 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { CheckoutIn, CheckoutOut, Pasarela, VentaOut, VentaResumenOut } from './ventas.models';
+import {
+  CheckoutIn,
+  CheckoutOut,
+  Pasarela,
+  VentaOut,
+  VentaPosIn,
+  VentaPosOut,
+  VentaResumenOut,
+} from './ventas.models';
 
 @Injectable({ providedIn: 'root' })
 export class VentasService {
@@ -20,6 +28,10 @@ export class VentasService {
 
   listarMisCompras(): Observable<VentaResumenOut[]> {
     return this.http.get<VentaResumenOut[]>(this.base);
+  }
+
+  registrarVentaPos(datos: VentaPosIn): Observable<VentaPosOut> {
+    return this.http.post<VentaPosOut>(`${this.base}/pos`, datos);
   }
 }
 

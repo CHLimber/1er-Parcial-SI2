@@ -40,7 +40,10 @@ export class LoginPage {
     this.errorMensaje.set(null);
 
     this.auth.iniciarSesion(this.form.getRawValue()).subscribe({
-      next: () => this.router.navigateByUrl('/tienda'),
+      next: (usuario) => {
+        const esCajero = usuario.tipo === 'STAFF' && usuario.rol === 'CAJERO';
+        this.router.navigateByUrl(esCajero ? '/caja' : '/tienda');
+      },
       error: (error: HttpErrorResponse) => {
         this.cargando.set(false);
         this.errorMensaje.set(this.interpretarError(error));
