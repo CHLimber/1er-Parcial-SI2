@@ -30,3 +30,15 @@ export const cajeroGuard: CanActivateFn = () => {
 
   return router.createUrlTree(['/tienda']);
 };
+
+export const encargadoGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  const router = inject(Router);
+
+  if (!auth.estaAutenticado()) return router.createUrlTree(['/login']);
+
+  const usuario = auth.usuario();
+  if (usuario?.tipo === 'STAFF' && usuario.rol === 'ENCARGADO') return true;
+
+  return router.createUrlTree(['/tienda']);
+};

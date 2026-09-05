@@ -1,0 +1,208 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore · Atender reservas</span>
+    <div class="cabecera__acciones">
+      @if (auth.usuario(); as u) {
+        <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
+      }
+      <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <aside class="cola">
+      <div class="filtros">
+        @for (filtro of filtros; track filtro.valor) {
+          <button
+            type="button"
+            class="filtro"
+            [class.filtro--activo]="filtroActual === filtro.valor"
+            (click)="cambiarFiltro(filtro.valor)"
+          >
+            {{ filtro.etiqueta }}
+          </button>
+        }
+      </div>
+
+      @if (cargandoCola()) {
+        <p class="estado">Cargando reservas…</p>
+      } @else if (errorCola()) {
+        <p class="formulario__error" role="alert">{{ errorCola() }}</p>
+      } @else if (reservas().length === 0) {
+        <p class="estado">No hay reservas en esta vista.</p>
+      } @else {
+        <ul class="lista">
+          @for (reserva of reservas(); track reserva.id) {
+            <li>
+              <button
+                type="button"
+                class="tarjeta"
+                [class.tarjeta--activa]="seleccionada()?.id === reserva.id"
+                (click)="seleccionar(reserva)"
+              >
+                <span class="tarjeta__codigo">{{ reserva.codigo }}</span>
+                <span class="tarjeta__cliente">{{ reserva.cliente.nombre }} {{ reserva.cliente.apellido }}</span>
+                <span class="tarjeta__fecha">{{ reserva.fecha_visita }} · {{ reserva.hora_visita }}</span>
+                <span class="tarjeta__estado">{{ etiquetaEstado(reserva.estado) }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </aside>
+
+    <section class="detalle">
+      @if (!seleccionada()) {
+        <p class="estado">Elegí una reserva de la lista para atenderla.</p>
+      } @else if (resultadoResolver(); as r) {
+        <div class="resultado">
+          <h2 class="titulo">Reserva {{ r.reserva.codigo }} resuelta</h2>
+          <p class="estado">{{ etiquetaEstado(r.reserva.estado) }}</p>
+          @if (r.venta_numero) {
+            <p class="resultado__venta">
+              Venta {{ r.venta_numero }} · Comprobante {{ r.comprobante_numero }}
+            </p>
+            <p class="resultado__total">Total cobrado: <strong>{{ formatearPrecio(r.total_cobrado!) }}</strong></p>
+          } @else {
+            <p class="resultado__venta">El cliente no compró ninguna prenda.</p>
+          }
+          <button type="button" class="boton" (click)="resultadoResolver.set(null)">Cerrar</button>
+        </div>
+      } @else {
+        @if (seleccionada(); as reserva) {
+          <div class="ficha">
+            <h2 class="titulo">{{ reserva.codigo }}</h2>
+            <p class="ficha__cliente">
+              {{ reserva.cliente.nombre }} {{ reserva.cliente.apellido }} · {{ reserva.cliente.email }}
+              @if (reserva.cliente.telefono) { · {{ reserva.cliente.telefono }} }
+            </p>
+            <p class="ficha__meta">
+              {{ reserva.fecha_visita }} · {{ reserva.hora_visita }} · {{ etiquetaEstado(reserva.estado) }}
+            </p>
+            @if (reserva.observaciones) {
+              <p class="ficha__observaciones">"{{ reserva.observaciones }}"</p>
+            }
+
+            <ul class="items">
+              @for (item of reserva.items; track item.variante_id) {
+                <li class="items__fila">
+                  <div class="items__info">
+                    <span class="items__nombre">{{ item.producto }}</span>
+                    <span class="items__variante">{{ item.talla }} · {{ item.color }} · {{ item.sku }}</span>
+                  </div>
+                  <span class="items__badge" [attr.data-estado]="item.estado_item">{{ item.estado_item }}</span>
+                </li>
+              }
+            </ul>
+
+            @if (errorAccion()) {
+              <p class="formulario__error" role="alert">{{ errorAccion() }}</p>
+            }
+
+            @switch (reserva.estado) {
+              @case ('CONFIRMADA') {
+                <div class="formulario">
+                  <h3 class="subtitulo">Preparar prendas</h3>
+                  @for (item of itemsPreparar; track item.variante_id) {
+                    <div class="preparar__fila">
+                      <span class="preparar__nombre">{{ item.detalle.producto }} · {{ item.detalle.talla }}/{{ item.detalle.color }}</span>
+                      <label class="preparar__toggle">
+                        <input type="checkbox" [(ngModel)]="item.disponible" [name]="'disp-' + item.variante_id" />
+                        Disponible
+                      </label>
+                      @if (!item.disponible) {
+                        <input
+                          type="text"
+                          class="preparar__motivo"
+                          placeholder="Motivo (por qué no está disponible)"
+                          [(ngModel)]="item.motivo"
+                          [name]="'motivo-' + item.variante_id"
+                        />
+                      }
+                    </div>
+                  }
+                  <div class="acciones">
+                    <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="confirmarPreparacion()">
+                      {{ cargandoAccion() ? 'Guardando…' : 'Confirmar preparación' }}
+                    </button>
+                    <button type="button" class="boton boton--secundario" [disabled]="cargandoAccion()" (click)="marcarNoPresentado()">
+                      Cliente no se presentó
+                    </button>
+                  </div>
+                </div>
+              }
+              @case ('PREPARADA') {
+                <div class="formulario">
+                  <h3 class="subtitulo">Confirmar llegada del cliente</h3>
+                  <div class="campo">
+                    <label for="vestidor">Vestidor asignado (opcional)</label>
+                    <input id="vestidor" type="text" name="vestidor" [(ngModel)]="vestidorAsignado" />
+                  </div>
+                  <div class="acciones">
+                    <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="confirmarPresencia()">
+                      {{ cargandoAccion() ? 'Guardando…' : 'Cliente presente' }}
+                    </button>
+                    <button type="button" class="boton boton--secundario" [disabled]="cargandoAccion()" (click)="marcarNoPresentado()">
+                      Cliente no se presentó
+                    </button>
+                  </div>
+                </div>
+              }
+              @case ('CLIENTE_PRESENTE') {
+                <div class="formulario">
+                  <h3 class="subtitulo">Decisión final</h3>
+                  @for (item of itemsResolver; track item.variante_id) {
+                    <label class="preparar__toggle">
+                      <input type="checkbox" [(ngModel)]="item.comprado" [name]="'compra-' + item.variante_id" />
+                      {{ item.detalle.producto }} · {{ item.detalle.talla }}/{{ item.detalle.color }} — Comprado
+                    </label>
+                  }
+
+                  @if (hayCompras) {
+                    <div class="campo">
+                      <span class="campo__etiqueta">Forma de pago</span>
+                      <div class="metodos">
+                        @for (metodo of metodosPago; track metodo) {
+                          <button
+                            type="button"
+                            class="metodo"
+                            [class.metodo--activo]="metodoPago === metodo"
+                            (click)="elegirMetodoPago(metodo)"
+                          >
+                            {{ metodo }}
+                          </button>
+                        }
+                      </div>
+                    </div>
+                    @if (metodoPago === 'EFECTIVO') {
+                      <div class="campo">
+                        <label for="monto-recibido">Monto recibido</label>
+                        <input
+                          id="monto-recibido"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          name="monto-recibido"
+                          [(ngModel)]="montoRecibido"
+                        />
+                      </div>
+                    }
+                  }
+
+                  <div class="acciones">
+                    <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="confirmarResolucion()">
+                      {{ cargandoAccion() ? 'Guardando…' : 'Registrar decisión' }}
+                    </button>
+                  </div>
+                </div>
+              }
+              @default {
+                <p class="estado">Esta reserva ya está cerrada.</p>
+              }
+            }
+          </div>
+        }
+      }
+    </section>
+  </main>
+</div>

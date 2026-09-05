@@ -262,7 +262,7 @@ BEGIN
           JOIN reserva res ON res.id = rd.reserva_id
          WHERE res.estado IN ('PENDIENTE','CONFIRMADA','PREPARADA')
            AND res.expira_en < now()
-           AND rd.estado_item = 'RESERVADO'
+           AND rd.estado_item IN ('RESERVADO','PREPARADO')
     LOOP
         PERFORM fn_mover_inventario(
             r.sucursal_id, r.variante_id, 'LIBERACION', r.cantidad,

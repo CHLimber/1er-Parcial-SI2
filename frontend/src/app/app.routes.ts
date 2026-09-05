@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 
-import { authGuard, cajeroGuard, invitadoGuard } from './core/auth/auth.guard';
+import { authGuard, cajeroGuard, encargadoGuard, invitadoGuard } from './core/auth/auth.guard';
 
 export const routes: Routes = [
   {
@@ -55,6 +55,12 @@ export const routes: Routes = [
     path: 'caja',
     loadComponent: () => import('./pages/caja/caja.page').then((m) => m.CajaPage),
     canActivate: [authGuard, cajeroGuard],
+  },
+  {
+    path: 'atender-reservas',
+    loadComponent: () =>
+      import('./pages/atender-reservas/atender-reservas.page').then((m) => m.AtenderReservasPage),
+    canActivate: [authGuard, encargadoGuard],
   },
   { path: '', pathMatch: 'full', redirectTo: 'tienda' },
   { path: '**', redirectTo: 'tienda' },

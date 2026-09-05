@@ -55,3 +55,27 @@ async def get_cajero_actual(
         )
 
     return {"usuario_id": empleado["usuario_id"], "sucursal_id": empleado["sucursal_id"]}
+
+
+async def get_encargado_actual(
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    """CU08: exige que el usuario sea STAFF con cargo ENCARGADO de una sucursal."""
+    if usuario["tipo"] != "STAFF":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un encargado de sucursal puede atender reservas",
+        )
+
+    empleado = await conn.fetchrow(
+        "SELECT usuario_id, sucursal_id FROM empleado WHERE usuario_id = $1 AND activo AND cargo = 'ENCARGADO'",
+        usuario["id"],
+    )
+    if empleado is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu usuario no tiene el cargo de Encargado",
+        )
+
+    return {"usuario_id": empleado["usuario_id"], "sucursal_id": empleado["sucursal_id"]}

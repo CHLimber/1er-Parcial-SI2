@@ -531,9 +531,10 @@ CREATE TABLE venta (
     total             NUMERIC(12,2) NOT NULL CHECK (total >= 0),
     estado            estado_venta  NOT NULL DEFAULT 'PENDIENTE',
     registrada_por_id UUID          REFERENCES usuario(id),
-    -- una venta a domicilio necesita direccion; una en caja necesita sesion de caja
+    -- una venta a domicilio necesita direccion; una en caja necesita sesion de caja, salvo que la
+    -- venta nazca de una reserva atendida (CU08), donde el kardex de la reserva ya audita el cobro
     CONSTRAINT ck_venta_entrega CHECK (entrega <> 'DOMICILIO' OR direccion_id IS NOT NULL),
-    CONSTRAINT ck_venta_pos     CHECK (canal   <> 'POS'       OR sesion_caja_id IS NOT NULL)
+    CONSTRAINT ck_venta_pos     CHECK (canal <> 'POS' OR sesion_caja_id IS NOT NULL OR reserva_id IS NOT NULL)
 );
 CREATE INDEX ix_venta_sucursal ON venta(sucursal_id, fecha DESC);
 CREATE INDEX ix_venta_usuario  ON venta(usuario_id, fecha DESC);
