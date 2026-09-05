@@ -23,12 +23,18 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        texto = self.cors_origins_raw.strip()
+        texto = _sin_comillas(self.cors_origins_raw.strip())
         if not texto:
             return []
         if texto.startswith("["):
-            return json.loads(texto)
-        return [origen.strip() for origen in texto.split(",") if origen.strip()]
+            return [_sin_comillas(o.strip()) for o in json.loads(texto)]
+        return [_sin_comillas(o.strip()) for o in texto.split(",") if o.strip()]
+
+
+def _sin_comillas(valor: str) -> str:
+    if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in {'"', "'"}:
+        return valor[1:-1]
+    return valor
 
 
 settings = Settings()
