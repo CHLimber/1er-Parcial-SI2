@@ -9,6 +9,8 @@ export interface RegistroRequest {
   nombre: string;
   apellido: string;
   telefono?: string | null;
+  fecha_nacimiento?: string | null;
+  acepta_marketing?: boolean;
 }
 
 export interface UsuarioOut {
@@ -18,6 +20,8 @@ export interface UsuarioOut {
   apellido: string;
   tipo: 'CLIENTE' | 'STAFF';
   rol: string | null;
+  /** Codigos de permiso del rol (CU13). Vacio para clientes. */
+  permisos: string[];
 }
 
 export interface TokenResponse {

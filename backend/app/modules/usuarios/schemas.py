@@ -1,4 +1,5 @@
 import re
+from datetime import date
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -15,6 +16,8 @@ class RegistroRequest(BaseModel):
     nombre: str = Field(min_length=1, max_length=80)
     apellido: str = Field(min_length=1, max_length=80)
     telefono: str | None = Field(default=None, max_length=30)
+    fecha_nacimiento: date | None = None
+    acepta_marketing: bool = False
 
     @field_validator("password")
     @classmethod
@@ -35,6 +38,8 @@ class UsuarioOut(BaseModel):
     apellido: str
     tipo: str
     rol: str | None = None
+    # codigos de permiso del rol (CU13). El frontend los usa para mostrar u ocultar el panel.
+    permisos: list[str] = []
 
 
 class TokenResponse(BaseModel):

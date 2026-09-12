@@ -42,3 +42,19 @@ export const encargadoGuard: CanActivateFn = () => {
 
   return router.createUrlTree(['/tienda']);
 };
+
+/**
+ * CU13: guarda por codigo de permiso. Es el espejo de requiere_permiso() del backend, pero solo
+ * evita mostrar pantallas inutiles: la autorizacion real la hace la API en cada endpoint.
+ */
+export function permisoGuard(...codigos: string[]): CanActivateFn {
+  return () => {
+    const auth = inject(AuthService);
+    const router = inject(Router);
+
+    if (!auth.estaAutenticado()) return router.createUrlTree(['/login']);
+    if (auth.tienePermiso(...codigos)) return true;
+
+    return router.createUrlTree(['/tienda']);
+  };
+}

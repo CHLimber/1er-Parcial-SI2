@@ -42,8 +42,10 @@ export class RegistroPage {
       apellido: ['', [Validators.required, Validators.maxLength(80)]],
       email: ['', [Validators.required, Validators.email]],
       telefono: [''],
+      fechaNacimiento: [''],
       password: ['', [Validators.required, Validators.minLength(8), passwordSeguraValidator]],
       confirmarPassword: ['', [Validators.required]],
+      aceptaMarketing: [false],
     },
     { validators: passwordsIgualesValidator },
   );
@@ -61,10 +63,16 @@ export class RegistroPage {
     this.cargando.set(true);
     this.errorMensaje.set(null);
 
-    const { confirmarPassword, telefono, ...datos } = this.form.getRawValue();
+    const { confirmarPassword, telefono, fechaNacimiento, aceptaMarketing, ...datos } =
+      this.form.getRawValue();
 
     this.auth
-      .registrarse({ ...datos, telefono: telefono || null })
+      .registrarse({
+        ...datos,
+        telefono: telefono || null,
+        fecha_nacimiento: fechaNacimiento || null,
+        acepta_marketing: aceptaMarketing,
+      })
       .subscribe({
         next: () => this.router.navigateByUrl('/tienda'),
         error: (error: HttpErrorResponse) => {
