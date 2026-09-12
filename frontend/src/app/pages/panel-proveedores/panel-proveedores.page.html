@@ -1,0 +1,169 @@
+<app-panel-shell
+  titulo="Proveedores"
+  bajada="Padrón de quienes surten la cadena. De acá salen las recepciones de mercadería y la trazabilidad de cada prenda."
+>
+  <div class="barra">
+    <div class="campo">
+      <label for="busqueda">Buscar</label>
+      <input
+        id="busqueda"
+        type="search"
+        name="busqueda"
+        placeholder="Nombre, NIT o contacto"
+        [value]="busqueda"
+        (input)="busqueda = $any($event.target).value"
+        (keyup.enter)="cargar()"
+      />
+    </div>
+
+    <div class="campo">
+      <label for="estado">Estado</label>
+      <select
+        id="estado"
+        name="estado"
+        [value]="filtroEstado"
+        (change)="filtroEstado = $any($event.target).value; cargar()"
+      >
+        <option value="">Todos</option>
+        <option value="true">Activos</option>
+        <option value="false">Dados de baja</option>
+      </select>
+    </div>
+
+    <button type="button" class="boton boton--secundario" (click)="cargar()">Buscar</button>
+
+    <span class="barra__espacio"></span>
+
+    @if (puedeGestionar) {
+      <button type="button" class="boton" (click)="nuevo()">Nuevo proveedor</button>
+    }
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="columnas">
+    <section class="panel">
+      @if (cargando()) {
+        <p class="estado">Cargando proveedores…</p>
+      } @else if (proveedores().length === 0) {
+        <p class="estado">No hay proveedores que coincidan con la búsqueda.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th>NIT</th>
+                <th>Contacto</th>
+                <th class="tabla__numero">Prendas</th>
+                <th class="tabla__numero">Recepciones</th>
+                <th>Estado</th>
+                @if (puedeGestionar) {
+                  <th></th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (proveedor of proveedores(); track proveedor.id) {
+                <tr [attr.data-inactivo]="!proveedor.activo">
+                  <td>
+                    <strong>{{ proveedor.nombre }}</strong>
+                    @if (proveedor.email) {
+                      <div class="secundario">{{ proveedor.email }}</div>
+                    }
+                  </td>
+                  <td class="mono">{{ proveedor.nit ?? '—' }}</td>
+                  <td>
+                    {{ proveedor.contacto ?? '—' }}
+                    @if (proveedor.telefono) {
+                      <div class="secundario">{{ proveedor.telefono }}</div>
+                    }
+                  </td>
+                  <td class="tabla__numero">{{ proveedor.productos }}</td>
+                  <td class="tabla__numero">{{ proveedor.recepciones }}</td>
+                  <td>
+                    <span class="badge" [class.badge--ok]="proveedor.activo" [class.badge--baja]="!proveedor.activo">
+                      {{ proveedor.activo ? 'Activo' : 'Baja' }}
+                    </span>
+                  </td>
+                  @if (puedeGestionar) {
+                    <td>
+                      <div class="tabla__acciones">
+                        <button type="button" class="boton boton--secundario boton--chico" (click)="editar(proveedor)">
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          class="boton boton--chico"
+                          [class.boton--peligro]="proveedor.activo"
+                          [class.boton--secundario]="!proveedor.activo"
+                          (click)="alternarEstado(proveedor)"
+                        >
+                          {{ proveedor.activo ? 'Dar de baja' : 'Reactivar' }}
+                        </button>
+                      </div>
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    @if (formularioAbierto()) {
+      <aside class="panel">
+        <h2 class="panel__titulo">{{ editando() ? 'Editar proveedor' : 'Nuevo proveedor' }}</h2>
+
+        <form class="formulario" [formGroup]="form" (ngSubmit)="guardar()" novalidate>
+          <div class="campo">
+            <label for="nombre">Nombre o razón social</label>
+            <input id="nombre" type="text" formControlName="nombre" />
+            @if (form.controls.nombre.touched && form.controls.nombre.invalid) {
+              <p class="error">Ingresá el nombre del proveedor.</p>
+            }
+          </div>
+
+          <div class="campo">
+            <label for="nit">NIT</label>
+            <input id="nit" type="text" formControlName="nit" />
+          </div>
+
+          <div class="campo">
+            <label for="contacto">Persona de contacto</label>
+            <input id="contacto" type="text" formControlName="contacto" />
+          </div>
+
+          <div class="campo">
+            <label for="email">Correo</label>
+            <input id="email" type="email" formControlName="email" />
+            @if (form.controls.email.touched && form.controls.email.invalid) {
+              <p class="error">Ese correo no parece válido.</p>
+            }
+          </div>
+
+          <div class="campo">
+            <label for="telefono">Teléfono</label>
+            <input id="telefono" type="tel" formControlName="telefono" />
+          </div>
+
+          @if (errorFormulario()) {
+            <p class="error" role="alert">{{ errorFormulario() }}</p>
+          }
+
+          <div class="acciones">
+            <button type="submit" class="boton" [disabled]="guardando()">
+              {{ guardando() ? 'Guardando…' : 'Guardar' }}
+            </button>
+            <button type="button" class="boton boton--secundario" (click)="cerrarFormulario()">
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </aside>
+    }
+  </div>
+</app-panel-shell>

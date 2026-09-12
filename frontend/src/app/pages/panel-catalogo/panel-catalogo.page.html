@@ -1,0 +1,650 @@
+<app-panel-shell
+  titulo="Catálogo"
+  bajada="La prenda es lo descriptivo; la variante (talla × color) es la unidad física que se reserva y se vende. El stock no se toca acá: entra por recepción."
+>
+  <div class="solapas">
+    <button
+      type="button"
+      class="solapa"
+      [class.solapa--activa]="solapa === 'prendas'"
+      (click)="solapa = 'prendas'"
+    >
+      Prendas
+    </button>
+    <button
+      type="button"
+      class="solapa"
+      [class.solapa--activa]="solapa === 'clasificacion'"
+      (click)="solapa = 'clasificacion'"
+    >
+      Categorías y marcas
+    </button>
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  @if (solapa === 'prendas') {
+    @switch (vista()) {
+      @case ('lista') {
+        <div class="barra">
+          <div class="campo">
+            <label for="busqueda">Buscar</label>
+            <input
+              id="busqueda"
+              type="search"
+              placeholder="Nombre o código"
+              [value]="busqueda"
+              (input)="busqueda = $any($event.target).value"
+              (keyup.enter)="cargarProductos()"
+            />
+          </div>
+
+          <div class="campo">
+            <label for="categoria">Categoría</label>
+            <select
+              id="categoria"
+              [value]="filtroCategoria"
+              (change)="filtroCategoria = $any($event.target).value; cargarProductos()"
+            >
+              <option value="">Todas</option>
+              @for (categoria of referencias()?.categorias ?? []; track categoria.id) {
+                <option [value]="categoria.id">{{ categoria.nombre }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="campo">
+            <label for="estado">Estado</label>
+            <select
+              id="estado"
+              [value]="filtroEstado"
+              (change)="filtroEstado = $any($event.target).value; cargarProductos()"
+            >
+              <option value="">Todas</option>
+              <option value="true">Activas</option>
+              <option value="false">Dadas de baja</option>
+            </select>
+          </div>
+
+          <button type="button" class="boton boton--secundario" (click)="cargarProductos()">Buscar</button>
+
+          <span class="barra__espacio"></span>
+
+          @if (puedeGestionar) {
+            <button type="button" class="boton" (click)="nuevaPrenda()">Nueva prenda</button>
+          }
+        </div>
+
+        <section class="panel">
+          @if (cargando()) {
+            <p class="estado">Cargando catálogo…</p>
+          } @else if (productos().length === 0) {
+            <p class="estado">No hay prendas que coincidan con el filtro.</p>
+          } @else {
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Prenda</th>
+                    <th>Categoría</th>
+                    <th class="tabla__numero">Precio base</th>
+                    <th class="tabla__numero">Variantes</th>
+                    <th class="tabla__numero">Stock</th>
+                    <th>Estado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (producto of productos(); track producto.id) {
+                    <tr [attr.data-inactivo]="!producto.activo">
+                      <td class="mono">{{ producto.codigo }}</td>
+                      <td>
+                        <strong>{{ producto.nombre }}</strong>
+                        @if (producto.marca) {
+                          <div class="secundario">{{ producto.marca }}</div>
+                        }
+                      </td>
+                      <td>{{ producto.categoria }}</td>
+                      <td class="tabla__numero">{{ precio(producto.precio_base) }}</td>
+                      <td class="tabla__numero">{{ producto.variantes_activas }}</td>
+                      <td class="tabla__numero">{{ producto.stock_total }}</td>
+                      <td>
+                        <span class="badge" [class.badge--ok]="producto.activo" [class.badge--baja]="!producto.activo">
+                          {{ producto.activo ? 'Activa' : 'Baja' }}
+                        </span>
+                        @if (producto.destacado) {
+                          <span class="badge badge--alerta">Destacada</span>
+                        }
+                      </td>
+                      <td>
+                        <div class="tabla__acciones">
+                          <button type="button" class="boton boton--secundario boton--chico" (click)="abrirFicha(producto)">
+                            Abrir
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      }
+
+      @case ('formulario') {
+        <section class="panel">
+          <h2 class="panel__titulo">{{ editando() ? 'Editar prenda' : 'Nueva prenda' }}</h2>
+
+          <form class="formulario" [formGroup]="formProducto" (ngSubmit)="guardarPrenda()" novalidate>
+            <div class="rejilla">
+              <div class="campo">
+                <label for="codigo">Código</label>
+                <input id="codigo" type="text" formControlName="codigo" placeholder="FS-1007" />
+                @if (formProducto.controls.codigo.touched && formProducto.controls.codigo.invalid) {
+                  <p class="error">Ingresá un código.</p>
+                }
+              </div>
+
+              <div class="campo">
+                <label for="precio">Precio base (Bs)</label>
+                <input id="precio" type="number" min="0" step="0.01" formControlName="precio_base" />
+              </div>
+
+              <div class="campo">
+                <label for="genero">Género</label>
+                <select id="genero" formControlName="genero">
+                  <option value="">Sin especificar</option>
+                  @for (genero of referencias()?.generos ?? []; track genero) {
+                    <option [value]="genero">{{ genero }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="nombre">Nombre</label>
+              <input id="nombre" type="text" formControlName="nombre" />
+              @if (formProducto.controls.nombre.touched && formProducto.controls.nombre.invalid) {
+                <p class="error">Ingresá el nombre de la prenda.</p>
+              }
+              <p class="campo__ayuda">El slug de la vitrina se genera solo a partir del nombre.</p>
+            </div>
+
+            <div class="campo">
+              <label for="descripcion">Descripción</label>
+              <textarea id="descripcion" formControlName="descripcion"></textarea>
+            </div>
+
+            <div class="rejilla">
+              <div class="campo">
+                <label for="cat">Categoría</label>
+                <select id="cat" formControlName="categoria_id">
+                  @for (categoria of referencias()?.categorias ?? []; track categoria.id) {
+                    <option [value]="categoria.id">{{ categoria.nombre }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="campo">
+                <label for="marca">Marca</label>
+                <select id="marca" formControlName="marca_id">
+                  <option value="">Sin marca</option>
+                  @for (marca of referencias()?.marcas ?? []; track marca.id) {
+                    <option [value]="marca.id">{{ marca.nombre }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="campo">
+                <label for="proveedor">Proveedor</label>
+                <select id="proveedor" formControlName="proveedor_id">
+                  <option value="">Sin proveedor</option>
+                  @for (proveedor of referencias()?.proveedores ?? []; track proveedor.id) {
+                    <option [value]="proveedor.id">{{ proveedor.nombre }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            <div class="rejilla">
+              <div class="campo">
+                <label for="temporada">Temporada</label>
+                <select id="temporada" formControlName="temporada_id">
+                  <option value="">Sin temporada</option>
+                  @for (temporada of referencias()?.temporadas ?? []; track temporada.id) {
+                    <option [value]="temporada.id">{{ temporada.nombre }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="campo">
+                <label for="coleccion">Colección</label>
+                <select id="coleccion" formControlName="coleccion_id">
+                  <option value="">Sin colección</option>
+                  @for (coleccion of colecciones(); track coleccion.id) {
+                    <option [value]="coleccion.id">{{ coleccion.nombre }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="campo">
+                <label for="material">Material</label>
+                <input id="material" type="text" formControlName="material" />
+              </div>
+            </div>
+
+            <div class="campo campo__casilla">
+              <input id="destacado" type="checkbox" formControlName="destacado" />
+              <label for="destacado">Mostrar como prenda destacada en la vitrina</label>
+            </div>
+
+            @if (errorFormulario()) {
+              <p class="error" role="alert">{{ errorFormulario() }}</p>
+            }
+
+            <div class="acciones">
+              <button type="submit" class="boton" [disabled]="guardando()">
+                {{ guardando() ? 'Guardando…' : 'Guardar prenda' }}
+              </button>
+              <button type="button" class="boton boton--secundario" (click)="volverALista()">Cancelar</button>
+            </div>
+          </form>
+        </section>
+      }
+
+      @case ('ficha') {
+        @if (ficha(); as detalle) {
+          <div class="barra">
+            <button type="button" class="boton boton--secundario" (click)="volverALista()">← Volver</button>
+            <span class="barra__espacio"></span>
+            @if (puedeGestionar) {
+              <button type="button" class="boton boton--secundario" (click)="editarPrenda(detalle)">
+                Editar datos
+              </button>
+              <button
+                type="button"
+                class="boton"
+                [class.boton--peligro]="detalle.activo"
+                [class.boton--secundario]="!detalle.activo"
+                (click)="alternarEstadoPrenda(detalle)"
+              >
+                {{ detalle.activo ? 'Dar de baja' : 'Reactivar' }}
+              </button>
+            }
+          </div>
+
+          <section class="panel">
+            <h2 class="panel__titulo">{{ detalle.nombre }}</h2>
+            <p class="estado">
+              <span class="mono">{{ detalle.codigo }}</span> · {{ detalle.categoria }}
+              @if (detalle.marca) { · {{ detalle.marca }} }
+              @if (detalle.proveedor) { · Proveedor: {{ detalle.proveedor }} }
+            </p>
+            <p class="estado">
+              {{ precio(detalle.precio_base) }} · {{ detalle.genero ?? 'sin género' }} ·
+              {{ detalle.material ?? 'sin material' }} · slug <span class="mono">{{ detalle.slug }}</span>
+            </p>
+            @if (detalle.descripcion) {
+              <p class="estado">{{ detalle.descripcion }}</p>
+            }
+          </section>
+
+          <section class="panel">
+            <h2 class="panel__titulo">Variantes ({{ detalle.variantes.length }})</h2>
+
+            @if (detalle.variantes.length === 0) {
+              <p class="aviso">
+                Sin variantes la prenda no se puede reservar ni vender: cargá al menos una combinación
+                de talla y color.
+              </p>
+            } @else {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>Talla</th>
+                      <th>Color</th>
+                      <th class="tabla__numero">Precio</th>
+                      <th class="tabla__numero">Oferta</th>
+                      <th class="tabla__numero">Físico</th>
+                      <th class="tabla__numero">Disponible</th>
+                      <th>Estado</th>
+                      @if (puedeGestionar) {
+                        <th></th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (variante of detalle.variantes; track variante.id) {
+                      <tr [attr.data-inactivo]="!variante.activa">
+                        <td class="mono">{{ variante.sku }}</td>
+                        <td>{{ variante.talla }}</td>
+                        <td>
+                          <span class="punto" [style.background]="variante.codigo_hex"></span>
+                          {{ variante.color }}
+                        </td>
+                        <td class="tabla__numero">{{ precio(variante.precio) }}</td>
+                        <td class="tabla__numero">{{ precio(variante.precio_oferta) }}</td>
+                        <td class="tabla__numero">{{ variante.stock_fisico }}</td>
+                        <td class="tabla__numero">{{ variante.stock_disponible }}</td>
+                        <td>
+                          <span class="badge" [class.badge--ok]="variante.activa" [class.badge--baja]="!variante.activa">
+                            {{ variante.activa ? 'Activa' : 'Baja' }}
+                          </span>
+                        </td>
+                        @if (puedeGestionar) {
+                          <td>
+                            <div class="tabla__acciones">
+                              <button type="button" class="boton boton--secundario boton--chico" (click)="editarVariante(variante)">
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                class="boton boton--chico"
+                                [class.boton--peligro]="variante.activa"
+                                [class.boton--secundario]="!variante.activa"
+                                (click)="alternarEstadoVariante(variante)"
+                              >
+                                {{ variante.activa ? 'Baja' : 'Alta' }}
+                              </button>
+                            </div>
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+
+            @if (puedeGestionar) {
+              <form class="formulario" [formGroup]="formVariante" (ngSubmit)="guardarVariante()" novalidate>
+                <h3 class="subtitulo">
+                  {{ varianteEditada() ? 'Editar variante ' + varianteEditada()!.sku : 'Agregar variante' }}
+                </h3>
+
+                <div class="rejilla">
+                  <div class="campo">
+                    <label for="talla">Talla</label>
+                    <select id="talla" formControlName="talla_id">
+                      @for (talla of referencias()?.tallas ?? []; track talla.id) {
+                        <option [value]="talla.id">{{ talla.codigo }} ({{ talla.tipo }})</option>
+                      }
+                    </select>
+                  </div>
+
+                  <div class="campo">
+                    <label for="color">Color</label>
+                    <select id="color" formControlName="color_id">
+                      @for (color of referencias()?.colores ?? []; track color.id) {
+                        <option [value]="color.id">{{ color.nombre }}</option>
+                      }
+                    </select>
+                  </div>
+
+                  <div class="campo">
+                    <label for="sku">SKU</label>
+                    <input id="sku" type="text" formControlName="sku" placeholder="FS-1007-M-NEG" />
+                  </div>
+
+                  <div class="campo">
+                    <label for="barras">Código de barras</label>
+                    <input id="barras" type="text" formControlName="codigo_barras" />
+                  </div>
+
+                  <div class="campo">
+                    <label for="precio-var">Precio propio (Bs)</label>
+                    <input id="precio-var" type="number" min="0" step="0.01" formControlName="precio" />
+                    <p class="campo__ayuda">Vacío = hereda el precio base.</p>
+                  </div>
+
+                  <div class="campo">
+                    <label for="oferta">Precio de oferta (Bs)</label>
+                    <input id="oferta" type="number" min="0" step="0.01" formControlName="precio_oferta" />
+                  </div>
+                </div>
+
+                @if (errorVariante()) {
+                  <p class="error" role="alert">{{ errorVariante() }}</p>
+                }
+
+                <div class="acciones">
+                  <button type="submit" class="boton" [disabled]="guardando()">
+                    {{ varianteEditada() ? 'Guardar variante' : 'Agregar variante' }}
+                  </button>
+                  @if (varianteEditada()) {
+                    <button type="button" class="boton boton--secundario" (click)="abrirFicha(detalle)">
+                      Cancelar
+                    </button>
+                  }
+                </div>
+              </form>
+            }
+          </section>
+
+          <section class="panel">
+            <h2 class="panel__titulo">Imágenes ({{ detalle.imagenes.length }})</h2>
+
+            @if (detalle.imagenes.length === 0) {
+              <p class="estado">Esta prenda todavía no tiene imágenes.</p>
+            } @else {
+              <ul class="imagenes">
+                @for (imagen of detalle.imagenes; track imagen.id) {
+                  <li class="imagen">
+                    <img class="imagen__miniatura" [src]="imagen.url" [alt]="detalle.nombre" />
+                    <div class="imagen__datos">
+                      <span class="badge">{{ imagen.uso }}</span>
+                      @if (imagen.es_principal) {
+                        <span class="badge badge--ok">principal</span>
+                      }
+                      <span class="secundario">{{ imagen.url }}</span>
+                    </div>
+                    @if (puedeGestionar) {
+                      <button type="button" class="boton boton--peligro boton--chico" (click)="eliminarImagen(imagen.id)">
+                        Quitar
+                      </button>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+
+            @if (puedeGestionar) {
+              <form class="formulario" [formGroup]="formImagen" (ngSubmit)="agregarImagen()" novalidate>
+                <div class="campo">
+                  <label for="url">URL de la imagen</label>
+                  <input id="url" type="url" formControlName="url" placeholder="https://…" />
+                </div>
+
+                <div class="rejilla">
+                  <div class="campo">
+                    <label for="uso">Uso</label>
+                    <select id="uso" formControlName="uso">
+                      <option value="CATALOGO">Catálogo</option>
+                      <option value="AR_OVERLAY">AR overlay</option>
+                      <option value="AR_MODELO">AR modelo</option>
+                    </select>
+                  </div>
+
+                  <div class="campo">
+                    <label for="formato">Formato</label>
+                    <select id="formato" formControlName="formato">
+                      <option value="JPG">JPG</option>
+                      <option value="PNG">PNG</option>
+                      <option value="GLB">GLB</option>
+                      <option value="USDZ">USDZ</option>
+                    </select>
+                  </div>
+
+                  <div class="campo">
+                    <label for="orden">Orden</label>
+                    <input id="orden" type="number" min="0" formControlName="orden" />
+                  </div>
+                </div>
+
+                <div class="campo campo__casilla">
+                  <input id="principal" type="checkbox" formControlName="es_principal" />
+                  <label for="principal">Usar como imagen principal</label>
+                </div>
+
+                @if (errorImagen()) {
+                  <p class="error" role="alert">{{ errorImagen() }}</p>
+                }
+
+                <div class="acciones">
+                  <button type="submit" class="boton" [disabled]="guardando()">Agregar imagen</button>
+                </div>
+              </form>
+            }
+          </section>
+        }
+      }
+    }
+  } @else {
+    <div class="columnas">
+      <section class="panel">
+        <h2 class="panel__titulo">Categorías</h2>
+
+        @if (categorias().length === 0) {
+          <p class="estado">No hay categorías cargadas.</p>
+        } @else {
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Categoría</th>
+                  <th>Padre</th>
+                  <th class="tabla__numero">Orden</th>
+                  <th class="tabla__numero">Prendas</th>
+                  <th>Estado</th>
+                  @if (puedeGestionar) {
+                    <th></th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (categoria of categorias(); track categoria.id) {
+                  <tr [attr.data-inactivo]="!categoria.activa">
+                    <td>
+                      <strong>{{ categoria.nombre }}</strong>
+                      <div class="secundario mono">{{ categoria.slug }}</div>
+                    </td>
+                    <td>{{ categoria.categoria_padre ?? '—' }}</td>
+                    <td class="tabla__numero">{{ categoria.orden }}</td>
+                    <td class="tabla__numero">{{ categoria.productos }}</td>
+                    <td>
+                      <span class="badge" [class.badge--ok]="categoria.activa" [class.badge--baja]="!categoria.activa">
+                        {{ categoria.activa ? 'Activa' : 'Baja' }}
+                      </span>
+                    </td>
+                    @if (puedeGestionar) {
+                      <td>
+                        <div class="tabla__acciones">
+                          <button type="button" class="boton boton--secundario boton--chico" (click)="editarCategoria(categoria)">
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            class="boton boton--chico"
+                            [class.boton--peligro]="categoria.activa"
+                            [class.boton--secundario]="!categoria.activa"
+                            (click)="alternarEstadoCategoria(categoria)"
+                          >
+                            {{ categoria.activa ? 'Baja' : 'Alta' }}
+                          </button>
+                        </div>
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      @if (puedeGestionar) {
+        <aside>
+          <section class="panel">
+            <h2 class="panel__titulo">{{ categoriaEditada() ? 'Editar categoría' : 'Nueva categoría' }}</h2>
+
+            <form class="formulario" [formGroup]="formCategoria" (ngSubmit)="guardarCategoria()" novalidate>
+              <div class="campo">
+                <label for="cat-nombre">Nombre</label>
+                <input id="cat-nombre" type="text" formControlName="nombre" />
+              </div>
+
+              <div class="campo">
+                <label for="cat-padre">Categoría padre</label>
+                <select id="cat-padre" formControlName="categoria_padre_id">
+                  <option value="">Sin padre (nivel raíz)</option>
+                  @for (categoria of categorias(); track categoria.id) {
+                    <option [value]="categoria.id">{{ categoria.nombre }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="cat-imagen">Imagen (URL)</label>
+                  <input id="cat-imagen" type="url" formControlName="imagen_url" />
+                </div>
+                <div class="campo">
+                  <label for="cat-orden">Orden</label>
+                  <input id="cat-orden" type="number" min="0" formControlName="orden" />
+                </div>
+              </div>
+
+              @if (errorCategoria()) {
+                <p class="error" role="alert">{{ errorCategoria() }}</p>
+              }
+
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardando()">Guardar</button>
+                @if (categoriaEditada()) {
+                  <button type="button" class="boton boton--secundario" (click)="nuevaCategoria()">Cancelar</button>
+                }
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <h2 class="panel__titulo">Marcas ({{ (referencias()?.marcas ?? []).length }})</h2>
+
+            <div class="chips">
+              @for (marca of referencias()?.marcas ?? []; track marca.id) {
+                <span class="badge">{{ marca.nombre }}</span>
+              }
+            </div>
+
+            <form class="formulario" [formGroup]="formMarca" (ngSubmit)="guardarMarca()" novalidate>
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="marca-nombre">Nueva marca</label>
+                  <input id="marca-nombre" type="text" formControlName="nombre" />
+                </div>
+                <div class="campo">
+                  <label for="marca-logo">Logo (URL)</label>
+                  <input id="marca-logo" type="url" formControlName="logo_url" />
+                </div>
+              </div>
+
+              @if (errorMarca()) {
+                <p class="error" role="alert">{{ errorMarca() }}</p>
+              }
+
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardando()">Agregar marca</button>
+              </div>
+            </form>
+          </section>
+        </aside>
+      }
+    </div>
+  }
+</app-panel-shell>

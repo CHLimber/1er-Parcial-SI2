@@ -1,0 +1,254 @@
+<app-panel-shell
+  titulo="Sucursales"
+  bajada="Las tiendas de la cadena. Cada una tiene su propio inventario, sus vestidores y sus cajas."
+>
+  <div class="barra">
+    <span class="barra__espacio"></span>
+    @if (puedeGestionar) {
+      <button type="button" class="boton" (click)="nueva()">Nueva sucursal</button>
+    }
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="columnas">
+    <section class="panel">
+      @if (cargando()) {
+        <p class="estado">Cargando sucursales…</p>
+      } @else if (sucursales().length === 0) {
+        <p class="estado">Todavía no hay sucursales cargadas.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Sucursal</th>
+                <th>Horario</th>
+                <th class="tabla__numero">Vestidores</th>
+                <th class="tabla__numero">Personal</th>
+                <th class="tabla__numero">Cajas</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (sucursal of sucursales(); track sucursal.id) {
+                <tr [attr.data-inactivo]="!sucursal.activa">
+                  <td class="mono">{{ sucursal.codigo }}</td>
+                  <td>
+                    <strong>{{ sucursal.nombre }}</strong>
+                    <div class="secundario">
+                      {{ etiquetaCiudad(sucursal.ciudad) }} · {{ sucursal.direccion }}
+                    </div>
+                  </td>
+                  <td class="mono">
+                    @if (sucursal.hora_apertura && sucursal.hora_cierre) {
+                      {{ aHoraCorta(sucursal.hora_apertura) }}–{{ aHoraCorta(sucursal.hora_cierre) }}
+                    } @else {
+                      —
+                    }
+                  </td>
+                  <td class="tabla__numero">{{ sucursal.cantidad_vestidores }}</td>
+                  <td class="tabla__numero">{{ sucursal.empleados }}</td>
+                  <td class="tabla__numero">{{ sucursal.cajas }}</td>
+                  <td>
+                    <span class="badge" [class.badge--ok]="sucursal.activa" [class.badge--baja]="!sucursal.activa">
+                      {{ sucursal.activa ? 'Activa' : 'Baja' }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="tabla__acciones">
+                      <button type="button" class="boton boton--secundario boton--chico" (click)="verCajas(sucursal)">
+                        Cajas
+                      </button>
+                      @if (puedeGestionar) {
+                        <button type="button" class="boton boton--secundario boton--chico" (click)="editar(sucursal)">
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          class="boton boton--chico"
+                          [class.boton--peligro]="sucursal.activa"
+                          [class.boton--secundario]="!sucursal.activa"
+                          (click)="alternarEstado(sucursal)"
+                        >
+                          {{ sucursal.activa ? 'Dar de baja' : 'Reactivar' }}
+                        </button>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <aside>
+      @if (formularioAbierto()) {
+        <section class="panel">
+          <h2 class="panel__titulo">{{ editando() ? 'Editar sucursal' : 'Nueva sucursal' }}</h2>
+
+          <form class="formulario" [formGroup]="form" (ngSubmit)="guardar()" novalidate>
+            <div class="campo">
+              <label for="codigo">Código</label>
+              <input id="codigo" type="text" formControlName="codigo" placeholder="SC-02" />
+              @if (form.controls.codigo.touched && form.controls.codigo.invalid) {
+                <p class="error">Ingresá un código.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="nombre">Nombre</label>
+              <input id="nombre" type="text" formControlName="nombre" />
+              @if (form.controls.nombre.touched && form.controls.nombre.invalid) {
+                <p class="error">Ingresá el nombre.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="ciudad">Ciudad</label>
+              <select id="ciudad" formControlName="ciudad">
+                @for (ciudad of ciudades(); track ciudad) {
+                  <option [value]="ciudad">{{ etiquetaCiudad(ciudad) }}</option>
+                }
+              </select>
+              @if (form.controls.ciudad.touched && form.controls.ciudad.invalid) {
+                <p class="error">Elegí una ciudad.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="direccion">Dirección</label>
+              <input id="direccion" type="text" formControlName="direccion" />
+              @if (form.controls.direccion.touched && form.controls.direccion.invalid) {
+                <p class="error">Ingresá la dirección.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="telefono">Teléfono</label>
+              <input id="telefono" type="tel" formControlName="telefono" />
+            </div>
+
+            <div class="rejilla">
+              <div class="campo">
+                <label for="apertura">Apertura</label>
+                <input id="apertura" type="time" formControlName="hora_apertura" />
+              </div>
+              <div class="campo">
+                <label for="cierre">Cierre</label>
+                <input id="cierre" type="time" formControlName="hora_cierre" />
+              </div>
+              <div class="campo">
+                <label for="vestidores">Vestidores</label>
+                <input id="vestidores" type="number" min="0" max="50" formControlName="cantidad_vestidores" />
+              </div>
+            </div>
+
+            @if (errorFormulario()) {
+              <p class="error" role="alert">{{ errorFormulario() }}</p>
+            }
+
+            <div class="acciones">
+              <button type="submit" class="boton" [disabled]="guardando()">
+                {{ guardando() ? 'Guardando…' : 'Guardar' }}
+              </button>
+              <button type="button" class="boton boton--secundario" (click)="cerrarFormulario()">
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+
+      @if (seleccionada(); as sucursal) {
+        <section class="panel">
+          <h2 class="panel__titulo">Cajas de {{ sucursal.nombre }}</h2>
+
+          @if (cajas().length === 0) {
+            <p class="estado">Esta sucursal no tiene cajas registradas.</p>
+          } @else {
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th>Estado</th>
+                    @if (puedeGestionar) {
+                      <th></th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (caja of cajas(); track caja.id) {
+                    <tr [attr.data-inactivo]="!caja.activa">
+                      <td class="mono">{{ caja.codigo }}</td>
+                      <td>
+                        {{ caja.nombre }}
+                        @if (caja.sesion_abierta) {
+                          <span class="badge badge--alerta">Sesión abierta</span>
+                        }
+                      </td>
+                      <td>
+                        <span class="badge" [class.badge--ok]="caja.activa" [class.badge--baja]="!caja.activa">
+                          {{ caja.activa ? 'Activa' : 'Baja' }}
+                        </span>
+                      </td>
+                      @if (puedeGestionar) {
+                        <td>
+                          <div class="tabla__acciones">
+                            <button
+                              type="button"
+                              class="boton boton--chico"
+                              [class.boton--peligro]="caja.activa"
+                              [class.boton--secundario]="!caja.activa"
+                              (click)="alternarCaja(caja)"
+                            >
+                              {{ caja.activa ? 'Desactivar' : 'Reactivar' }}
+                            </button>
+                          </div>
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          @if (puedeGestionar) {
+            <form class="formulario" [formGroup]="formCaja" (ngSubmit)="agregarCaja()" novalidate>
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="caja-codigo">Código de caja</label>
+                  <input id="caja-codigo" type="text" formControlName="codigo" placeholder="CAJA-02" />
+                </div>
+                <div class="campo">
+                  <label for="caja-nombre">Nombre</label>
+                  <input id="caja-nombre" type="text" formControlName="nombre" />
+                </div>
+              </div>
+
+              @if (errorCaja()) {
+                <p class="error" role="alert">{{ errorCaja() }}</p>
+              }
+
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardandoCaja()">
+                  {{ guardandoCaja() ? 'Agregando…' : 'Agregar caja' }}
+                </button>
+                <button type="button" class="boton boton--secundario" (click)="cerrarCajas()">Cerrar</button>
+              </div>
+            </form>
+          }
+        </section>
+      }
+    </aside>
+  </div>
+</app-panel-shell>

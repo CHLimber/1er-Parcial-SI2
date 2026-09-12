@@ -18,6 +18,9 @@
           }
         </a>
       }
+      @if (esStaff()) {
+        <a class="cabecera__reserva" routerLink="/panel">Panel de gestión</a>
+      }
       @if (usuario(); as u) {
         <span class="cabecera__usuario">
           {{ u.nombre }} {{ u.apellido }}

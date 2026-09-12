@@ -1,0 +1,38 @@
+<header class="cabecera">
+  <a class="cabecera__marca" routerLink="/panel">FashionStore · Gestión</a>
+
+  <div class="cabecera__acciones">
+    @if (auth.usuario(); as u) {
+      <span class="cabecera__usuario">
+        {{ u.nombre }} {{ u.apellido }}
+        <span class="cabecera__rol">{{ u.rol ?? 'STAFF' }}</span>
+      </span>
+    }
+    <a class="cabecera__enlace" routerLink="/tienda">Ir a la tienda</a>
+    <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
+  </div>
+</header>
+
+<nav class="nav" aria-label="Secciones de gestión">
+  @for (entrada of navegacion(); track entrada.ruta) {
+    <a
+      class="nav__enlace"
+      routerLinkActive="nav__enlace--activo"
+      [routerLinkActiveOptions]="{ exact: entrada.ruta === '/panel' }"
+      [routerLink]="entrada.ruta"
+    >
+      {{ entrada.etiqueta }}
+    </a>
+  }
+</nav>
+
+<main class="contenido">
+  <div class="encabezado">
+    <h1 class="encabezado__titulo">{{ titulo() }}</h1>
+    @if (bajada()) {
+      <p class="encabezado__bajada">{{ bajada() }}</p>
+    }
+  </div>
+
+  <ng-content />
+</main>

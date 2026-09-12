@@ -1,0 +1,120 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  background: var(--ink);
+  color: var(--white);
+}
+
+.cabecera__marca {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 1.35rem;
+  text-decoration: none;
+}
+
+.cabecera__acciones {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.cabecera__usuario {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.cabecera__rol {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid rgba(255, 253, 249, 0.35);
+  color: var(--gold);
+}
+
+.cabecera__enlace,
+.cabecera__salir {
+  border: none;
+  background: none;
+  color: var(--white);
+  font-size: 0.85rem;
+  text-decoration: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cabecera__enlace:hover,
+.cabecera__salir:hover {
+  color: var(--flame);
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 0 clamp(1.25rem, 4vw, 3rem);
+  background: var(--white);
+  border-bottom: 1px solid var(--paper-line);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.nav__enlace {
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+
+.nav__enlace:hover {
+  color: var(--ink);
+}
+
+.nav__enlace--activo {
+  color: var(--ink);
+  border-bottom-color: var(--flame);
+}
+
+.contenido {
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  max-width: 78rem;
+  margin: 0 auto;
+}
+
+.encabezado {
+  margin-bottom: 1.5rem;
+}
+
+.encabezado__titulo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  line-height: 1;
+  color: var(--ink);
+}
+
+.encabezado__bajada {
+  margin: 0.4rem 0 0;
+  color: var(--ink-soft);
+  max-width: 46rem;
+}

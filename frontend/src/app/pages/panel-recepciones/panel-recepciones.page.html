@@ -1,0 +1,342 @@
+<app-panel-shell
+  titulo="Recepción de mercadería"
+  bajada="Cargá lo que llegó del proveedor en un borrador y confirmalo. Recién al confirmar entra el stock y queda el asiento en el kardex."
+>
+  <div class="barra">
+    <div class="campo">
+      <label for="estado">Estado</label>
+      <select id="estado" [value]="filtroEstado" (change)="filtroEstado = $any($event.target).value; cargar()">
+        <option value="">Todas</option>
+        <option value="BORRADOR">Borradores</option>
+        <option value="CONFIRMADA">Confirmadas</option>
+        <option value="ANULADA">Anuladas</option>
+      </select>
+    </div>
+
+    <span class="barra__espacio"></span>
+
+    @if (puedeRegistrar) {
+      <button type="button" class="boton" (click)="abrirNueva()">Nueva recepción</button>
+    }
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="columnas columnas--detalle">
+    <section class="panel">
+      <h2 class="panel__titulo">Recepciones</h2>
+
+      @if (cargando()) {
+        <p class="estado">Cargando…</p>
+      } @else if (recepciones().length === 0) {
+        <p class="estado">Todavía no hay recepciones registradas.</p>
+      } @else {
+        <ul class="lista">
+          @for (recepcion of recepciones(); track recepcion.id) {
+            <li>
+              <button
+                type="button"
+                class="tarjeta"
+                [class.tarjeta--activa]="seleccionada()?.id === recepcion.id"
+                (click)="abrir(recepcion)"
+              >
+                <span class="tarjeta__numero">{{ recepcion.numero }}</span>
+                <span class="tarjeta__proveedor">{{ recepcion.proveedor }}</span>
+                <span class="tarjeta__meta">
+                  {{ recepcion.fecha }} · {{ recepcion.sucursal }}
+                </span>
+                <span class="tarjeta__meta">
+                  <span
+                    class="badge"
+                    [class.badge--ok]="recepcion.estado === 'CONFIRMADA'"
+                    [class.badge--alerta]="recepcion.estado === 'BORRADOR'"
+                    [class.badge--baja]="recepcion.estado === 'ANULADA'"
+                  >
+                    {{ etiquetaEstado(recepcion.estado) }}
+                  </span>
+                  {{ recepcion.unidades }} u. · {{ precio(recepcion.total) }}
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      @if (creando()) {
+        <h2 class="panel__titulo">Nueva recepción</h2>
+
+        <form class="formulario" [formGroup]="formNueva" (ngSubmit)="crear()" novalidate>
+          <div class="campo">
+            <label for="proveedor">Proveedor</label>
+            <select id="proveedor" formControlName="proveedor_id">
+              @for (proveedor of proveedores(); track proveedor.id) {
+                <option [value]="proveedor.id">{{ proveedor.nombre }}</option>
+              }
+            </select>
+            @if (proveedores().length === 0) {
+              <p class="campo__ayuda">No hay proveedores activos. Cargá uno en la sección Proveedores.</p>
+            }
+          </div>
+
+          @if (eligeSucursal) {
+            <div class="campo">
+              <label for="sucursal">Sucursal que recibe</label>
+              <select id="sucursal" formControlName="sucursal_id">
+                @for (sucursal of sucursales(); track sucursal.id) {
+                  <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
+                }
+              </select>
+            </div>
+          } @else {
+            <p class="campo__ayuda">La recepción se registra en tu sucursal.</p>
+          }
+
+          <div class="rejilla">
+            <div class="campo">
+              <label for="numero">Nº de remito</label>
+              <input id="numero" type="text" formControlName="numero" placeholder="Se genera solo si lo dejás vacío" />
+            </div>
+            <div class="campo">
+              <label for="fecha">Fecha</label>
+              <input id="fecha" type="date" formControlName="fecha" />
+            </div>
+          </div>
+
+          @if (errorNueva()) {
+            <p class="error" role="alert">{{ errorNueva() }}</p>
+          }
+
+          <div class="acciones">
+            <button type="submit" class="boton" [disabled]="ocupado()">
+              {{ ocupado() ? 'Creando…' : 'Crear borrador' }}
+            </button>
+            <button type="button" class="boton boton--secundario" (click)="creando.set(false)">Cancelar</button>
+          </div>
+        </form>
+      } @else if (seleccionada(); as recepcion) {
+        <div class="ficha">
+          <h2 class="panel__titulo">{{ recepcion.numero }}</h2>
+          <p class="estado">
+            {{ recepcion.proveedor }} · {{ recepcion.sucursal }} · {{ recepcion.fecha }}
+            @if (recepcion.registrado_por) { · registró {{ recepcion.registrado_por }} }
+          </p>
+          <p>
+            <span
+              class="badge"
+              [class.badge--ok]="recepcion.estado === 'CONFIRMADA'"
+              [class.badge--alerta]="recepcion.estado === 'BORRADOR'"
+              [class.badge--baja]="recepcion.estado === 'ANULADA'"
+            >
+              {{ etiquetaEstado(recepcion.estado) }}
+            </span>
+          </p>
+
+          @if (aviso()) {
+            <p class="exito">{{ aviso() }}</p>
+          }
+          @if (errorDetalle()) {
+            <p class="error" role="alert">{{ errorDetalle() }}</p>
+          }
+
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Prenda</th>
+                  <th class="tabla__numero">Cantidad</th>
+                  <th class="tabla__numero">Costo unit.</th>
+                  <th class="tabla__numero">Subtotal</th>
+                  @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
+                    <th></th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (linea of recepcion.detalle; track linea.id) {
+                  <tr>
+                    <td class="mono">{{ linea.sku }}</td>
+                    <td>
+                      {{ linea.producto }}
+                      <div class="secundario">{{ linea.talla }} · {{ linea.color }}</div>
+                    </td>
+                    <td class="tabla__numero">{{ linea.cantidad }}</td>
+                    <td class="tabla__numero">{{ precio(linea.costo_unitario) }}</td>
+                    <td class="tabla__numero">{{ precio(linea.subtotal) }}</td>
+                    @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
+                      <td>
+                        <div class="tabla__acciones">
+                          <button type="button" class="boton boton--secundario boton--chico" (click)="editarLinea(linea)">
+                            Editar
+                          </button>
+                          <button type="button" class="boton boton--peligro boton--chico" (click)="quitarLinea(linea)">
+                            Quitar
+                          </button>
+                        </div>
+                      </td>
+                    }
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="estado">Todavía no cargaste prendas en esta recepción.</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4"><strong>Total</strong></td>
+                  <td class="tabla__numero"><strong>{{ precio(totalCargado) }}</strong></td>
+                  @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
+                    <td></td>
+                  }
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
+            <h3 class="subtitulo">Agregar prendas</h3>
+
+            <div class="buscador">
+              <input
+                type="search"
+                class="buscador__campo"
+                placeholder="SKU, código de barras o nombre de la prenda"
+                [(ngModel)]="termino"
+                name="termino"
+                (keyup.enter)="buscar()"
+              />
+              <button type="button" class="boton boton--secundario" [disabled]="buscando()" (click)="buscar()">
+                {{ buscando() ? 'Buscando…' : 'Buscar' }}
+              </button>
+            </div>
+
+            @if (resultados().length > 0) {
+              <ul class="resultados">
+                @for (variante of resultados(); track variante.id) {
+                  <li>
+                    <button
+                      type="button"
+                      class="resultado"
+                      [class.resultado--activo]="elegida()?.id === variante.id"
+                      (click)="elegir(variante)"
+                    >
+                      <span class="mono">{{ variante.sku }}</span>
+                      <span>{{ variante.producto }}</span>
+                      <span class="secundario">
+                        <span class="punto" [style.background]="variante.codigo_hex"></span>
+                        {{ variante.talla }} · {{ variante.color }} · hoy en sucursal:
+                        {{ variante.stock_sucursal }}
+                      </span>
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+
+            @if (elegida(); as variante) {
+              <div class="carga">
+                <p class="estado">
+                  Recibiendo <strong>{{ variante.producto }}</strong> ({{ variante.talla }} ·
+                  {{ variante.color }})
+                </p>
+                <div class="rejilla">
+                  <div class="campo">
+                    <label for="cantidad">Cantidad recibida</label>
+                    <input id="cantidad" type="number" min="1" [(ngModel)]="cantidad" name="cantidad" />
+                  </div>
+                  <div class="campo">
+                    <label for="costo">Costo unitario (Bs)</label>
+                    <input id="costo" type="number" min="0" step="0.01" [(ngModel)]="costo" name="costo" />
+                  </div>
+                </div>
+                <div class="acciones">
+                  <button type="button" class="boton" [disabled]="ocupado()" (click)="agregar()">
+                    Agregar a la recepción
+                  </button>
+                  <button type="button" class="boton boton--secundario" (click)="limpiarBuscador()">Cancelar</button>
+                </div>
+              </div>
+            }
+
+            @if (lineaEditada(); as linea) {
+              <div class="carga">
+                <p class="estado">Editando <strong>{{ linea.producto }}</strong> ({{ linea.sku }})</p>
+                <div class="rejilla">
+                  <div class="campo">
+                    <label for="cantidad-edit">Cantidad</label>
+                    <input id="cantidad-edit" type="number" min="1" [(ngModel)]="cantidad" name="cantidad-edit" />
+                  </div>
+                  <div class="campo">
+                    <label for="costo-edit">Costo unitario (Bs)</label>
+                    <input id="costo-edit" type="number" min="0" step="0.01" [(ngModel)]="costo" name="costo-edit" />
+                  </div>
+                </div>
+                <div class="acciones">
+                  <button type="button" class="boton" [disabled]="ocupado()" (click)="guardarLinea()">
+                    Guardar línea
+                  </button>
+                  <button type="button" class="boton boton--secundario" (click)="limpiarBuscador()">Cancelar</button>
+                </div>
+              </div>
+            }
+
+            <div class="acciones cierre">
+              @if (puedeConfirmar) {
+                <button
+                  type="button"
+                  class="boton"
+                  [disabled]="ocupado() || recepcion.detalle.length === 0"
+                  (click)="confirmar()"
+                >
+                  {{ ocupado() ? 'Procesando…' : 'Confirmar e ingresar al stock' }}
+                </button>
+                <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="anular()">
+                  Anular borrador
+                </button>
+              }
+            </div>
+          }
+
+          @if (recepcion.estado === 'CONFIRMADA') {
+            <h3 class="subtitulo">Movimientos de kardex</h3>
+            @if (movimientos().length === 0) {
+              <p class="estado">Sin movimientos registrados.</p>
+            } @else {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>Prenda</th>
+                      <th class="tabla__numero">Entrada</th>
+                      <th class="tabla__numero">Saldo anterior</th>
+                      <th class="tabla__numero">Saldo nuevo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (movimiento of movimientos(); track movimiento.variante_id) {
+                      <tr>
+                        <td class="mono">{{ movimiento.sku }}</td>
+                        <td>{{ movimiento.producto }}</td>
+                        <td class="tabla__numero">+{{ movimiento.cantidad }}</td>
+                        <td class="tabla__numero">{{ movimiento.saldo_anterior }}</td>
+                        <td class="tabla__numero">{{ movimiento.saldo_nuevo }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+        </div>
+      } @else {
+        <p class="estado">Elegí una recepción de la lista o creá una nueva.</p>
+      }
+    </section>
+  </div>
+</app-panel-shell>

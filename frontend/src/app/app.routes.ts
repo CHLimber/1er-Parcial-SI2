@@ -1,6 +1,12 @@
 import { Routes } from '@angular/router';
 
-import { authGuard, cajeroGuard, encargadoGuard, invitadoGuard } from './core/auth/auth.guard';
+import {
+  authGuard,
+  cajeroGuard,
+  encargadoGuard,
+  invitadoGuard,
+  permisoGuard,
+} from './core/auth/auth.guard';
 
 export const routes: Routes = [
   {
@@ -62,6 +68,55 @@ export const routes: Routes = [
       import('./pages/atender-reservas/atender-reservas.page').then((m) => m.AtenderReservasPage),
     canActivate: [authGuard, encargadoGuard],
   },
+
+  // Panel de gestion (CU09 a CU13). Cada pantalla exige el mismo permiso que su endpoint.
+  {
+    path: 'panel',
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./pages/panel/panel.page').then((m) => m.PanelPage),
+      },
+      {
+        path: 'catalogo',
+        loadComponent: () =>
+          import('./pages/panel-catalogo/panel-catalogo.page').then((m) => m.PanelCatalogoPage),
+        canActivate: [permisoGuard('catalogo.ver', 'catalogo.gestionar')],
+      },
+      {
+        path: 'recepciones',
+        loadComponent: () =>
+          import('./pages/panel-recepciones/panel-recepciones.page').then(
+            (m) => m.PanelRecepcionesPage,
+          ),
+        canActivate: [
+          permisoGuard('recepciones.ver', 'recepciones.registrar', 'recepciones.confirmar'),
+        ],
+      },
+      {
+        path: 'proveedores',
+        loadComponent: () =>
+          import('./pages/panel-proveedores/panel-proveedores.page').then(
+            (m) => m.PanelProveedoresPage,
+          ),
+        canActivate: [permisoGuard('proveedores.ver', 'proveedores.gestionar')],
+      },
+      {
+        path: 'sucursales',
+        loadComponent: () =>
+          import('./pages/panel-sucursales/panel-sucursales.page').then((m) => m.PanelSucursalesPage),
+        canActivate: [permisoGuard('sucursales.ver', 'sucursales.gestionar')],
+      },
+      {
+        path: 'usuarios',
+        loadComponent: () =>
+          import('./pages/panel-usuarios/panel-usuarios.page').then((m) => m.PanelUsuariosPage),
+        canActivate: [permisoGuard('usuarios.ver', 'usuarios.gestionar', 'roles.ver')],
+      },
+    ],
+  },
+
   { path: '', pathMatch: 'full', redirectTo: 'tienda' },
   { path: '**', redirectTo: 'tienda' },
 ];

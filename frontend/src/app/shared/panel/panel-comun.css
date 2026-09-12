@@ -1,0 +1,308 @@
+/*
+ * Vocabulario visual compartido por las pantallas del panel de gestion (CU09 a CU13).
+ * Cada pagina lo incluye en su styleUrls; Angular lo scopea a su propio componente.
+ */
+
+.barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.barra__espacio {
+  flex: 1;
+}
+
+.panel {
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  padding: 1.25rem;
+}
+
+.panel + .panel {
+  margin-top: 1.25rem;
+}
+
+.panel__titulo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 1.25rem;
+  color: var(--ink);
+  margin-bottom: 0.75rem;
+}
+
+.columnas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.columnas--detalle {
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+}
+
+@media (max-width: 62rem) {
+  .columnas,
+  .columnas--detalle {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- formularios --- */
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.campo > label,
+.campo__etiqueta {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  width: 100%;
+}
+
+.campo textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.campo__ayuda {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.campo__casilla {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.campo__casilla input {
+  width: auto;
+}
+
+.campo__casilla label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.85rem;
+}
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* --- botones --- */
+
+.boton {
+  padding: 0.6rem 1.1rem;
+  border: none;
+  background: var(--ink);
+  color: var(--white);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.boton:hover:not(:disabled) {
+  background: var(--flame);
+}
+
+.boton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.boton--secundario {
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--paper-line);
+}
+
+.boton--secundario:hover:not(:disabled) {
+  background: var(--paper);
+  color: var(--flame-dark);
+}
+
+.boton--peligro {
+  background: var(--white);
+  color: var(--flame-dark);
+  border: 1px solid var(--flame-dark);
+}
+
+.boton--peligro:hover:not(:disabled) {
+  background: var(--flame-dark);
+  color: var(--white);
+}
+
+.boton--chico {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+/* --- tablas --- */
+
+.tabla-envoltorio {
+  overflow-x: auto;
+}
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.tabla th {
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--paper-line);
+  white-space: nowrap;
+}
+
+.tabla td {
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--paper-line);
+  vertical-align: middle;
+  color: var(--ink);
+}
+
+.tabla tbody tr:hover {
+  background: var(--paper);
+}
+
+.tabla tr[data-inactivo='true'] td {
+  color: var(--ink-soft);
+}
+
+.tabla__numero {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.tabla__acciones {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.secundario {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+/* --- estados --- */
+
+.badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid var(--paper-line);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.badge--ok {
+  color: var(--white);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.badge--alerta {
+  color: var(--flame-dark);
+  border-color: var(--flame);
+}
+
+.badge--baja {
+  color: var(--ink-soft);
+  background: var(--paper);
+}
+
+.estado {
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.error {
+  color: var(--flame-dark);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.aviso {
+  border-left: 3px solid var(--flame);
+  background: var(--paper);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+  margin: 0;
+}
+
+.exito {
+  border-left: 3px solid var(--gold);
+  background: var(--paper);
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+  margin: 0;
+}
+
+.punto {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid var(--paper-line);
+  vertical-align: -1px;
+  margin-right: 0.3rem;
+}
