@@ -27,7 +27,7 @@ services:
       JWT_SECRET: dev-secret-change-me
       CORS_ORIGINS: '["http://localhost:3000"]'
     ports:
-      - "8080:8000"
+      - "8081:8000"
     depends_on:
       db:
         condition: service_healthy

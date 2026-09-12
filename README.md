@@ -22,7 +22,7 @@ proyecto usa puertos no estandar en el host:
 | Servicio           | URL local                 |
 |---------------------|----------------------------|
 | Frontend (Angular)  | http://localhost:3000      |
-| Backend (FastAPI)   | http://localhost:8080      |
+| Backend (FastAPI)   | http://localhost:8081      |
 | Postgres            | localhost:5433              |
 
 (Adentro de la red de Docker, `backend` sigue hablando con `db` por el puerto interno `5432`; solo
@@ -41,7 +41,7 @@ Esto levanta:
 - **db**: Postgres 16 en `localhost:5433` (usuario/clave/base: `fashionstore`). En el primer
   arranque ejecuta automaticamente, en orden, `db/01_schema.sql`, `db/02_logica.sql` y
   `db/03_datos_iniciales.sql`.
-- **backend**: API FastAPI en `http://localhost:8080` (docs interactivas en `/docs`).
+- **backend**: API FastAPI en `http://localhost:8081` (docs interactivas en `/docs`).
 
 Con el backend arriba, en otra terminal:
 
@@ -95,7 +95,7 @@ python -m venv .venv
 .venv\Scripts\activate        # Windows
 pip install -r requirements.txt
 cp .env.example .env          # ya apunta a localhost:5433; ajustar si Postgres corre en otro lado
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8081
 ```
 
 ## Deploy en Railway
