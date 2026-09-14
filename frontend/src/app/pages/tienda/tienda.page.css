@@ -15,10 +15,11 @@
 
 .cabecera__marca {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-style: italic;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  font-size: 1.4rem;
 }
 
 .cabecera__cuenta {
@@ -36,7 +37,8 @@
 }
 
 .cabecera__rol {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -64,10 +66,11 @@
   min-width: 1.3rem;
   height: 1.3rem;
   padding: 0 0.3rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--flame);
   color: var(--white);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 700;
   font-size: 0.7rem;
 }
 
@@ -94,9 +97,9 @@
 
 .saludo {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 600;
+  font-style: italic;
+  font-size: clamp(1.9rem, 4vw, 2.75rem);
   color: var(--ink);
 }
 
@@ -106,7 +109,8 @@
 }
 
 .catalogo__titulo {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -128,9 +132,10 @@
   align-items: end;
   gap: 1rem;
   margin-bottom: 1.75rem;
-  padding: 1rem;
+  padding: 1.1rem;
   background: var(--white);
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
 }
 
 .filtros__campo {
@@ -145,8 +150,9 @@
 }
 
 .filtros__campo label {
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-soft);
@@ -168,8 +174,9 @@
 }
 
 .filtros__boton {
-  padding: 0.6rem 1.1rem;
+  padding: 0.6rem 1.2rem;
   border: none;
+  border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--white);
   font-weight: 600;
@@ -183,8 +190,9 @@
 }
 
 .filtros__limpiar {
-  padding: 0.6rem 1rem;
+  padding: 0.6rem 1.1rem;
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--ink-soft);
   font-size: 0.85rem;
@@ -201,25 +209,30 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 20rem));
-  justify-content: start;
-  gap: 1px;
-  background: var(--paper-line);
-  border: 1px solid var(--paper-line);
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.5rem;
 }
 
 .prenda {
   background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  overflow: hidden;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   cursor: pointer;
-  transition: box-shadow 0.15s ease;
+  transition:
+    box-shadow 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .prenda:hover {
-  box-shadow: inset 0 0 0 2px var(--flame);
+  border-color: var(--flame);
+  box-shadow: 0 12px 24px -12px rgba(46, 37, 48, 0.25);
+  transform: translateY(-3px);
 }
 
 .prenda--agotada {
@@ -231,7 +244,7 @@
   margin: -1.25rem -1.25rem 0.6rem;
   aspect-ratio: 3 / 4;
   overflow: hidden;
-  background: var(--paper);
+  background: #fff;
 }
 
 .prenda__imagen {
@@ -247,21 +260,24 @@
   left: 0.6rem;
   background: var(--ink);
   color: var(--white);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 0.3rem 0.5rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-pill);
 }
 
 .prenda__tallas {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 0.72rem;
   color: var(--ink-soft);
 }
 
 .prenda__categoria {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 0.65rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -282,7 +298,9 @@
 
 .prenda__precio {
   margin-top: 0.5rem;
-  font-family: var(--font-mono);
-  font-weight: 500;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.05rem;
   color: var(--flame-dark);
 }

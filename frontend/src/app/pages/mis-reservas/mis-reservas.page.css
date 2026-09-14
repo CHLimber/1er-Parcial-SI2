@@ -15,10 +15,11 @@
 
 .cabecera__marca {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-style: italic;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  font-size: 1.4rem;
 }
 
 .cabecera__acciones {
@@ -47,9 +48,9 @@
 
 .titulo {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
   color: var(--ink);
   margin-bottom: 1.5rem;
 }
@@ -76,6 +77,8 @@
   gap: 1px;
   background: var(--paper-line);
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .reserva {
@@ -97,11 +100,13 @@
 }
 
 .reserva__estado {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.7rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 0.25rem 0.55rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-pill);
   background: var(--paper);
   color: var(--ink-soft);
 }
@@ -143,8 +148,9 @@
 
 .reserva__comprar {
   margin-top: 0.75rem;
-  padding: 0.5rem 0.9rem;
+  padding: 0.5rem 1rem;
   border: none;
+  border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--white);
   font-size: 0.82rem;

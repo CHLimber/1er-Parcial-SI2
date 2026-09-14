@@ -1,7 +1,43 @@
 # FashionStore
 
-Plataforma de comercio electronico e inteligencia de tienda para una cadena de ropa
+Plataforma de comercio electronico e inteligencia de tienda para una cadena de **moda femenina**
 con sucursales en Bolivia. Proyecto de Sistemas II (S2-2026).
+
+## Modelo de negocio
+
+**Publico objetivo:** mujeres de 18 a 40 anios en Santa Cruz, La Paz y Cochabamba. Todo el
+catalogo es genero `MUJER`; el resto del ENUM `genero_prenda` queda disponible como capacidad de
+crecimiento, pero fuera del alcance actual.
+
+**Por que mujer y no un catalogo general.** El tallaje femenino es inconsistente entre marcas y
+cortes: una M de una marca no es una M de otra. Por eso la clienta necesita probarse antes de
+comprar, y por eso la reserva de vestidor (CU04, atendida en CU08) es el corazon del producto y no
+un agregado. En ropa masculina la talla es estable y la compra es directa, asi que ese flujo
+perderia sentido. Ademas, el surtido femenino de talla x color es amplio, que es lo que justifica
+modelar `producto_variante` como la unidad fisica real en vez de guardar el stock en `producto`.
+
+**Las tres sucursales estan en tres climas distintos**, y eso manda sobre el inventario:
+
+| Sucursal              | Ciudad      | Clima                    | Surtido que pesa   |
+|-----------------------|-------------|--------------------------|--------------------|
+| FashionStore Equipetrol | Santa Cruz  | Llanura, calido todo el anio | Primavera-Verano |
+| FashionStore Sopocachi  | La Paz      | Altura, frio todo el anio    | Otonio-Invierno  |
+| FashionStore Cala Cala  | Cochabamba  | Valle templado               | Equilibrado      |
+
+La misma coleccion no se reparte en partes iguales entre las tres tiendas: un tapado de lana rota
+en Sopocachi y se queda parado en Equipetrol. Esa es la razon de negocio por la que el stock vive
+por sucursal (`inventario`, una fila por sucursal x variante) y no como un unico saldo global, y
+por la que existen los traspasos entre tiendas. El seed refleja esa asimetria, no carga cantidades
+uniformes.
+
+**Temporadas.** Cada prenda puede pertenecer a una temporada (`temporada` / `coleccion`) o ser
+atemporal. El seed deja el ciclo completo a la vista: Otonio-Invierno 2026 ya cerrada, con su
+liquidacion corriendo (`INVIERNO30`), y Primavera-Verano 2026 activa (`VERANO15`). El jean no
+lleva temporada: rota parejo todo el anio en las tres ciudades.
+
+**Ingresos:** venta directa con margen sobre prenda importada y de proveedor nacional, por dos
+canales ya implementados — compra online con pago por pasarela y retiro en sucursal (CU05/CU06), o
+reserva de vestidor gratuita y pago presencial en caja (CU04/CU07).
 
 ## Estructura
 
@@ -74,9 +110,10 @@ Password de todos: `demo1234`.
 | cliente@fashionstore.bo             | CLIENTE | —                                |
 | cliente2@fashionstore.bo            | CLIENTE | —                                |
 
-El catalogo queda poblado con 6 productos (camisetas, jeans, vestidos, chaquetas, zapatillas y
-accesorios) con variantes por talla/color e inventario en las 3 sucursales, mas 2 promociones de
-ejemplo (`BIENVENIDA10`, `VERANO15`).
+El catalogo queda poblado con 6 productos de moda femenina (blusa de lino, vestido floral, jean de
+tiro alto, tapado de lana, botineta de cuero y chalina de alpaca), 63 variantes por talla/color e
+inventario en las 3 sucursales **repartido segun el clima de cada ciudad** (ver Modelo de negocio),
+mas 3 promociones de ejemplo (`BIENVENIDA10`, `VERANO15`, `INVIERNO30`).
 
 ### Endpoints disponibles
 

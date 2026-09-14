@@ -25,6 +25,7 @@
 .pasarela-card {
   width: min(26rem, 100%);
   background: var(--white);
+  border-radius: var(--radius);
   padding: clamp(1.5rem, 4vw, 2.25rem);
   display: flex;
   flex-direction: column;
@@ -33,10 +34,11 @@
 
 .pasarela-card__marca {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-style: italic;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+  font-size: 1.55rem;
   color: var(--ink);
 }
 
@@ -45,6 +47,7 @@
   padding: 0.75rem;
   background: var(--paper);
   border-left: 3px solid var(--gold);
+  border-radius: var(--radius-sm);
   font-size: 0.8rem;
   color: var(--ink-soft);
 }
@@ -66,8 +69,9 @@
 }
 
 .boton {
-  padding: 0.8rem 1.2rem;
+  padding: 0.8rem 1.3rem;
   border: none;
+  border-radius: var(--radius-pill);
   background: #2f7d4f;
   color: var(--white);
   font-weight: 700;

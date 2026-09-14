@@ -15,10 +15,11 @@
 
 .cabecera__marca {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-style: italic;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  font-size: 1.4rem;
 }
 
 .cabecera__acciones {
@@ -48,9 +49,9 @@
 
 .titulo {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
   color: var(--ink);
 }
 
@@ -68,6 +69,7 @@
   padding: 0.75rem 1rem;
   background: var(--white);
   border-left: 3px solid var(--gold);
+  border-radius: var(--radius-sm);
   color: var(--ink);
 }
 
@@ -80,6 +82,8 @@
   gap: 1px;
   background: var(--paper-line);
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .carrito__item {
@@ -95,6 +99,7 @@
   height: 4rem;
   object-fit: cover;
   flex-shrink: 0;
+  border-radius: var(--radius-sm);
 }
 
 .carrito__info {
@@ -115,7 +120,7 @@
 }
 
 .carrito__precio {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: 0.78rem;
   color: var(--ink-soft);
 }
@@ -125,12 +130,14 @@
   padding: 0.4rem;
   border: 1px solid var(--paper-line);
   text-align: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
 }
 
 .carrito__subtotal {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 0.95rem;
   color: var(--flame-dark);
   min-width: 5rem;
   text-align: right;
@@ -162,11 +169,13 @@
   gap: 1rem;
   background: var(--white);
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
   padding: 1.25rem;
 }
 
 .formulario__titulo {
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -211,6 +220,7 @@
   flex: 1;
   padding: 0.7rem;
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
   background: var(--white);
   color: var(--ink);
   font-weight: 600;
@@ -230,8 +240,9 @@
 }
 
 .boton {
-  padding: 0.7rem 1.2rem;
+  padding: 0.7rem 1.3rem;
   border: none;
+  border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--white);
   font-weight: 600;

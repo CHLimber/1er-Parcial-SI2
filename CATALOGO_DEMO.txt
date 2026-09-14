@@ -1,0 +1,410 @@
+===============================================================================
+ FASHIONSTORE - CATALOGO PARA LA DEMOSTRACION
+ Lista de trabajo armada el 2026-09-13.
+
+ OBJETIVO: que el catalogo se vea LLENO en la defensa. Hoy hay 6 productos y
+ una grilla con 6 tarjetas se ve a medio hacer; no se puede mostrar paginacion,
+ los filtros por categoria devuelven 1 resultado cada uno y la busqueda no
+ tiene contra que buscar.
+
+ META: 40 productos (los 6 que ya existen + 34 nuevos), repartidos en 9
+ categorias y en las 2 temporadas.
+
+ LO QUE NO HAY QUE HACER: tocar el esquema ni el backend. Todo esto es seed.
+ Ver IMAGENES_AR.txt para la parte de realidad aumentada, que es otra cosa.
+===============================================================================
+
+ ESTADO (2026-09-13): puntos 2, 3 y 4 completos -- los 40 productos, las 3
+ categorias nuevas, las 6 marcas, las variantes y las 40 imagenes reales ya
+ estan en db/03_datos_iniciales.sql y probados contra Postgres real
+ (docker compose down -v && up --build). Ver PENDIENTES.txt [2.9] para el
+ detalle de lo que falta: 3 fotos reales (BLU-005, VES-006, SAN-003) y las
+ variantes de color con IA del punto 1 / 4.5 (punto 5 y 6 de mas abajo).
+===============================================================================
+
+-------------------------------------------------------------------------------
+ 1. COMO BUSCAR LAS FOTOS
+-------------------------------------------------------------------------------
+
+ Buscar PACKSHOT: la prenda sola sobre fondo liso, NO una modelo en la calle.
+ Agregar a la busqueda "white background", "isolated" o "flat lay".
+
+ Dos razones:
+   a) una grilla de 40 packshots se ve como una tienda de verdad; una mezcla
+      de fotos de calle con fondos distintos se ve como un collage;
+   b) de varias de estas mismas fotos salen despues los recortes PNG del AR
+      (ver IMAGENES_AR.txt, punto 1), asi que no hay que buscarlas dos veces.
+
+ DONDE: Unsplash, Pexels o Pixabay. Las tres son de uso libre y no exigen
+ atribucion (dato importante si preguntan por licencias en la defensa).
+
+ ATAJO PARA NO PASARSE LA TARDE BUSCANDO:
+   No buscar de a una. En Pexels y Unsplash buscar una vez
+   "women clothing flat lay" o "fashion packshot" y bajar la coleccion
+   entera de una sentada; despues se asigna cada foto al producto que le
+   quede. Rinde mucho mas que 34 busquedas sueltas.
+   Los terminos especificos de abajo quedan para las prendas que no
+   aparezcan en la coleccion.
+
+ ESPECIFICACION: JPG, 1200x1600 px (3:4 vertical), max 300 KB.
+ NOMBRE: {codigo}-catalogo-{color}.jpg en minusculas y sin acentos.
+         Ej: blu-002-catalogo-blanco.jpg
+
+ TIEMPO REAL ESTIMADO: entre 1 hora y 1 hora y media para las 40, usando el
+ atajo de arriba. Es la tarea mas larga de la lista y la que mas cambia la
+ percepcion de la plataforma.
+
+ ..... VARIANTES DE COLOR CON IA .............................................
+
+ ALCANZA CON 1 FOTO REAL POR PRODUCTO. Las variantes de color se generan con
+ IA a partir de esa foto base (Nano Banana / Gemini, Photoroom, Flux Kontext
+ o similar), pidiendo cambiar SOLO el color y conservar prenda, tela, angulo,
+ recorte, fondo y luz.
+
+ Prompt base que funciona:
+   "Change only the color of the garment to <color>. Keep the exact same
+    garment, fabric texture, shape, folds, angle, crop, lighting and plain
+    white background. Photorealistic product packshot."
+
+ REGLAS PARA QUE NO SE NOTE:
+   [ ] Generar SIEMPRE desde la MISMA foto base, nunca encadenar una
+       generacion sobre otra: se degrada y a la tercera ya cambio la prenda.
+   [ ] Revisar que no se muevan las sombras ni el fondo entre variantes. Si
+       cambian, en la ficha de producto se ve el salto al cambiar de color.
+   [ ] Los colores generados tienen que parecerse a los codigos_hex que ya
+       estan sembrados en la tabla color (Negro #000000, Camel #C19A6B,
+       Vino #722F37, Rosa Palo #E8B4B8, etc.), si no el circulito de color
+       del selector no coincide con la foto.
+
+ DONDE LA IA FUNCIONA MAL (no insistir, perder ahi el tiempo no rinde):
+   - Prendas ESTAMPADAS: VES-001 (floral), BLU-003 (cuadros), VES-006
+     (estampado). Recolorear un estampado lo deforma o lo inventa de nuevo.
+     Para esas, dejar UNA sola imagen y no ofrecer variantes de color.
+   - Texturas muy marcadas: BOT-002 (gamuza), ACC-001 (alpaca). Suelen salir
+     con la textura aplanada.
+   Para esos casos: una sola foto, o buscar una segunda foto real.
+
+ CUANTAS GENERAR (no hacen falta 120 imagenes):
+   La grilla del catalogo muestra UNA sola imagen por producto, la que tiene
+   es_principal = TRUE. Las variantes de color solo se ven al entrar a la
+   ficha del producto. Asi que:
+     [ ] 40 fotos base (una por producto) -> obligatorio, es lo que se ve.
+     [ ] Variantes de color con IA SOLO para los 8 a 10 destacados del punto
+         4.6 -> son los que el tribunal va a abrir en la demo.
+     [ ] El resto queda con una sola imagen. Nadie lo va a notar.
+   Total realista: 40 fotos + unas 25 generadas, no 120.
+
+ EN LA DEFENSA: si preguntan, decir que las variantes de color son generadas.
+ Para un prototipo es perfectamente valido y es lo que hacen las marcas para
+ muestrarios. Lo que no hay que hacer es presentarlas como fotos de producto
+ real.
+
+-------------------------------------------------------------------------------
+ 2. LOS 40 PRODUCTOS
+-------------------------------------------------------------------------------
+
+ [YA] = ya esta en db/03_datos_iniciales.sql, no hay que inventarlo, solo
+        conseguirle la foto real (hoy usa un placeholder de picsum.photos).
+
+ Columna TEMP: PV = Primavera-Verano (pesa en Santa Cruz)
+               OI = Otonio-Invierno  (pesa en La Paz)
+               AT = Atemporal        (rota parejo en las tres)
+
+ ..... BLUSAS (5) ............................................................
+
+ [ ] 2.1  BLU-001  Blusa de Lino Manga Corta          PV   Bs 159.90   [YA]
+          white linen blouse short sleeve white background
+          https://media.istockphoto.com/id/2180698543/photo/white-shirt-isolated.jpg?s=612x612&w=0&k=20&c=ke_XcMkuV2IIOzI-6MQnUor-MJzQAdUKkYrnvemdUiM=
+ [ ] 2.2  BLU-002  Blusa de Seda Manga Larga          AT   Bs 219.90
+          silk blouse long sleeve white background
+          https://media.istockphoto.com/id/2255268145/photo/elegant-ivory-silk-blouse-with-long-sleeves-isolated-on-white-background.jpg?s=612x612&w=0&k=20&c=USdp1O2pH6U-R4lUpAq9Z5x1dvNftHMQ6IPH06NX5sg=
+ [ ] 2.3  BLU-003  Camisa Oversize a Cuadros          OI   Bs 189.90
+          plaid flannel shirt women isolated
+          https://media.istockphoto.com/id/475162084/photo/shirt-isolated.jpg?s=612x612&w=0&k=20&c=HGq9q6NHPQYzimpvH7p6YjMttBLE8ylG5rMw1WsPieU=
+ [ ] 2.4  BLU-004  Top de Tirantes de Algodon         PV   Bs  99.90
+          cotton tank top women white background
+https://media.istockphoto.com/id/528056874/photo/sport-top.jpg?s=612x612&w=0&k=20&c=eVyv4BrkAXlKJC-A9nVIoyb_e8tBzxuSXR5p0oFv4YM=
+ [ ] 2.5  BLU-005  Blusa Cropped con Volados          PV   Bs 139.90
+          ruffle crop top women isolated
+          
+
+ ..... VESTIDOS (6) ..........................................................
+
+ [ ] 2.6  VES-001  Vestido Floral Manga Corta         PV   Bs 179.90   [YA]
+          floral summer dress isolated white background
+          https://media.istockphoto.com/id/178851955/photo/flowery-evase-bateau-yellow-dress.jpg?s=612x612&w=0&k=20&c=EOJGCGC6dmFt0IQvbxq3PthCmNXO1flOpjYWC4KkcyQ=
+ [ ] 2.7  VES-002  Vestido Midi Plisado               AT   Bs 259.90
+          pleated midi dress white background
+          https://media.istockphoto.com/id/2255268163/photo/modern-brown-v-neck-midi-dress-with-waist-tie-front-and-back-view.jpg?s=612x612&w=0&k=20&c=xwcEaLiKNUIZ4RwVHUZIPb0E5Ldla_wE_7zDGVpCQMU=
+ [ ] 2.8  VES-003  Vestido de Punto Manga Larga       OI   Bs 299.90
+          knitted long sleeve dress isolated
+          https://mikuta.com/cdn/shop/files/mikuta-the-striped-knitted-low-back-longsleeve-dress-product-shot.jpg?v=1776676381
+ [ ] 2.9  VES-004  Vestido Camisero de Lino           PV   Bs 229.90
+          linen shirt dress women white background
+          https://media.mango.com/is/image/punto/87004786-10-900?wid=2048
+ [ ] 2.10 VES-005  Vestido Negro de Fiesta            AT   Bs 389.90
+          little black dress isolated white background
+          https://media.istockphoto.com/id/2254822072/photo/elegant-black-short-sleeve-pencil-dress-isolated-on-white-background.jpg?s=612x612&w=0&k=20&c=CnJyPXN0U0k85S9IoIDrKkkyg57hOfcN9dXChgTF8jo=
+ [ ] 2.11 VES-006  Vestido Largo Estampado            PV   Bs 269.90
+          long maxi dress printed flat lay
+
+ ..... PANTALONES (5) ........................................................
+
+ [ ] 2.12 PAN-001  Jean Tiro Alto Skinny              AT   Bs 249.90   [YA]
+          high waisted skinny jeans women flat lay
+          https://guess.com.au/cdn/shop/files/W2YA46D4Q01-CLH1-ALTGHOST.jpg?v=1764817622&width=1100
+ [ ] 2.13 PAN-002  Pantalon Palazzo de Lino           PV   Bs 199.90
+          linen palazzo pants women flat lay
+          https://www.morielheritage.com/cdn/shop/files/the-miela-linen-blend-pant-01.jpg?v=1785450152&width=1280%201280w
+[ ] 2.14 PAN-003  Pantalon de Vestir Sastrero        OI   Bs 279.90
+          women tailored trousers isolated
+          https://me.manieredevoir.com/cdn/shop/files/Wms-May-2-_0193_MDV1.jpg?v=1787650916&width=2000%202000w
+ [ ] 2.15 PAN-004  Jean Wide Leg                      AT   Bs 269.90
+          wide leg jeans women white background
+          https://veronicabeard.com/cdn/shop/files/J2603D411152WH_WHITE_FLAT.png?v=1771272212&width=3840%203840w
+ [ ] 2.16 PAN-005  Legging Termico                    OI   Bs 129.90
+          thermal leggings women isolated
+          https://eu.icebreaker.com/cdn/shop/files/IB104476001-30.jpg?v=1756208754&width=1200%201200w
+
+ ..... FALDAS (4) - categoria NUEVA ..........................................
+
+ [ ] 2.17 FAL-001  Falda Midi Plisada                 AT   Bs 189.90
+          pleated midi skirt white background
+          https://hrd-live.cdn.scayle.cloud/images/0ea61fecf7d1dcdc482a63ba76cbad35.jpg?brightness=1&width=922&height=1230&quality=75&bg=ffffff
+ [ ] 2.18 FAL-002  Falda de Jean Corta                PV   Bs 159.90
+          denim mini skirt women isolated
+          https://c7.alamy.com/zooms/9/2f59a34500fc489fb866570967e4c329/3f8px56.jpg
+ [ ] 2.19 FAL-003  Falda Larga de Gasa                PV   Bs 209.90
+          long chiffon skirt women flat lay
+          //www.na-kd.com/cdn-cgi/image/width=300,quality=80,sharpen=0.3/globalassets/low_waist_chiffon_maxi_skirt_1881-000007-0765_0019_flatlayf.jpg?ref=FF89307F6D
+ [ ] 2.20 FAL-004  Falda Lapiz de Panio               OI   Bs 229.90
+          wool pencil skirt women isolated
+          https://www.vivienofholloway.com/images/pencil-skirt-black-wool-p4379-18473_image.jpg
+
+ ..... ABRIGOS (5) ...........................................................
+
+ [ ] 2.21 ABR-001  Tapado de Lana Largo               OI   Bs 449.90   [YA]
+          long wool coat women camel isolated
+          https://www.coatcheckroom.com/cdn/shop/files/Long_Wool_Camel_Coat_1100x.jpg?v=1709073960
+ [ ] 2.22 ABR-002  Campera de Jean Oversize           AT   Bs 329.90
+          oversized denim jacket women isolated
+          https://www.shoppriceless.com/cdn/shop/files/Susan-Denim-Jacket_CUTUT.jpg?v=1752697254&width=2000
+ [ ] 2.23 ABR-003  Cardigan de Punto Grueso           OI   Bs 279.90
+          chunky knit cardigan women white background
+          https://ginatricot-pim.imgix.net/307011265/30701126505.jpg
+ [ ] 2.24 ABR-004  Blazer Entallado                   AT   Bs 359.90
+          fitted blazer women isolated white background
+          https://img.magnific.com/premium-psd/elegant-white-blazer-with-single-pocket_1296994-137380.jpg?semt=ais_hybrid&w=740&q=80
+ [ ] 2.25 ABR-005  Campera Puffer Impermeable         OI   Bs 419.90
+          puffer jacket women white background
+          https://img01.ztat.net/article/spp-media-p1/7c125863a40147ac8079023bcc9af6e8/343cec9a61e746aaa0cd02abb27eb90d.jpg?imwidth=1800&filter=packshot
+
+ ..... BOTAS (3) .............................................................
+
+ [ ] 2.26 BOT-001  Botineta de Cuero con Taco         OI   Bs 389.90   [YA]
+          women leather ankle boots heel white background
+          https://www.jomercer.com.au/cdn/shop/files/TaylorHighAnkleBootsOffWhiteLeather2.jpg?v=1779084640
+ [ ] 2.27 BOT-002  Bota Cania Alta de Gamuza          OI   Bs 519.90
+          suede knee high boots women isolated
+          https://img.tkmaxx.com/medias/25299139-medium-wl-01.jpg?context=bWFzdGVyfHByb2R1Y3QtaW1hZ2VzfDI0ODQyfGltYWdlL2pwZWd8YURVNEwyaGpOeTh4TmpZek1USTBOemMyTlRVek5DOHlOVEk1T1RFek9WOXRaV1JwZFcxZmQyeGZNREV1YW5CbnxlMTg2M2RjYjk3MDYzOGUyNThmODUwNDQ2MTMyNDUxMzk3ODRjZTQ4YTY2YTg1NzVmN2JjOTc4OTE2ZTI5NGMx
+ [ ] 2.28 BOT-003  Borcego Negro con Cordones         OI   Bs 349.90
+          black lace up combat boots women isolated
+          https://cdn.torrid.com/i/torrid/13573020_00133_hi?$pdp_hero_desktop_main$&fmt=auto
+
+ ..... SANDALIAS (3) - categoria NUEVA .......................................
+
+ [ ] 2.29 SAN-001  Sandalia de Plataforma             PV   Bs 249.90
+          platform sandals women white background
+          https://souliers-martinez.com/cdn/shop/files/souliers-martinez-summer-white-leather-sandals-women-design-shoes-packshot1_800x.jpg?v=1771000590
+ [ ] 2.30 SAN-002  Sandalia Baja de Cuero             PV   Bs 179.90
+          flat leather sandals women isolated
+          https://img.magnific.com/premium-psd/elegant-brown-leather-flat-sandals-women_980117-18364.jpg?semt=ais_hybrid&w=740&q=80
+ [ ] 2.31 SAN-003  Sandalia con Tiras y Taco          PV   Bs 289.90
+          strappy heeled sandals women white background
+          https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQMShIOcmDIAgx1unsQJXAUEQoDTek_SgeXL8LzZsczw&s=10
+          
+
+ ..... ZAPATOS (3) - categoria NUEVA .........................................
+
+ [ ] 2.32 ZAP-001  Zapato Stiletto de Charol          AT   Bs 329.90
+          patent leather stiletto heels isolated
+          https://img.magnific.com/premium-photo/elegant-black-high-heels-with-pointed-toes-slim-stiletto-heels-emphasizing-classic-look-isolated-transparency-background_997534-75519.jpg?semt=ais_hybrid&w=740&q=80
+ [ ] 2.33 ZAP-002  Ballerina de Cuero                 AT   Bs 219.90
+          leather ballet flats women white background
+          https://bespokyshoes.com/cdn/shop/files/tulip-barefoot-ballet-flats-women-cream-calf-leather-95011_main.jpg?v=1780917337&width=2000
+ [ ] 2.34 ZAP-003  Zapatilla Urbana Blanca            AT   Bs 299.90
+          white sneakers women isolated
+          https://i5.walmartimages.com/seo/Yolanda-Zula-Women-s-Slip-Resistant-Casual-Lace-Up-Flat-Round-Toe-Shoes-White-US-8_08f123ff-ca0e-4202-810f-0a4e70b6af73.789b9d4f846ffe41dc41492e1b796645.jpeg?odnHeight=768&odnWidth=768&odnBg=FFFFFF
+
+ ..... ACCESORIOS (6) ........................................................
+
+ [ ] 2.35 ACC-001  Chalina de Alpaca                  OI   Bs  89.90   [YA]
+          knitted alpaca wool scarf grey isolated
+          https://inismeain.ie/cdn/shop/files/A0251_Inis_Meain_Alpaca_Rib_Scarf_Grey_1x1_Product_1.jpg?v=1767716073&width=2000
+ [ ] 2.36 ACC-002  Cartera de Cuero Bandolera         AT   Bs 349.90
+          leather crossbody bag women isolated
+          https://img.magnific.com/free-psd/brown-leather-crossbody-bag-with-buckle_84443-87785.jpg?semt=ais_hybrid&w=740&q=80
+ [ ] 2.37 ACC-003  Sombrero de Ala Ancha              PV   Bs 129.90
+          wide brim straw hat women white background
+          https://t3.ftcdn.net/jpg/18/55/79/38/360_F_1855793847_kHdGgySjrr5M3yopKX0U2TXRSxsyY2Gu.jpg
+ [ ] 2.38 ACC-004  Cinturon de Cuero Hebilla Dorada   AT   Bs  99.90
+          women leather belt gold buckle isolated
+          https://www.hanksbelts.com/cdn/shop/files/Hanks_Womens_Leather_Belts_Addyson_-_1_Black__0002_GenerativeFill_600x.jpg?v=1754403106
+ [ ] 2.39 ACC-005  Gorro y Guantes de Lana            OI   Bs 119.90
+          wool beanie and gloves set isolated
+          https://menique.com/cdn/shop/files/Unisex-Beanie-Knit-Merino-_-Beanie-_-Gloves-Dark-Gray.jpg?crop=center&height=1200&v=1749801320&width=960
+ [ ] 2.40 ACC-006  Lentes de Sol Redondos             PV   Bs 149.90
+          round sunglasses women white background
+	     https://i5.walmartimages.ca/asr/d2894267-9f43-4b2b-aa5e-d509f180a2fa.d0cbeb6930acbf63b99f46b02c37ae82.jpeg?odnHeight=2000&odnWidth=2000&odnBg=FFFFFF
+-------------------------------------------------------------------------------
+ 3. POR QUE ESTE REPARTO Y NO OTRO
+-------------------------------------------------------------------------------
+
+ POR CATEGORIA (9 categorias, ninguna con menos de 3):
+   Blusas 5 | Vestidos 6 | Pantalones 5 | Faldas 4 | Abrigos 5 |
+   Botas 3 | Sandalias 3 | Zapatos 3 | Accesorios 6
+   Asi cada filtro del catalogo devuelve una grilla, no un resultado suelto.
+
+ POR TEMPORADA:
+   PV 14 | OI 13 | AT 13
+   Las dos temporadas quedan bien pobladas, asi que la distribucion por clima
+   del inventario (ver README, Modelo de negocio) se nota de verdad: en la
+   sucursal de La Paz sobran botas, puffers y cardigans; en la de Santa Cruz
+   sobran sandalias, lino y lentes de sol. Con 6 productos ese contraste casi
+   no se veia; con 40 es evidente de un vistazo.
+
+ TRES CATEGORIAS NUEVAS:
+   Faldas     - falta obvia en una tienda de moda femenina.
+   Sandalias  - hoy la unica subcategoria de calzado es "Botas" y meter una
+                sandalia ahi estaria mal.
+   Zapatos    - completa el calzado con lo atemporal.
+   Botas (todo OI) contra Sandalias (todo PV) es la demostracion mas limpia
+   del modelo de climas: La Paz vende botas, Santa Cruz vende sandalias.
+   Las tres se agregan con un INSERT en categoria, nada mas.
+
+ POR QUE 40 Y NO 20:
+   Con 40 la grilla llena varias pantallas y recien ahi tiene sentido mostrar
+   la paginacion (limit/offset), que con 20 apenas se justifica. Ademas cada
+   categoria queda con 3 a 6 productos, que es como se ve una tienda real.
+
+ BUENA NOTICIA SOBRE EL INVENTARIO:
+   No hay que cargar stock a mano. El INSERT de inventario del seed es un
+   CROSS JOIN sobre todas las variantes x todas las sucursales con el CASE
+   por clima ya escrito, asi que los 34 productos nuevos se reparten solos en
+   cuanto tengan su temporada_id. Cargar 40 productos no cuesta mas trabajo
+   de inventario que cargar 6.
+
+-------------------------------------------------------------------------------
+ 4. CARGARLOS EN EL SEED
+-------------------------------------------------------------------------------
+
+ Archivo: db/03_datos_iniciales.sql
+
+ [ ] 4.1  Agregar las 3 categorias nuevas:
+          INSERT INTO categoria (categoria_padre_id, nombre, slug) VALUES
+            ((SELECT id FROM categoria WHERE slug='ropa'),   'Faldas',   'faldas'),
+            ((SELECT id FROM categoria WHERE slug='calzado'),'Sandalias','sandalias'),
+            ((SELECT id FROM categoria WHERE slug='calzado'),'Zapatos',  'zapatos');
+
+ [ ] 4.2  Agregar mas marcas. Hoy hay 3 (FashionStore Esencial, Andina Denim,
+          Aurora Bolivia) y con 40 productos conviene tener 5 o 6 para que el
+          filtro por marca tenga sentido.
+
+ [ ] 4.3  Agregar los 34 productos nuevos siguiendo el patron que ya esta en
+          la seccion PRODUCTOS Y VARIANTES. Cada uno necesita:
+          categoria_id, marca_id, codigo, nombre, slug, descripcion, material,
+          genero (SIEMPRE 'MUJER'), precio_base, destacado.
+          Los que tienen temporada suman coleccion_id + temporada_id.
+
+ [ ] 4.4  Agregar las variantes de cada producto nuevo (talla x color), con el
+          mismo patron de CROSS JOIN talla/color que usan los 6 actuales.
+          Curva de tallas ya sembrada:
+            LETRA   : XS S M L XL XXL UNICA
+            NUMERO  : 36 38 40 42 44 46   (pantalones y faldas)
+            CALZADO : 35 36 37 38 39 40   (calzado de mujer)
+          Los accesorios de talla unica usan UNICA.
+
+ [ ] 4.5  Reemplazar el INSERT generico de producto_imagen (el que arma URLs
+          de picsum.photos) por los INSERT con las URLs reales:
+            - 40 filas con uso='CATALOGO', es_principal=TRUE y color_id NULL
+              (o el color de la foto base). Son las que se ven en la grilla.
+            - Las variantes generadas con IA van como filas ADICIONALES del
+              mismo producto, con su color_id cargado y es_principal=FALSE.
+              Ese color_id es lo que permite tener el mismo tapado en negro,
+              camel y vino sin duplicar el producto.
+          OJO: es_principal se maneja por (producto, uso). Una sola fila
+          principal por producto, o la ficha no sabe cual mostrar primero.
+
+ [ ] 4.6  Marcar entre 8 y 10 productos con destacado = TRUE, repartidos
+          entre categorias y entre las dos temporadas. Hoy hay 5 de 6 en TRUE,
+          que con 40 productos deja de tener sentido: si casi todo es
+          destacado, nada lo es.
+
+ [ ] 4.7  Subir las 40 fotos y tener sus URLs ABSOLUTAS.
+          Ojo: producto_imagen.url debe ser absoluta porque la app movil no
+          comparte origen con la web, y el backend no sirve estaticos (no hay
+          StaticFiles montado en backend/app/main.py).
+          Opciones: carpeta del repo via raw.githubusercontent.com, o
+          Cloudinary free tier.
+
+ [ ] 4.8  Recrear la base:
+            docker compose down -v
+            docker compose up --build
+          Obligatorio: si el volumen ya existe, los scripts de init NO vuelven
+          a correr y no vas a ver ningun cambio.
+
+-------------------------------------------------------------------------------
+ 5. VERIFICAR QUE LA DEMO SE VE BIEN
+-------------------------------------------------------------------------------
+
+ Con la base recargada, revisar en la web (localhost:3000) y en el movil:
+
+ [ ] 5.1  La grilla del catalogo se ve llena, sin huecos ni tarjetas rotas.
+ [ ] 5.2  Todas las fotos cargan (ninguna imagen quebrada) y tienen la misma
+          proporcion 3:4, asi la grilla queda pareja. Con 40 fotos de fuentes
+          distintas este es el error mas probable: revisar una por una.
+ [ ] 5.3  Cada filtro por categoria devuelve una grilla, no 1 producto.
+ [ ] 5.4  La busqueda por texto (parametro q) encuentra algo razonable:
+          probar "lino", "cuero", "punto", "lana".
+ [ ] 5.5  La paginacion funciona (limit/offset). Con 40 productos y 12 por
+          pagina son 4 paginas: se puede mostrar de verdad.
+ [ ] 5.6  Los destacados de la portada son 8 a 10 y de categorias distintas.
+ [ ] 5.6b En la ficha de un destacado, cambiar de color y comprobar que la
+          foto cambia y que el circulito del selector coincide con el color
+          de la imagen. Es donde mas se nota una variante generada con IA que
+          quedo con otra sombra o con la prenda cambiada.
+ [ ] 5.7  Entrar a una sucursal de La Paz y otra de Santa Cruz y comprobar
+          que la disponibilidad es distinta: botas, puffers y cardigans en
+          La Paz; sandalias, lino y lentes en Santa Cruz.
+          ES EL PUNTO MAS FUERTE DE LA DEMO.
+ [ ] 5.8  Dejar UNA variante en 0 a proposito, para poder mostrar el estado
+          "agotado" y que la reserva de esa talla se rechaza.
+ [ ] 5.9  Probar los tres cupones en el checkout: BIENVENIDA10 (todo),
+          VERANO15 (temporada PV) e INVIERNO30 (liquidacion OI).
+          Con 40 productos el alcance por temporada se nota: el cupon de
+          invierno no debe descontar en una sandalia.
+
+-------------------------------------------------------------------------------
+ 6. ORDEN SUGERIDO (entrega final 20/09, defensa 22/09)
+-------------------------------------------------------------------------------
+
+ [ ] 6.1  Punto 2: juntar las fotos con el atajo de la coleccion. Es lo que
+          mas cambia la percepcion de la plataforma y no toca una linea de
+          codigo.
+ [ ] 6.2  Punto 4.7: subirlas y anotar las URLs.
+ [ ] 6.3  Punto 4.5 SOLO para los 6 productos que YA existen: reemplazar los
+          placeholders de picsum por URLs reales.
+          PRIMER PUNTO DE CORTE: con esto solo, el catalogo deja de verse de
+          demo aunque siga teniendo 6 productos.
+ [ ] 6.4  Puntos 4.1 a 4.4: cargar los productos nuevos.
+          SEGUNDO PUNTO DE CORTE: si el tiempo aprieta, cargar los primeros
+          14 (llegar a 20 productos) ya deja cada categoria con 2 o 3 y la
+          grilla decente. Los 20 restantes son mejora, no requisito.
+ [ ] 6.5  Puntos 4.2 y 4.6: marcas y destacados.
+ [ ] 6.6  Variantes de color con IA para los destacados (ver el bloque de IA
+          en el punto 1). Va al final a proposito: es lo unico de esta lista
+          que se puede hacer en media hora la noche anterior, porque son
+          generaciones sobre fotos que ya vas a tener.
+ [ ] 6.7  Punto 5: la pasada de verificacion completa, sobre todo el 5.7.
+
+===============================================================================
