@@ -26,11 +26,15 @@ services:
       DATABASE_URL: postgresql://fashionstore:fashionstore@db:5432/fashionstore
       JWT_SECRET: dev-secret-change-me
       CORS_ORIGINS: '["http://localhost:3000"]'
+      PUBLIC_BASE_URL: http://localhost:8081
     ports:
       - "8081:8000"
+    volumes:
+      - backend_media:/app/media
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   db_data:
+  backend_media:

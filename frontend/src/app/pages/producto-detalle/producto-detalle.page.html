@@ -31,8 +31,8 @@
 
       <div class="detalle">
         <div class="detalle__imagen-cont">
-          @if (p.imagen_url) {
-            <img class="detalle__imagen" [src]="p.imagen_url" [alt]="p.nombre" />
+          @if (imagenActual(); as urlImagen) {
+            <img class="detalle__imagen" [src]="urlImagen" [alt]="p.nombre" />
           }
           @if (p.agotado) {
             <span class="detalle__badge">Agotado en todas las sucursales</span>

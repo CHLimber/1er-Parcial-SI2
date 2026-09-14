@@ -72,6 +72,7 @@ export interface VarianteOut {
   color: string;
   codigo_hex: string;
   precio: number;
+  imagen_url: string | null;
   disponibilidad: DisponibilidadSucursalOut[];
 }
 

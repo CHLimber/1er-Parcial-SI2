@@ -14,11 +14,12 @@ import unicodedata
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.media import eliminar_si_es_local, guardar_imagen_producto
 from app.modules.catalogo.admin_schemas import (
     CategoriaAdminOut,
     CategoriaEstadoIn,
@@ -526,18 +527,9 @@ async def cambiar_estado_variante(
 # ---------------------------------------------------------------------
 
 
-@router.post(
-    "/productos/{producto_id}/imagenes", response_model=ImagenOut, status_code=status.HTTP_201_CREATED
-)
-async def agregar_imagen(
-    producto_id: UUID,
-    body: ImagenIn,
-    conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+async def _crear_fila_imagen(
+    conn: asyncpg.Connection, producto_id: UUID, body: ImagenIn, staff: dict
 ) -> ImagenOut:
-    await _obtener_producto(conn, producto_id)
-    if body.uso not in USOS_IMAGEN:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Uso de imagen invalido")
     if body.formato is not None and body.formato not in FORMATOS_IMAGEN:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Formato invalido")
 
@@ -573,6 +565,52 @@ async def agregar_imagen(
     return ImagenOut(**dict(fila))
 
 
+@router.post(
+    "/productos/{producto_id}/imagenes", response_model=ImagenOut, status_code=status.HTTP_201_CREATED
+)
+async def agregar_imagen(
+    producto_id: UUID,
+    body: ImagenIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_gestionar),
+) -> ImagenOut:
+    """Alta de imagen a partir de una URL ya publica (hosting externo tipo Cloudinary/Imgur, o
+    el link a un archivo ya subido con /imagenes/subir)."""
+    await _obtener_producto(conn, producto_id)
+    if body.uso not in USOS_IMAGEN:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Uso de imagen invalido")
+    return await _crear_fila_imagen(conn, producto_id, body, staff)
+
+
+@router.post(
+    "/productos/{producto_id}/imagenes/subir",
+    response_model=ImagenOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def subir_imagen(
+    producto_id: UUID,
+    archivo: UploadFile = File(...),
+    uso: str = Form("CATALOGO"),
+    color_id: int | None = Form(None),
+    es_principal: bool = Form(False),
+    orden: int = Form(0),
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_gestionar),
+) -> ImagenOut:
+    """Como agregar_imagen, pero recibe el archivo (multipart/form-data) en vez de una URL: lo
+    guarda en disco (app/core/media.py, servido desde /media) y arma la URL publica antes de
+    insertar la fila."""
+    await _obtener_producto(conn, producto_id)
+    if uso not in USOS_IMAGEN:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Uso de imagen invalido")
+
+    url, formato = await guardar_imagen_producto(producto_id, archivo)
+    body = ImagenIn(
+        url=url, uso=uso, formato=formato, color_id=color_id, es_principal=es_principal, orden=orden
+    )
+    return await _crear_fila_imagen(conn, producto_id, body, staff)
+
+
 @router.delete("/imagenes/{imagen_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def eliminar_imagen(
     imagen_id: UUID,
@@ -595,6 +633,7 @@ async def eliminar_imagen(
             accion="ELIMINAR",
             datos_antes={"producto_id": str(fila["producto_id"]), "url": fila["url"]},
         )
+    eliminar_si_es_local(fila["url"])
 
 
 # ---------------------------------------------------------------------

@@ -26,6 +26,7 @@ export class ProductoDetallePage implements OnInit {
 
   protected readonly tallaSeleccionada = signal<string | null>(null);
   protected readonly colorSeleccionado = signal<string | null>(null);
+  protected readonly colorElegidoManualmente = signal(false);
   protected readonly agregadoAReserva = signal(false);
   protected readonly agregadoAlCarrito = signal(false);
   protected readonly errorCarrito = signal<string | null>(null);
@@ -38,6 +39,14 @@ export class ProductoDetallePage implements OnInit {
     return [...new Set(producto.variantes.map((v) => v.talla))];
   });
 
+  protected readonly colorDeCatalogo = computed<string | null>(() => {
+    const producto = this.producto();
+    if (!producto?.imagen_url) return null;
+    return (
+      producto.variantes.find((v) => v.imagen_url === producto.imagen_url)?.color ?? null
+    );
+  });
+
   protected readonly colores = computed(() => {
     const producto = this.producto();
     if (!producto) return [];
@@ -45,7 +54,13 @@ export class ProductoDetallePage implements OnInit {
     for (const variante of producto.variantes) {
       if (!vistos.has(variante.color)) vistos.set(variante.color, variante.codigo_hex);
     }
-    return [...vistos.entries()].map(([nombre, codigoHex]) => ({ nombre, codigoHex }));
+    const lista = [...vistos.entries()].map(([nombre, codigoHex]) => ({ nombre, codigoHex }));
+    const colorCatalogo = this.colorDeCatalogo();
+    if (!colorCatalogo) return lista;
+    const indice = lista.findIndex((c) => c.nombre === colorCatalogo);
+    if (indice <= 0) return lista;
+    const [principal] = lista.splice(indice, 1);
+    return [principal, ...lista];
   });
 
   protected readonly varianteSeleccionada = computed<VarianteOut | null>(() => {
@@ -56,6 +71,17 @@ export class ProductoDetallePage implements OnInit {
         (v) => v.talla === this.tallaSeleccionada() && v.color === this.colorSeleccionado(),
       ) ?? null
     );
+  });
+
+  protected readonly imagenActual = computed<string | null>(() => {
+    const producto = this.producto();
+    if (!producto) return null;
+    if (!this.colorElegidoManualmente()) return producto.imagen_url;
+    const color = this.colorSeleccionado();
+    const variantePorColor = producto.variantes.find(
+      (v) => v.color === color && v.imagen_url,
+    );
+    return variantePorColor?.imagen_url ?? producto.imagen_url;
   });
 
   ngOnInit(): void {
@@ -70,10 +96,14 @@ export class ProductoDetallePage implements OnInit {
     this.catalogo.obtenerProducto(slug).subscribe({
       next: (producto) => {
         this.producto.set(producto);
-        const primeraVariante = producto.variantes[0];
-        if (primeraVariante) {
-          this.tallaSeleccionada.set(primeraVariante.talla);
-          this.colorSeleccionado.set(primeraVariante.color);
+        const colorCatalogo = producto.variantes.find(
+          (v) => v.imagen_url === producto.imagen_url,
+        )?.color;
+        const varianteInicial =
+          producto.variantes.find((v) => v.color === colorCatalogo) ?? producto.variantes[0];
+        if (varianteInicial) {
+          this.tallaSeleccionada.set(varianteInicial.talla);
+          this.colorSeleccionado.set(varianteInicial.color);
         }
         this.cargando.set(false);
       },
@@ -90,6 +120,7 @@ export class ProductoDetallePage implements OnInit {
 
   protected elegirColor(color: string): void {
     this.colorSeleccionado.set(color);
+    this.colorElegidoManualmente.set(true);
   }
 
   protected agregarAReserva(): void {
@@ -106,7 +137,7 @@ export class ProductoDetallePage implements OnInit {
       color: variante.color,
       codigoHex: variante.codigo_hex,
       precio: variante.precio,
-      imagenUrl: producto.imagen_url,
+      imagenUrl: this.imagenActual(),
       cantidad: 1,
     });
     this.agregadoAReserva.set(true);

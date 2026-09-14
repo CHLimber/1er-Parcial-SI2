@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 
 import { AuthService } from '../../core/auth/auth.service';
@@ -91,12 +91,15 @@ export class PanelCatalogoPage implements OnInit {
   });
 
   protected readonly formImagen = this.fb.nonNullable.group({
-    url: ['', [Validators.required]],
+    url: [''],
     uso: ['CATALOGO'],
     formato: ['JPG'],
     es_principal: [false],
     orden: [0],
   });
+
+  @ViewChild('inputArchivoImagen') private inputArchivoImagen?: ElementRef<HTMLInputElement>;
+  protected archivoImagen: File | null = null;
 
   protected readonly formCategoria = this.fb.nonNullable.group({
     nombre: ['', [Validators.required, Validators.maxLength(80)]],
@@ -345,36 +348,55 @@ export class PanelCatalogoPage implements OnInit {
   //  IMAGENES
   // ------------------------------------------------------------------
 
+  protected seleccionarArchivoImagen(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    this.archivoImagen = input.files?.[0] ?? null;
+  }
+
   protected agregarImagen(): void {
     const detalle = this.ficha();
-    if (!detalle || this.formImagen.invalid) {
-      this.formImagen.markAllAsTouched();
+    if (!detalle) return;
+
+    const crudo = this.formImagen.getRawValue();
+    const url = crudo.url.trim();
+    if (!this.archivoImagen && !url) {
+      this.errorImagen.set('Elegí un archivo o pegá una URL.');
       return;
     }
 
-    const crudo = this.formImagen.getRawValue();
     this.guardando.set(true);
     this.errorImagen.set(null);
-    this.servicio
-      .agregarImagen(detalle.id, {
-        url: crudo.url.trim(),
-        uso: crudo.uso,
-        formato: crudo.formato || null,
-        color_id: null,
-        es_principal: crudo.es_principal,
-        orden: Number(crudo.orden),
-      })
-      .subscribe({
-        next: () => {
-          this.guardando.set(false);
-          this.formImagen.reset({ url: '', uso: 'CATALOGO', formato: 'JPG', es_principal: false, orden: 0 });
-          this.refrescarFicha();
-        },
-        error: (e: HttpErrorResponse) => {
-          this.guardando.set(false);
-          this.errorImagen.set(interpretarError(e));
-        },
-      });
+
+    const peticion = this.archivoImagen
+      ? this.servicio.subirImagen(detalle.id, this.archivoImagen, {
+          uso: crudo.uso,
+          esPrincipal: crudo.es_principal,
+          orden: Number(crudo.orden),
+        })
+      : this.servicio.agregarImagen(detalle.id, {
+          url,
+          uso: crudo.uso,
+          formato: crudo.formato || null,
+          color_id: null,
+          es_principal: crudo.es_principal,
+          orden: Number(crudo.orden),
+        });
+
+    peticion.subscribe({
+      next: () => {
+        this.guardando.set(false);
+        this.archivoImagen = null;
+        if (this.inputArchivoImagen) {
+          this.inputArchivoImagen.nativeElement.value = '';
+        }
+        this.formImagen.reset({ url: '', uso: 'CATALOGO', formato: 'JPG', es_principal: false, orden: 0 });
+        this.refrescarFicha();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.guardando.set(false);
+        this.errorImagen.set(interpretarError(e));
+      },
+    });
   }
 
   protected eliminarImagen(imagenId: string): void {

@@ -71,6 +71,19 @@ export class CatalogoAdminService {
     return this.http.post<ImagenOut>(`${this.base}/productos/${productoId}/imagenes`, datos);
   }
 
+  subirImagen(
+    productoId: string,
+    archivo: File,
+    opciones: { uso: string; esPrincipal: boolean; orden: number },
+  ): Observable<ImagenOut> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+    formData.append('uso', opciones.uso);
+    formData.append('es_principal', String(opciones.esPrincipal));
+    formData.append('orden', String(opciones.orden));
+    return this.http.post<ImagenOut>(`${this.base}/productos/${productoId}/imagenes/subir`, formData);
+  }
+
   eliminarImagen(imagenId: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/imagenes/${imagenId}`);
   }

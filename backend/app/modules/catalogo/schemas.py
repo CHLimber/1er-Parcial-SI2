@@ -67,6 +67,7 @@ class VarianteOut(BaseModel):
     color: str
     codigo_hex: str
     precio: float
+    imagen_url: str | None
     disponibilidad: list[DisponibilidadSucursalOut]
 
 

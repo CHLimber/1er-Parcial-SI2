@@ -457,7 +457,18 @@
             @if (puedeGestionar) {
               <form class="formulario" [formGroup]="formImagen" (ngSubmit)="agregarImagen()" novalidate>
                 <div class="campo">
-                  <label for="url">URL de la imagen</label>
+                  <label for="archivo">Subir desde tu computadora (JPG/PNG, máx. 5 MB)</label>
+                  <input
+                    id="archivo"
+                    #inputArchivoImagen
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    (change)="seleccionarArchivoImagen($event)"
+                  />
+                </div>
+
+                <div class="campo">
+                  <label for="url">…o pegá una URL ya publicada</label>
                   <input id="url" type="url" formControlName="url" placeholder="https://…" />
                 </div>
 

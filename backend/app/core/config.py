@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""
 
+    # CU10 - subida de imagenes de catalogo (app/core/media.py). media_dir es relativo al
+    # WORKDIR del contenedor (/app), montado como volumen en docker-compose para persistir
+    # entre rebuilds; en Railway hace falta un Volume propio en la misma ruta.
+    media_dir: str = "media"
+    public_base_url: str = "http://localhost:8081"
+
     @property
     def cors_origins(self) -> list[str]:
         texto = _sin_comillas(self.cors_origins_raw.strip())

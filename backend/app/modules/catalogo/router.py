@@ -137,10 +137,25 @@ async def obtener_producto(
         """
         SELECT pv.id, pv.sku, t.codigo AS talla, t.orden AS talla_orden,
                c.nombre AS color, c.codigo_hex,
-               COALESCE(pv.precio_oferta, pv.precio, $2) AS precio
+               COALESCE(pv.precio_oferta, pv.precio, $2) AS precio,
+               COALESCE(img_color.url, img_general.url) AS imagen_url
         FROM producto_variante pv
         JOIN talla t ON t.id = pv.talla_id
         JOIN color c ON c.id = pv.color_id
+        LEFT JOIN LATERAL (
+            SELECT url FROM producto_imagen pi
+            WHERE pi.producto_id = pv.producto_id AND pi.uso = 'CATALOGO'
+              AND pi.color_id = pv.color_id
+            ORDER BY pi.es_principal DESC, pi.orden
+            LIMIT 1
+        ) img_color ON true
+        LEFT JOIN LATERAL (
+            SELECT url FROM producto_imagen pi
+            WHERE pi.producto_id = pv.producto_id AND pi.uso = 'CATALOGO'
+              AND pi.color_id IS NULL
+            ORDER BY pi.es_principal DESC, pi.orden
+            LIMIT 1
+        ) img_general ON true
         WHERE pv.producto_id = $1 AND pv.activa
         ORDER BY t.orden, c.nombre
         """,
@@ -174,6 +189,7 @@ async def obtener_producto(
                 color=variante["color"],
                 codigo_hex=variante["codigo_hex"],
                 precio=float(variante["precio"]),
+                imagen_url=variante["imagen_url"],
                 disponibilidad=[DisponibilidadSucursalOut(**fila) for fila in disp_filas],
             )
         )
