@@ -1,3 +1,4 @@
+import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -42,6 +43,15 @@ app.add_middleware(
 # CU10: imagenes subidas por el panel de catalogo (ver app/core/media.py). Se crea la carpeta
 # porque StaticFiles no monta un directorio inexistente.
 Path(settings.media_dir).mkdir(parents=True, exist_ok=True)
+
+# Imagenes "oficiales" versionadas en el repo (variantes de color generadas con IA, ver
+# PENDIENTES.txt 2.9): se copian a MEDIA_DIR en cada arranque para que sobrevivan a un
+# `docker compose down -v` (MEDIA_DIR es un volumen, media_semilla no). db/03_datos_iniciales.sql
+# referencia estos archivos como http://localhost:8081/media/variantes/<archivo>.jpg.
+_media_semilla = Path(__file__).resolve().parent / "media_semilla"
+if _media_semilla.exists():
+    shutil.copytree(_media_semilla, settings.media_dir, dirs_exist_ok=True)
+
 app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
 
 app.include_router(usuarios_router)

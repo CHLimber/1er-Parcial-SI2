@@ -31,6 +31,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
   bool _cargando = true;
   bool _agregando = false;
   bool _colorElegidoManualmente = false;
+  GaleriaImagenOut? _previsualizacionGaleria;
   String? _error;
 
   @override
@@ -65,8 +66,26 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
   /// elige, la propia de la variante (si tiene) o la de catalogo como
   /// respaldo. Espejo de `imagenActual()` en la web.
   String? _imagenActual(ProductoDetalleOut producto) {
+    final preview = _previsualizacionGaleria;
+    if (preview != null) return preview.url;
     if (!_colorElegidoManualmente) return producto.imagenUrl;
     return _variante?.imagenUrl ?? producto.imagenUrl;
+  }
+
+  /// Colores con foto de catalogo (`galeria`) que todavia no tienen una
+  /// variante comprable -- solo sirven de referencia visual, sin stock.
+  /// Espejo de `coloresGaleria` en `producto-detalle.page.ts`.
+  List<GaleriaImagenOut> _coloresGaleria(ProductoDetalleOut producto) {
+    final colorsConVariante = producto.variantes.map((v) => v.color).toSet();
+    final vistos = <String, GaleriaImagenOut>{};
+    for (final item in producto.galeria) {
+      final color = item.color;
+      if (color == null || colorsConVariante.contains(color) || vistos.containsKey(color)) {
+        continue;
+      }
+      vistos[color] = item;
+    }
+    return vistos.values.toList();
   }
 
   Future<void> _cargar() async {
@@ -87,6 +106,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
                 orElse: () => producto.variantes.first,
               );
         _colorElegidoManualmente = false;
+        _previsualizacionGaleria = null;
         _cargando = false;
       });
     } catch (error) {
@@ -193,6 +213,16 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
                       runSpacing: 8,
                       children: _ordenarVariantes(producto).map(_chipVariante).toList(),
                     ),
+                  if (_coloresGaleria(producto).isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    const EtiquetaDato('Mas colores (solo referencia, sin stock)'),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _coloresGaleria(producto).map(_chipGaleria).toList(),
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   if (_variante != null) _disponibilidad(_variante!),
                   const SizedBox(height: 26),
@@ -234,6 +264,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
       onSelected: (_) => setState(() {
         _variante = variante;
         _colorElegidoManualmente = true;
+        _previsualizacionGaleria = null;
       }),
       selectedColor: Paleta.flame.withValues(alpha: 0.18),
       avatar: CircleAvatar(radius: 8, backgroundColor: colorDesdeHex(variante.codigoHex)),
@@ -243,6 +274,24 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
           decoration: agotada ? TextDecoration.lineThrough : null,
           fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w500,
         ),
+      ),
+    );
+  }
+
+  Widget _chipGaleria(GaleriaImagenOut item) {
+    final seleccionada = _previsualizacionGaleria?.color == item.color;
+
+    return ChoiceChip(
+      selected: seleccionada,
+      onSelected: (_) => setState(() => _previsualizacionGaleria = item),
+      selectedColor: Paleta.flame.withValues(alpha: 0.18),
+      avatar: CircleAvatar(
+        radius: 8,
+        backgroundColor: item.codigoHex != null ? colorDesdeHex(item.codigoHex!) : Paleta.inkSuave,
+      ),
+      label: Text(
+        item.color ?? '',
+        style: TextStyle(fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w500),
       ),
     );
   }

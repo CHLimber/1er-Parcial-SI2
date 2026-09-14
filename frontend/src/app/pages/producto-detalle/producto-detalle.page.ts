@@ -3,7 +3,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { CarritoService } from '../../core/carrito/carrito.service';
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
-import { ProductoDetalleOut, VarianteOut } from '../../core/catalogo/catalogo.models';
+import { GaleriaImagenOut, ProductoDetalleOut, VarianteOut } from '../../core/catalogo/catalogo.models';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
 
 @Component({
@@ -27,6 +27,7 @@ export class ProductoDetallePage implements OnInit {
   protected readonly tallaSeleccionada = signal<string | null>(null);
   protected readonly colorSeleccionado = signal<string | null>(null);
   protected readonly colorElegidoManualmente = signal(false);
+  protected readonly previewGaleria = signal<GaleriaImagenOut | null>(null);
   protected readonly agregadoAReserva = signal(false);
   protected readonly agregadoAlCarrito = signal(false);
   protected readonly errorCarrito = signal<string | null>(null);
@@ -63,6 +64,18 @@ export class ProductoDetallePage implements OnInit {
     return [principal, ...lista];
   });
 
+  protected readonly coloresGaleria = computed(() => {
+    const producto = this.producto();
+    if (!producto) return [];
+    const colorsConVariante = new Set(producto.variantes.map((v) => v.color));
+    const vistos = new Map<string, GaleriaImagenOut>();
+    for (const item of producto.galeria) {
+      if (!item.color || colorsConVariante.has(item.color) || vistos.has(item.color)) continue;
+      vistos.set(item.color, item);
+    }
+    return [...vistos.values()];
+  });
+
   protected readonly varianteSeleccionada = computed<VarianteOut | null>(() => {
     const producto = this.producto();
     if (!producto) return null;
@@ -76,6 +89,8 @@ export class ProductoDetallePage implements OnInit {
   protected readonly imagenActual = computed<string | null>(() => {
     const producto = this.producto();
     if (!producto) return null;
+    const preview = this.previewGaleria();
+    if (preview) return preview.url;
     if (!this.colorElegidoManualmente()) return producto.imagen_url;
     const color = this.colorSeleccionado();
     const variantePorColor = producto.variantes.find(
@@ -95,6 +110,7 @@ export class ProductoDetallePage implements OnInit {
     }
     this.catalogo.obtenerProducto(slug).subscribe({
       next: (producto) => {
+        this.previewGaleria.set(null);
         this.producto.set(producto);
         const colorCatalogo = producto.variantes.find(
           (v) => v.imagen_url === producto.imagen_url,
@@ -119,8 +135,13 @@ export class ProductoDetallePage implements OnInit {
   }
 
   protected elegirColor(color: string): void {
+    this.previewGaleria.set(null);
     this.colorSeleccionado.set(color);
     this.colorElegidoManualmente.set(true);
+  }
+
+  protected previsualizarColorGaleria(item: GaleriaImagenOut): void {
+    this.previewGaleria.set(item);
   }
 
   protected agregarAReserva(): void {

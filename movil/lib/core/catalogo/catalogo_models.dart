@@ -122,6 +122,20 @@ class VarianteOut {
       );
 }
 
+class GaleriaImagenOut {
+  GaleriaImagenOut({required this.color, required this.codigoHex, required this.url});
+
+  final String? color;
+  final String? codigoHex;
+  final String url;
+
+  factory GaleriaImagenOut.desdeJson(Map<String, dynamic> j) => GaleriaImagenOut(
+        color: j['color'] as String?,
+        codigoHex: j['codigo_hex'] as String?,
+        url: resolverUrlMedia(j['url'] as String)!,
+      );
+}
+
 class ProductoDetalleOut extends ProductoOut {
   ProductoDetalleOut({
     required super.id,
@@ -140,10 +154,12 @@ class ProductoDetalleOut extends ProductoOut {
     required super.agotado,
     required this.material,
     required this.variantes,
+    required this.galeria,
   });
 
   final String? material;
   final List<VarianteOut> variantes;
+  final List<GaleriaImagenOut> galeria;
 
   factory ProductoDetalleOut.desdeJson(Map<String, dynamic> j) {
     final base = ProductoOut.desdeJson(j);
@@ -164,6 +180,7 @@ class ProductoDetalleOut extends ProductoOut {
       agotado: base.agotado,
       material: j['material'] as String?,
       variantes: comoLista(j['variantes']).map(VarianteOut.desdeJson).toList(),
+      galeria: comoLista(j['galeria']).map(GaleriaImagenOut.desdeJson).toList(),
     );
   }
 }

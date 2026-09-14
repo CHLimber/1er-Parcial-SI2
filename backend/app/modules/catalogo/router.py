@@ -7,6 +7,7 @@ from app.modules.catalogo.schemas import (
     ColorOut,
     DisponibilidadSucursalOut,
     FiltrosOut,
+    GaleriaImagenOut,
     ProductoDetalleOut,
     ProductoOut,
     TallaOut,
@@ -196,6 +197,18 @@ async def obtener_producto(
 
     tallas = sorted({v["talla"] for v in variantes})
 
+    galeria = await conn.fetch(
+        """
+        SELECT c.nombre AS color, c.codigo_hex, pi.url
+        FROM producto_imagen pi
+        LEFT JOIN color c ON c.id = pi.color_id
+        WHERE pi.producto_id = $1 AND pi.uso = 'CATALOGO' AND pi.color_id IS NOT NULL
+        ORDER BY c.nombre, pi.es_principal DESC, pi.orden
+        """,
+        producto["id"],
+    )
+    galeria_out = [GaleriaImagenOut(**dict(fila)) for fila in galeria]
+
     return ProductoDetalleOut(
         id=producto["id"],
         codigo=producto["codigo"],
@@ -213,4 +226,5 @@ async def obtener_producto(
         tallas=tallas,
         agotado=total_disponible <= 0,
         variantes=variantes_out,
+        galeria=galeria_out,
     )

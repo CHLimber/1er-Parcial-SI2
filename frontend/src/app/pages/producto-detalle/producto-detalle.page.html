@@ -89,6 +89,26 @@
             </div>
           }
 
+          @if (coloresGaleria().length > 0) {
+            <div class="selector">
+              <span class="selector__etiqueta">Más colores (solo referencia, sin stock)</span>
+              <div class="selector__opciones">
+                @for (item of coloresGaleria(); track item.color) {
+                  <button
+                    type="button"
+                    class="selector__color"
+                    [class.selector__color--activo]="previewGaleria()?.color === item.color"
+                    [style.background]="item.codigo_hex"
+                    [title]="item.color"
+                    (click)="previsualizarColorGaleria(item)"
+                  >
+                    <span class="visualmente-oculto">{{ item.color }}</span>
+                  </button>
+                }
+              </div>
+            </div>
+          }
+
           <div class="reserva-accion">
             <div class="reserva-accion__botones">
               <button

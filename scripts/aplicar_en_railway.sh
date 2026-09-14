@@ -3,6 +3,10 @@
 # Postgres externa -- pensado para el Postgres que provisiona Railway, que no ejecuta estos
 # .sql automaticamente como si hace docker-entrypoint-initdb.d en desarrollo local.
 #
+# Vive en scripts/ y no en db/ a proposito: docker-compose monta db/ entero en
+# docker-entrypoint-initdb.d, y Postgres corre ahi cualquier .sh que encuentre -- este script
+# rompia el primer arranque local porque se ejecuta sin argumentos (PENDIENTES.txt 3.2).
+#
 # Uso:
 #   ./aplicar_en_railway.sh "postgresql://user:pass@host:puerto/db"          # con datos demo
 #   ./aplicar_en_railway.sh "postgresql://user:pass@host:puerto/db" --sin-seed  # sin 03_datos_iniciales.sql
@@ -16,7 +20,7 @@ set -euo pipefail
 
 DSN="${1:?Uso: $0 <DATABASE_PUBLIC_URL> [--sin-seed]}"
 SIN_SEED="${2:-}"
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../db" && pwd)"
 
 ARCHIVOS=(01_schema.sql 02_logica.sql)
 if [ "$SIN_SEED" != "--sin-seed" ]; then

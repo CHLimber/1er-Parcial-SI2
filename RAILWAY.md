@@ -19,8 +19,11 @@ Los archivos que ya quedaron preparados para esto:
 - `frontend/railway.toml` / `frontend/.dockerignore`.
 - `frontend/src/environments/environment.ts` -- `apiUrl` es un placeholder `__API_URL__` que el
   Dockerfile reemplaza en build time con el ARG `API_URL`.
-- `db/aplicar_en_railway.sh` -- aplica `01_schema.sql`, `02_logica.sql` y (opcional)
+- `scripts/aplicar_en_railway.sh` -- aplica `01_schema.sql`, `02_logica.sql` y (opcional)
   `03_datos_iniciales.sql` contra una base Postgres externa, sin necesitar `psql` instalado.
+  Vive fuera de `db/` a proposito: docker-compose monta `db/` entero en
+  `docker-entrypoint-initdb.d` y Postgres ejecuta ahi cualquier `.sh` que encuentre, lo que
+  rompia el primer arranque local (PENDIENTES.txt 3.2).
 
 ## 1. Crear el proyecto y el Postgres
 
@@ -32,7 +35,7 @@ Los archivos que ya quedaron preparados para esto:
 3. Aplicá el esquema desde tu maquina (necesita Docker, no necesita `psql`):
 
    ```bash
-   cd fashionstore/db
+   cd fashionstore/scripts
    ./aplicar_en_railway.sh "postgresql://...la_DATABASE_PUBLIC_URL..."
    ```
 

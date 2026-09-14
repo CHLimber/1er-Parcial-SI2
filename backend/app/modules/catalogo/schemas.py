@@ -71,6 +71,13 @@ class VarianteOut(BaseModel):
     disponibilidad: list[DisponibilidadSucursalOut]
 
 
+class GaleriaImagenOut(BaseModel):
+    color: str | None
+    codigo_hex: str | None
+    url: str
+
+
 class ProductoDetalleOut(ProductoOut):
     material: str | None
     variantes: list[VarianteOut]
+    galeria: list[GaleriaImagenOut]

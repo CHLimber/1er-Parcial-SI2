@@ -153,31 +153,143 @@
           -- si se corre `docker compose down -v` se pierde y hay que rehacerlo
           (la lista de que color le toca a cada producto quedo en el historial
           del chat, no en un archivo del repo).
-      QUEDA PENDIENTE (14 productos sin color_id en su foto principal, la
-      ficha les sigue mostrando la foto generica y ninguna variante de color
-      coincide con ella o hay ambiguedad entre dos tonos parecidos):
-        - Sin match real, hace falta foto nueva por color (o cambiar que
-          colores tiene el producto): blazer-entallado (foto blanca; variantes
-          Azul/Beige/Negro), bota-cania-alta-de-gamuza (foto marron oscuro;
-          Camel/Gris/Negro), botineta-de-cuero-con-taco (foto marfil;
-          Camel/Negro), campera-puffer-impermeable (foto blanca;
-          Negro/Rojo/Verde Oliva), falda-larga-de-gasa (foto marron;
-          Beige/Blanco/Rosa Palo), falda-midi-plisada (foto marfil;
-          Camel/Negro/Vino), sandalia-con-tiras-y-taco (foto marfil/champan;
-          Camel/Negro/Rojo), vestido-de-punto-manga-larga (foto a rayas
-          rosa/celeste; Camel/Gris/Negro), vestido-floral-manga-corta (foto
-          amarilla; Beige/Negro/Rojo), vestido-largo-estampado (foto
-          azul/crema estampada; unica variante Beige, no corresponde).
-        - Ambiguos, falta decidir a que color de variante corresponde la foto
-          ya subida antes de tocar la base: blusa-de-seda-manga-larga (marfil:
-          ¿Beige o Blanco?), sombrero-de-ala-ancha (paja natural: ¿Beige o
-          Camel?), vestido-camisero-de-lino (marfil: ¿Beige o Blanco?),
-          vestido-midi-plisado (marron chocolate: no es Camel ni calza bien
-          con Vino).
-        - Ademas, variantes de color generadas con IA (CATALOGO_DEMO.txt punto
-          1 y 4.5) siguen pendientes para los productos de esta lista que son
-          destacados y no son estampados (BOT-001, FAL-001, BLU-002 -- PAN-002,
-          ABR-001, SAN-001, ZAP-003 y ACC-002 ya quedaron resueltos arriba).
+      [2026-09-14] Variantes de color generadas con IA cargadas para 12 de los
+      productos de la lista de abajo (recortadas a mano de collages 2x2 en
+      backend/3x4/variantes/ y subidas con POST .../imagenes/subir, mismo
+      mecanismo que el punto anterior):
+        - Completos (foto real por cada color del producto): blazer-entallado
+          (Azul/Beige/Negro), falda-lapiz-de-panio (Gris/Vino, Negro ya tenia
+          foto), pantalon-de-vestir-sastrero (Azul/Gris, Negro ya tenia foto),
+          jean-wide-leg (Azul/Negro, Blanco ya tenia foto).
+        - Parciales (mejoraron pero falta 1 color, sigue con foto de stock):
+          bota-cania-alta-de-gamuza (Negro/Camel resueltos, falta Gris),
+          campera-puffer-impermeable (Negro/Verde Oliva resueltos, falta Rojo),
+          falda-midi-plisada (Negro/Vino resueltos, falta Camel),
+          falda-larga-de-gasa (Beige resuelto, faltan Blanco y Rosa Palo),
+          campera-de-jean-oversize (Negro resuelto, falta Gris),
+          cardigan-de-punto-grueso (Gris resuelto, falta Camel),
+          pantalon-palazzo-de-lino (Verde Oliva resuelto, falta Blanco),
+          legging-termico (Gris resuelto vía "azul pizarra"; Azul se dejo con
+          la foto de stock porque no habia un recorte que le quedara mejor).
+        - Sin tocar a proposito: borcego-negro-con-cordones y
+          vestido-negro-de-fiesta (unico color, ya tenian foto real);
+          falda-de-jean-corta (ningun recorte de esa tanda -- lavados de jean
+          y un verde oliva -- correspondia a sus colores reales Azul/Blanco/
+          Negro); vestido-largo-estampado (unica variante Beige y es un
+          estampado, sigue sin corresponder ninguna reinterpretacion de color,
+          ver nota de abajo).
+        Los 17 collages originales (los 16 recortados + un duplicado) quedaron
+        guardados sin borrar en backend/3x4/variantes/_collages_originales/
+        por si hace falta revisarlos o recortar el color que falto en cada
+        parcial.
+      [2026-09-14, mas tarde] Estas 20 imagenes se volvieron OFICIALES y ya
+      estan en db/03_datos_iniciales.sql (sobreviven a `docker compose down -v`,
+      probado de punta a punta):
+        - Los 20 archivos quedaron versionados en
+          backend/app/media_semilla/variantes/ (nombrados
+          <slug-producto>-<color>.jpg).
+        - app/main.py copia esa carpeta a MEDIA_DIR en cada arranque del
+          backend (el volumen `backend_media` es efimero, media_semilla no),
+          asi que los archivos existen en disco antes de que Postgres inserte
+          las filas que apuntan a ellos.
+        - Las 20 filas de producto_imagen en la seccion "IMAGENES POR COLOR"
+          de db/03_datos_iniciales.sql se actualizaron para apuntar a
+          http://localhost:8081/media/variantes/<archivo>.jpg en vez de a los
+          istockphoto hotlinkeados (que siguen ahi para los colores que no
+          tienen recorte, ver la lista de parciales arriba).
+        - OJO Railway: la URL sigue hardcodeada a localhost:8081 porque
+          producto_imagen.url tiene que ser absoluta y PUBLIC_BASE_URL cambia
+          por entorno (igual que las fotos reales de mas arriba). En Railway
+          estos 20 colores no van a cargar hasta subir los mismos archivos de
+          media_semilla/variantes/ por el panel de CU10 contra esa base, o
+          hasta armar una version del seed parametrizada por entorno.
+        - ERROR cometido al probar esto con `docker compose down -v`: se
+          penso que solo se perdia el color_id de la fila es_principal de 26
+          productos (parrafo de arriba, [2026-09-13 mas tarde]), pero en
+          realidad `down -v` borra el volumen Docker `backend_media` entero
+          -- ahi vivian los 40 ARCHIVOS de las fotos reales de catalogo
+          subidas por CU10 (no solo su color_id). Las 40 fotos principales
+          quedaron rotas (volvieron a los hotlinks/picsum del seed viejo)
+          hasta que se detecto y se corrigio en la misma sesion, ver
+          [2026-09-14, mas tarde aun] debajo. El color_id de esos 26
+          productos si se perdio de verdad y sigue sin recuperar (esa lista
+          no quedo en ningun archivo del repo).
+      [2026-09-14, mas tarde aun] Recuperadas y hechas OFICIALES las 40 fotos
+      de catalogo (es_principal) que se rompieron en el punto anterior:
+        - Los 40 archivos originales seguian en backend/3x4/<nombre>.jpg (la
+          fuente de la que se habian subido por CU10 la primera vez) y se
+          copiaron a backend/app/media_semilla/catalogo/<slug>.jpg.
+        - db/03_datos_iniciales.sql reemplazo el bloque entero de 40 INSERT
+          con URLs hotlinkeadas por un solo INSERT ... SELECT que arma
+          http://localhost:8081/media/catalogo/<slug>.jpg para cada producto
+          -- mas corto y ya no depende de que ningun link externo siga vivo.
+        - Probado con `docker compose down -v && up --build` completo: 40 de
+          40 fotos principales sirviendo en 200 desde /media/catalogo/, y las
+          20 variantes de color del punto anterior tambien sobreviven juntas.
+      [2026-09-14, ya para terminar] color_id de la foto principal para los 40
+      productos, hecho de nuevo y esta vez SI en el seed (la version de
+      2026-09-13 se habia hecho a mano contra la base y se perdio con el
+      down -v de este mismo dia). db/03_datos_iniciales.sql arma esta vez el
+      color_id con un JOIN contra una lista fija de (slug, color) en el mismo
+      INSERT que carga las 40 fotos, asi que sobrevive a cualquier reseed.
+      Se revisaron las 40 fotos una por una contra los colores reales de cada
+      producto (mismo criterio del punto anterior: foto vs. hex de la
+      variante). Resultado -- igual a la cuenta que ya habia antes de
+      perderse, 26 con match y 14 sin (buena señal de que el criterio es
+      consistente):
+        26 CON color asignado: tapado-de-lana-largo=Camel,
+        campera-de-jean-oversize=Azul, cardigan-de-punto-grueso=Beige,
+        chalina-de-alpaca=Gris, cartera-de-cuero-bandolera=Camel,
+        sombrero-de-ala-ancha=Beige, cinturon-de-cuero-hebilla-dorada=Negro,
+        gorro-y-guantes-de-lana=Gris, lentes-de-sol-redondos=Negro,
+        blusa-de-lino-manga-corta=Blanco, top-de-tirantes-de-algodon=Negro,
+        blusa-cropped-con-volados=Blanco, borcego-negro-con-cordones=Negro,
+        falda-de-jean-corta=Azul, falda-lapiz-de-panio=Negro,
+        jean-tiro-alto-skinny=Azul, pantalon-palazzo-de-lino=Beige,
+        pantalon-de-vestir-sastrero=Negro, jean-wide-leg=Blanco,
+        legging-termico=Negro, sandalia-de-plataforma=Blanco,
+        sandalia-baja-de-cuero=Camel, vestido-negro-de-fiesta=Negro,
+        zapato-stiletto-de-charol=Negro, ballerina-de-cuero=Beige,
+        zapatilla-urbana-blanca=Blanco.
+        14 SIN color asignado (foto blanca/marfil/estampada/multicolor, o
+        color ambiguo entre dos tonos parecidos -- se prefirio dejar sin
+        preseleccion antes que forzar un color que no coincide con la foto):
+        blazer-entallado, campera-puffer-impermeable,
+        blusa-de-seda-manga-larga (marfil: Beige o Blanco, ambiguo),
+        camisa-oversize-a-cuadros (a cuadros), botineta-de-cuero-con-taco,
+        bota-cania-alta-de-gamuza, falda-midi-plisada, falda-larga-de-gasa,
+        sandalia-con-tiras-y-taco, vestido-floral-manga-corta (floral),
+        vestido-midi-plisado (marron chocolate, no calza con Camel ni Vino),
+        vestido-de-punto-manga-larga (a rayas), vestido-camisero-de-lino
+        (marfil: Beige o Blanco, ambiguo), vestido-largo-estampado
+        (estampado, unica variante Beige que no corresponde).
+      Probado con `docker compose down -v && up --build` completo: los 26
+      colores preseleccionan la foto de catalogo correcta (verificado en la
+      API para cardigan-de-punto-grueso, jean-wide-leg y
+      pantalon-de-vestir-sastrero), los otros 14 y las 20 variantes de color
+      del punto anterior siguen sin romperse, 150 filas en producto_imagen en
+      total (sin cambios, porque esto solo le puso color_id a filas que ya
+      existian).
+      QUEDA PENDIENTE (cosmetico, no rompe nada): para esos 26 productos
+      quedo una fila redundante en la seccion "IMAGENES POR COLOR" mas abajo
+      -- una foto de stock vieja para el mismo color que ahora ya tiene la
+      foto real. La query del backend ya prioriza es_principal (ORDER BY
+      es_principal DESC antes de tomar la primera fila), asi que no se nota,
+      pero convendria borrar esas 26 filas de stock en algun momento para no
+      dejar basura en el seed.
+
+      QUEDA PENDIENTE (superado por el punto [2026-09-14, ya para terminar]
+      de mas arriba, que ya asigna color_id en el seed para 26 productos y
+      deja la lista actualizada de los 14 sin match -- esta entrada vieja
+      queda solo como historial de por que sombrero-de-ala-ancha y
+      vestido-camisero-de-lino se resolvieron distinto: sombrero-de-ala-ancha
+      se decidio como Beige arriba pese a la ambiguedad Beige/Camel;
+      vestido-camisero-de-lino sigue sin asignar porque la ambiguedad
+      Beige/Blanco no se pudo resolver a simple vista):
+        Variantes de color generadas con IA (CATALOGO_DEMO.txt punto 1 y 4.5)
+        siguen pendientes para los productos de esta lista que son destacados
+        y no son estampados (BOT-001, FAL-001, BLU-002 -- PAN-002, ABR-001,
+        SAN-001, ZAP-003 y ACC-002 ya quedaron resueltos arriba).
 
 -------------------------------------------------------------------------------
  3. DEUDA TECNICA
@@ -189,11 +301,14 @@
       existen y estan asignados, pero no se usan. Al tocar esos modulos hay que
       migrarlos a requiere_permiso(), como ya indica CLAUDE.md.
 
-[3.2] db/aplicar_en_railway.sh rompe el primer arranque local.
+[3.2] [HECHO 2026-09-14] db/aplicar_en_railway.sh rompia el primer arranque local.
       docker-compose monta ./db entero en docker-entrypoint-initdb.d, y Postgres
-      ejecuta ahi tanto los .sql como los .sh: el script de Railway se corre solo
-      en el init y falla. Arreglo: moverlo fuera de db/ (por ejemplo a scripts/)
-      o montar los .sql uno por uno en el compose.
+      ejecutaba ahi tanto los .sql como los .sh: el script de Railway se corria
+      solo en el init y fallaba. Arreglado moviendolo a scripts/aplicar_en_railway.sh
+      (RAILWAY.md actualizado con la ruta nueva); DIR dentro del script ahora
+      apunta a ../db para seguir encontrando los .sql. Probado con
+      `docker compose down -v && up --build`: el contenedor db ya llega a
+      "Healthy" y el backend arranca sin esperar.
 
 [3.3] El backend no tiene tests ni linter configurados.
       No existe backend/tests. El movil si tiene (flutter test, 3 casos) y el

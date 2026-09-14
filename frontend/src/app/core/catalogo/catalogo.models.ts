@@ -76,7 +76,14 @@ export interface VarianteOut {
   disponibilidad: DisponibilidadSucursalOut[];
 }
 
+export interface GaleriaImagenOut {
+  color: string | null;
+  codigo_hex: string | null;
+  url: string;
+}
+
 export interface ProductoDetalleOut extends ProductoOut {
   material: string | null;
   variantes: VarianteOut[];
+  galeria: GaleriaImagenOut[];
 }
