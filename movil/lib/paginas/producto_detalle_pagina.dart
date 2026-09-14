@@ -1,0 +1,298 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../compartido/widgets.dart';
+import '../core/carrito/carrito_service.dart';
+import '../core/catalogo/catalogo_models.dart';
+import '../core/catalogo/catalogo_service.dart';
+import '../core/config.dart';
+import '../core/errores.dart';
+import '../core/reservas/reserva_carrito_service.dart';
+import '../core/reservas/reservas_models.dart';
+import '../core/tema.dart';
+import 'tienda_pagina.dart';
+
+/// CU03 (detalle de prenda) y punto de entrada de CU04 (reservar) y CU05 (comprar).
+///
+/// El stock nunca vive en `producto`: se elige una variante (producto x talla x color),
+/// que es la unidad fisica que se reserva y se vende.
+class ProductoDetallePagina extends StatefulWidget {
+  const ProductoDetallePagina({super.key, required this.slug});
+
+  final String slug;
+
+  @override
+  State<ProductoDetallePagina> createState() => _ProductoDetallePaginaState();
+}
+
+class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
+  ProductoDetalleOut? _producto;
+  VarianteOut? _variante;
+  bool _cargando = true;
+  bool _agregando = false;
+  bool _colorElegidoManualmente = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  /// Color cuya foto de variante coincide con la foto principal del producto
+  /// (la que subio el admin en CU10). Espejo de `colorDeCatalogo` en
+  /// `producto-detalle.page.ts`.
+  String? _colorDeCatalogo(ProductoDetalleOut producto) {
+    if (producto.imagenUrl == null) return null;
+    for (final v in producto.variantes) {
+      if (v.imagenUrl == producto.imagenUrl) return v.color;
+    }
+    return null;
+  }
+
+  /// Reordena las variantes para que el color de catalogo aparezca primero,
+  /// preservando el orden relativo del resto. Espejo del reordenamiento que
+  /// hace `colores()` en la web.
+  List<VarianteOut> _ordenarVariantes(ProductoDetalleOut producto) {
+    final colorCatalogo = _colorDeCatalogo(producto);
+    if (colorCatalogo == null) return producto.variantes;
+    final delCatalogo = producto.variantes.where((v) => v.color == colorCatalogo);
+    final resto = producto.variantes.where((v) => v.color != colorCatalogo);
+    return [...delCatalogo, ...resto];
+  }
+
+  /// Imagen mostrada: la de catalogo mientras no se elija color a mano; si se
+  /// elige, la propia de la variante (si tiene) o la de catalogo como
+  /// respaldo. Espejo de `imagenActual()` en la web.
+  String? _imagenActual(ProductoDetalleOut producto) {
+    if (!_colorElegidoManualmente) return producto.imagenUrl;
+    return _variante?.imagenUrl ?? producto.imagenUrl;
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final producto = await catalogoService.obtenerProducto(widget.slug);
+      if (!mounted) return;
+      setState(() {
+        _producto = producto;
+        final colorCatalogo = _colorDeCatalogo(producto);
+        _variante = producto.variantes.isEmpty
+            ? null
+            : producto.variantes.firstWhere(
+                (v) => v.color == colorCatalogo,
+                orElse: () => producto.variantes.first,
+              );
+        _colorElegidoManualmente = false;
+        _cargando = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = interpretarError(error);
+        _cargando = false;
+      });
+    }
+  }
+
+  void _agregarABolsaDeReserva() {
+    final producto = _producto;
+    final variante = _variante;
+    if (producto == null || variante == null) return;
+
+    context.read<ReservaCarritoService>().agregar(
+          ItemCarritoReserva(
+            varianteId: variante.id,
+            sku: variante.sku,
+            producto: producto.nombre,
+            productoSlug: producto.slug,
+            talla: variante.talla,
+            color: variante.color,
+            codigoHex: variante.codigoHex,
+            precio: variante.precio,
+            imagenUrl: producto.imagenUrl,
+            cantidad: 1,
+          ),
+        );
+    mostrarAviso(context, 'Agregado a tu bolsa de reserva (${variante.talla} · ${variante.color})');
+  }
+
+  Future<void> _agregarAlCarrito() async {
+    final variante = _variante;
+    if (variante == null) return;
+
+    setState(() => _agregando = true);
+    try {
+      await context.read<CarritoService>().agregarItem(variante.id, 1);
+      if (!mounted) return;
+      mostrarAviso(context, 'Agregado al carrito de compra');
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _agregando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final producto = _producto;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(producto?.nombre ?? 'Prenda')),
+      body: VistaAsincrona(
+        cargando: _cargando,
+        error: _error,
+        alReintentar: _cargar,
+        hijo: producto == null
+            ? const EstadoVacio(mensaje: 'No se encontro la prenda.')
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                children: [
+                  AspectRatio(
+                    aspectRatio: 3 / 4,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: ImagenPrenda(url: _imagenActual(producto)),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  EtiquetaDato('${producto.categoria} · ${producto.marca ?? "Sin marca"}'),
+                  const SizedBox(height: 6),
+                  Titular(producto.nombre, tamano: 26, mayusculas: false),
+                  const SizedBox(height: 10),
+                  Text(
+                    formatearPrecio(_variante?.precio ?? producto.precioBase),
+                    style: fuenteDisplay(fontSize: 24, color: Paleta.flameOscuro),
+                  ),
+                  if (producto.descripcion != null) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      producto.descripcion!,
+                      style: const TextStyle(height: 1.5, color: Paleta.inkSuave),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  if (producto.material != null) FilaDato('Material', producto.material!),
+                  if (producto.genero != null) FilaDato('Genero', producto.genero!),
+                  FilaDato('Codigo', producto.codigo),
+                  const SizedBox(height: 22),
+                  const EtiquetaDato('Elige talla y color'),
+                  const SizedBox(height: 10),
+                  if (producto.variantes.isEmpty)
+                    const Text(
+                      'Esta prenda todavia no tiene variantes cargadas.',
+                      style: TextStyle(color: Paleta.inkSuave),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _ordenarVariantes(producto).map(_chipVariante).toList(),
+                    ),
+                  const SizedBox(height: 22),
+                  if (_variante != null) _disponibilidad(_variante!),
+                  const SizedBox(height: 26),
+                  ElevatedButton.icon(
+                    onPressed: (_variante == null || _agregando) ? null : _agregarAlCarrito,
+                    icon: _agregando
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Paleta.blanco),
+                          )
+                        : const Icon(Icons.shopping_bag_outlined),
+                    label: const Text('AGREGAR AL CARRITO'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _variante == null ? null : _agregarABolsaDeReserva,
+                    icon: const Icon(Icons.checkroom_outlined),
+                    label: const Text('RESERVAR PARA PROBAR EN TIENDA'),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Reservar aparta la prenda en el vestidor de la sucursal que elijas; '
+                    'no la descuenta del stock hasta que la compres.',
+                    style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave, height: 1.4),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _chipVariante(VarianteOut variante) {
+    final seleccionada = _variante?.id == variante.id;
+    final agotada = variante.totalDisponible <= 0;
+
+    return ChoiceChip(
+      selected: seleccionada,
+      onSelected: (_) => setState(() {
+        _variante = variante;
+        _colorElegidoManualmente = true;
+      }),
+      selectedColor: Paleta.flame.withValues(alpha: 0.18),
+      avatar: CircleAvatar(radius: 8, backgroundColor: colorDesdeHex(variante.codigoHex)),
+      label: Text(
+        '${variante.talla} · ${variante.color}${agotada ? " (agotada)" : ""}',
+        style: TextStyle(
+          decoration: agotada ? TextDecoration.lineThrough : null,
+          fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _disponibilidad(VarianteOut variante) => TarjetaPanel(
+        hijo: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(child: EtiquetaDato('Disponibilidad por sucursal')),
+                EtiquetaDato(variante.sku),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (variante.disponibilidad.isEmpty)
+              const Text(
+                'Sin existencias en ninguna sucursal.',
+                style: TextStyle(color: Paleta.inkSuave),
+              )
+            else
+              ...variante.disponibilidad.map(
+                (fila) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              fila.sucursal,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            Text(
+                              fila.ciudad,
+                              style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                            ),
+                          ],
+                        ),
+                      ),
+                      BadgeEstado(
+                        '${fila.disponible} · ${fila.situacion}',
+                        color: fila.disponible > 0 ? Paleta.verde : Paleta.rojo,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+}

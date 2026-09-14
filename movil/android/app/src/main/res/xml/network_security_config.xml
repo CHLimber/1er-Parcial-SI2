@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  El backend de desarrollo corre en HTTP plano (10.0.2.2:8081 desde el emulador de
+  Android; ver docker-compose.yml). Android 9+ bloquea el trafico sin TLS salvo que el
+  host se declare aca. Para probar contra un telefono fisico hay que agregar la IP de la
+  maquina en la red local y pasarla al compilar con la variable API_URL (ver README).
+  En produccion la API va por HTTPS y nada de esto aplica.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
