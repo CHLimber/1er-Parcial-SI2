@@ -1,0 +1,250 @@
+===============================================================================
+ FASHIONSTORE - PENDIENTES
+ Relevado el 2026-09-13 sobre el estado real del repo y de los dos despliegues
+ (Docker local y Railway). Cada punto dice que falta, donde, y como se resuelve.
+===============================================================================
+
+-------------------------------------------------------------------------------
+ 1. BLOQUEANTE EN LA NUBE (Railway)
+-------------------------------------------------------------------------------
+
+[1.1] La matriz de permisos de CU13 esta vacia en la base de Railway.
+      ESTADO   : diagnosticado, arreglo escrito y validado, FALTA APLICARLO.
+      SINTOMA  : el login funciona y el catalogo carga, pero todo CU09-CU13
+                 responde 403 "Tu rol no tiene permiso para esta operacion",
+                 incluso con admin@fashionstore.bo.
+      EVIDENCIA: POST /auth/login devuelve rol "ADMIN" con permisos: []
+                 403 en /admin/usuarios, /admin/roles, /admin/permisos,
+                 /recepciones, /proveedores, /admin/sucursales.
+      CAUSA    : las tablas permiso / rol_permiso quedaron sin poblar
+                 (03_datos_iniciales.sql aplicado a medias).
+      AFECTA   : la web y la app movil por igual; la API autoriza por codigo de
+                 permiso, asi que ningun rol puede hacer gestion.
+      ARREGLO  : db/reparaciones/permisos_cu13.sql (idempotente, no toca
+                 usuarios/catalogo/inventario). Ya probado contra la base local:
+                 corre sin insertar nada y deja los conteos intactos.
+
+                   cd fashionstore
+                   docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" \
+                     -v ON_ERROR_STOP=1 < db/reparaciones/permisos_cu13.sql
+
+                 Debe imprimir: ADMIN 19, ENCARGADO 11, ALMACEN 7, CAJERO 4,
+                 VENDEDOR 3. Despues hay que volver a iniciar sesion (o tocar
+                 "actualizar permisos" en la app): el JWT no lleva los permisos,
+                 pero la sesion guardada si, y queda vieja hasta refrescarla.
+      FALTA     : el DATABASE_PUBLIC_URL del servicio Postgres de Railway
+                 (pestana Variables; la publica, no DATABASE_URL).
+
+[1.2] Verificar el resto del seed en Railway despues de 1.1.
+      No se pudo comprobar cuantos usuarios/sucursales/recepciones tiene la base
+      de la nube porque esos endpoints devuelven 403 por el punto anterior. Lo
+      unico confirmado es que existen admin@fashionstore.bo, cliente@fashionstore.bo
+      y 6 productos de catalogo. Repetir el conteo cuando 1.1 este aplicado.
+
+-------------------------------------------------------------------------------
+ 2. ALCANCE DE LOS CU QUE QUEDO INCOMPLETO
+-------------------------------------------------------------------------------
+
+[2.1] CU10 "Gestionar Catalogo (incluye promociones)": las promociones NO se
+      gestionan en ningun lado.
+      El backend solo las consume: /ventas/checkout valida el codigo de cupon
+      contra la tabla promocion y el webhook devuelve el uso si el pago falla.
+      No hay alta/baja/edicion de promociones ni en la API, ni en la web, ni en
+      el movil. Falta: admin_router de promociones + pantalla en panel-catalogo
+      (web) + pestana en panel_catalogo_pagina.dart (movil).
+
+[2.2] CU07: falta el cierre de caja.
+      /caja/abrir crea la sesion, pero no existe ningun endpoint para cerrarla
+      ni para el arqueo. Una sesion ABIERTA queda abierta para siempre, lo que
+      ademas bloquea esa caja para otro cajero.
+
+[2.3] CU04 E2: nadie llama a fn_expirar_reservas().
+      La funcion existe en db/02_logica.sql y libera el stock comprometido por
+      reservas vencidas, pero el backend no tiene el job periodico (APScheduler
+      o cron) que la invoque. Hoy la unica forma de liberar una reserva vencida
+      es que un Encargado la marque "no se presento" a mano desde CU08.
+
+[2.4] Entrega a DOMICILIO: aceptada por la API, inalcanzable desde el cliente.
+      CheckoutIn soporta entrega=DOMICILIO + direccion_id y el backend valida
+      que la direccion sea del usuario, pero no hay endpoints para crear/listar
+      direcciones. El cliente no tiene forma de registrar una, asi que web y
+      movil solo ofrecen RETIRO_SUCURSAL. Falta el CRUD de /direcciones.
+      NOTA (modelo de negocio, ver README): al quedar el alcance en moda
+      femenina GENERAL (uso diario, no solo prendas de ocasion), la entrega a
+      domicilio SI forma parte del negocio y no se puede declarar fuera de
+      alcance. Sigue siendo un pendiente real.
+
+[2.5] Reportes: el permiso existe, la funcionalidad no.
+      El codigo reportes.ver esta sembrado y se asigna a ADMIN y ENCARGADO, y la
+      vista v_ventas_diarias existe en db/02_logica.sql, pero no hay endpoints
+      ni pantallas que los usen. Es el unico permiso que no habilita nada.
+
+[2.6] Ajustes manuales de stock: idem.
+      El permiso inventario.ajustar esta asignado a ADMIN, ENCARGADO y ALMACEN,
+      y fn_mover_inventario() acepta ajustes, pero no hay endpoint que los
+      registre. Segun CLAUDE.md, un ajuste es la unica forma de corregir una
+      recepcion ya confirmada (el kardex es append-only), asi que hoy esa
+      correccion no se puede hacer desde la aplicacion.
+
+[2.7] Tablas del esquema sin ningun uso en el backend (0 referencias):
+      traspaso, devolucion, resena, favorito. Estan en db/01_schema.sql pero
+      ningun modulo las toca. Decidir si entran en el alcance o se documentan
+      como fuera de el.
+      NOTA (modelo de negocio, ver README): traspaso es el que mas justificacion
+      tiene de los cuatro. Las 3 sucursales estan en 3 climas distintos y el
+      seed ya reparte el stock de forma asimetrica (el tapado se acumula en
+      Santa Cruz y falta en La Paz), asi que el traspaso entre tiendas es la
+      operacion natural del negocio, no una tabla decorativa. Si se implementa
+      solo una de las cuatro, que sea esta.
+
+[2.8] Realidad aumentada: el esquema y CU10 la soportan, no hay visor.
+      producto_imagen tiene uso_imagen (CATALOGO/AR_OVERLAY/AR_MODELO),
+      formato_imagen (JPG/PNG/GLB/USDZ) y las columnas anclajes + escala_base
+      (db/01_schema.sql:310). CU10 ya deja cargar imagenes con esos usos
+      (catalogo/admin_router.py:50 y el selector del panel web). Pero:
+        - ningun visor renderiza AR, ni en web ni en movil;
+        - el INSERT de CU10 (admin_router.py:553) NO guarda anclajes ni
+          escala_base, asi que esas dos columnas quedan siempre en NULL;
+        - el catalogo se sigue sirviendo con placeholders de picsum.photos.
+      El plan de trabajo (que archivos conseguir, especificacion de cada
+      formato, el JSON de anclajes, los dos niveles de visor y en que orden
+      hacerlo) esta en IMAGENES_AR.txt.
+
+[2.9] [HECHO 2026-09-13] Catalogo de demostracion: ya son 40 productos en 9
+      categorias (Faldas/Sandalias/Zapatos nuevas), 6 marcas, 9 destacados
+      repartidos entre categorias y temporadas. Cargado en
+      db/03_datos_iniciales.sql, probado con `docker compose down -v && up
+      --build` contra Postgres real: 40 productos, 40 producto_imagen, 1290
+      filas de inventario (40 variantes-set x 3 sucursales), sin huecos.
+      Detalle completo (por que este reparto, checklist de verificacion) en
+      CATALOGO_DEMO.txt.
+      [2026-09-13, mas tarde] Las 40 fotos reales (packshot 3:4) se subieron
+      con el panel/endpoint de CU10 (POST .../imagenes/subir, ver
+      app/core/media.py) y reemplazaron tanto los placeholders de picsum como
+      las URLs externas hotlinkeadas del seed -- ya no depende de terceros.
+      Verificado: 40 filas en producto_imagen, todas sirviendo desde
+      /media/productos/<id>/..., ninguna con mas o menos de 1 imagen.
+      OJO: estas imagenes viven en el volumen Docker `backend_media`, no en
+      el repo -- en Railway hace falta el Volume que ya quedo documentado en
+      RAILWAY.md paso 5, si no se pierden en el proximo deploy.
+      [2026-09-13, mas tarde aun] Bug reportado: al desplazarse entre colores
+      en la ficha de producto, el color de catalogo no aparecia primero (el
+      selector ordenaba por nombre, no por cual es el color "real" de la foto
+      subida) y, si el color coincidia con uno de los stock-photo del seed,
+      la foto no correspondia a la subida por el admin. Arreglado:
+        - frontend (producto-detalle.page.ts): `colorDeCatalogo` detecta que
+          color de variante tiene el mismo imagen_url que la foto principal
+          y lo pone primero en `colores()`; ngOnInit ahora selecciona ese
+          color por defecto en vez del primero alfabetico.
+        - [2026-09-13, sincronizado en movil] el mismo fix se replico en
+          `movil/lib/paginas/producto_detalle_pagina.dart`: `VarianteOut`
+          (catalogo_models.dart) no traia `imagen_url` por variante, asi que
+          era imposible detectar el color de catalogo. Se agrego el campo, un
+          `_colorDeCatalogo()`/`_imagenActual()` equivalentes a los computed de
+          la web, se reordenan las chips de variante para que el color de
+          catalogo aparezca primero, y se selecciona por defecto al cargar la
+          pantalla. `flutter analyze` sin issues, `flutter test` 3/3 en verde.
+        - datos: para 26 productos donde la foto real subida (es_principal,
+          sin color_id) mostraba con claridad un color que YA es variante del
+          producto, se le puso ese color_id a la fila y se borro la foto de
+          stock redundante que quedaba para ese mismo color (mismo mecanismo
+          que pide el negocio: "una imagen por color, la del catalogo gana").
+          Hecho a mano contra la base local, NO esta en db/03_datos_iniciales.sql
+          -- si se corre `docker compose down -v` se pierde y hay que rehacerlo
+          (la lista de que color le toca a cada producto quedo en el historial
+          del chat, no en un archivo del repo).
+      QUEDA PENDIENTE (14 productos sin color_id en su foto principal, la
+      ficha les sigue mostrando la foto generica y ninguna variante de color
+      coincide con ella o hay ambiguedad entre dos tonos parecidos):
+        - Sin match real, hace falta foto nueva por color (o cambiar que
+          colores tiene el producto): blazer-entallado (foto blanca; variantes
+          Azul/Beige/Negro), bota-cania-alta-de-gamuza (foto marron oscuro;
+          Camel/Gris/Negro), botineta-de-cuero-con-taco (foto marfil;
+          Camel/Negro), campera-puffer-impermeable (foto blanca;
+          Negro/Rojo/Verde Oliva), falda-larga-de-gasa (foto marron;
+          Beige/Blanco/Rosa Palo), falda-midi-plisada (foto marfil;
+          Camel/Negro/Vino), sandalia-con-tiras-y-taco (foto marfil/champan;
+          Camel/Negro/Rojo), vestido-de-punto-manga-larga (foto a rayas
+          rosa/celeste; Camel/Gris/Negro), vestido-floral-manga-corta (foto
+          amarilla; Beige/Negro/Rojo), vestido-largo-estampado (foto
+          azul/crema estampada; unica variante Beige, no corresponde).
+        - Ambiguos, falta decidir a que color de variante corresponde la foto
+          ya subida antes de tocar la base: blusa-de-seda-manga-larga (marfil:
+          ¿Beige o Blanco?), sombrero-de-ala-ancha (paja natural: ¿Beige o
+          Camel?), vestido-camisero-de-lino (marfil: ¿Beige o Blanco?),
+          vestido-midi-plisado (marron chocolate: no es Camel ni calza bien
+          con Vino).
+        - Ademas, variantes de color generadas con IA (CATALOGO_DEMO.txt punto
+          1 y 4.5) siguen pendientes para los productos de esta lista que son
+          destacados y no son estampados (BOT-001, FAL-001, BLU-002 -- PAN-002,
+          ABR-001, SAN-001, ZAP-003 y ACC-002 ya quedaron resueltos arriba).
+
+-------------------------------------------------------------------------------
+ 3. DEUDA TECNICA
+-------------------------------------------------------------------------------
+
+[3.1] CU07 y CU08 siguen autorizando por CARGO, no por permiso.
+      get_cajero_actual y get_encargado_actual (app/core/deps.py) validan
+      empleado.cargo. Los permisos caja.operar, ventas.pos y reservas.atender
+      existen y estan asignados, pero no se usan. Al tocar esos modulos hay que
+      migrarlos a requiere_permiso(), como ya indica CLAUDE.md.
+
+[3.2] db/aplicar_en_railway.sh rompe el primer arranque local.
+      docker-compose monta ./db entero en docker-entrypoint-initdb.d, y Postgres
+      ejecuta ahi tanto los .sql como los .sh: el script de Railway se corre solo
+      en el init y falla. Arreglo: moverlo fuera de db/ (por ejemplo a scripts/)
+      o montar los .sql uno por uno en el compose.
+
+[3.3] El backend no tiene tests ni linter configurados.
+      No existe backend/tests. El movil si tiene (flutter test, 3 casos) y el
+      frontend tiene Karma/Jasmine.
+
+[3.4] STRIPE_WEBHOOK_SECRET depende del entorno y no esta documentado en el .env.
+      En local sale de `stripe listen --forward-to localhost:8081/pagos/webhook/stripe`;
+      en Railway es el signing secret del endpoint creado en el dashboard de
+      Stripe. Son distintos y sin el correcto el webhook rechaza la firma.
+
+-------------------------------------------------------------------------------
+ 4. ESPECIFICO DE LA APP MOVIL
+-------------------------------------------------------------------------------
+
+[4.1] Sin deep link de retorno desde Stripe (CU06).
+      FRONTEND_URL apunta al frontend web, asi que la success_url de Stripe deja
+      al usuario en la WEB, no de vuelta en la app. El pago se confirma igual
+      (el webhook es server-to-server) y la app tiene el boton "consultar estado
+      del pago", pero el regreso automatico necesitaria applinks o un esquema
+      propio. Con LIBELULA no pasa: se resuelve dentro de la app.
+
+[4.2] iOS no esta compilado ni probado.
+      El proyecto se genero con las plataformas android e ios y el Info.plist ya
+      tiene ATS y LSApplicationQueriesSchemes, pero desde Windows no se puede
+      compilar. Solo Android esta verificado (emulador Pixel_10a, APK debug y
+      release).
+
+[4.3] ndkVersion clavado a una version local.
+      android/app/build.gradle.kts fija 30.0.16138531 porque el NDK que pide
+      url_launcher_android (28.2.13676358) no esta instalado en esta maquina. En
+      otra maquina hay que poner el NDK que tenga instalado, o instalar el 28.2.
+
+[4.4] La URL de produccion esta horneada en el codigo.
+      Config.apiUrlProduccion tiene el dominio de Railway. Si se regenera el
+      dominio, hay que editarlo y recompilar el APK (no es configurable en
+      runtime). Es el mismo compromiso que el API_URL del frontend.
+
+[4.5] El APK de release no esta firmado con una clave propia.
+      Usa la debug key (viene asi de `flutter create`). Sirve para instalar por
+      USB, pero no para publicar en Play Store.
+
+===============================================================================
+ LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)
+===============================================================================
+
+- CU01 a CU13 implementados en backend, web y movil.
+- Movil verificado contra el Docker local y contra Railway, en el emulador
+  Pixel_10a, con APK debug y release: login, catalogo, detalle, cuenta de
+  cliente vs staff, panel de gestion y CU13 con datos reales.
+- Contratos de la API: los 25 endpoints que consume el movil devuelven
+  exactamente los campos que esperan los modelos Dart (verificado uno por uno).
+- Flujo de pago completo probado de punta a punta contra el backend local:
+  checkout (canal MOVIL) -> webhook LIBELULA -> venta PAGADA con comprobante.
+- flutter analyze sin issues; flutter test 3/3 en verde.
