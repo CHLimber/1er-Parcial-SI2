@@ -27,9 +27,12 @@ if [ "$SIN_SEED" != "--sin-seed" ]; then
   ARCHIVOS+=(03_datos_iniciales.sql)
 fi
 
+# postgres:18 y no :16 -- el plugin de Railway ya corre Postgres 18, y aunque psql 16
+# habla igual con un servidor 18, pg_dump 16 NO puede respaldarlo ("server version
+# mismatch"). Conviene usar la misma familia de version para las dos cosas.
 for archivo in "${ARCHIVOS[@]}"; do
   echo "== Aplicando $archivo =="
-  docker run --rm -i postgres:16 psql "$DSN" -v ON_ERROR_STOP=1 < "$DIR/$archivo"
+  docker run --rm -i postgres:18 psql "$DSN" -v ON_ERROR_STOP=1 < "$DIR/$archivo"
 done
 
 echo "Listo: esquema aplicado a la base de Railway."

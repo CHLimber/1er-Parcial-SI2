@@ -262,6 +262,35 @@
           Prendas con modelo 3D: Bota Texana de Cuero, Sandalia Deportiva de
           Tiras (las dos destacadas, aparecen primeras en la tienda).
 
+      DESPLEGADO EN RAILWAY [2026-09-18]:
+        - Se pusheo todo el trabajo pendiente (CU15 a CU19) y Railway
+          redesplego el backend: /media/ar/*.glb y *.png se sirven publicos por
+          HTTPS y con Content-Type model/gltf-binary. Eso es lo que hace
+          posible el nivel 2 en un telefono real: Scene Viewer es una app
+          aparte de Google que descarga el .glb por su cuenta, no le sirve el
+          backend local por HTTP.
+        - La base de Railway tenia todavia el seed viejo de 6 productos (nunca
+          se le habia aplicado el catalogo de 40), y 01_schema.sql no se puede
+          re-aplicar encima porque los CREATE TYPE/TABLE no son IF NOT EXISTS.
+          Se hizo respaldo con pg_dump, DROP SCHEMA public CASCADE y se
+          reaplicaron 01+02+03. Ahora tiene los 42 productos.
+        - Despues del seed hay que reescribir las URLs de imagen, porque el
+          seed las hardcodea a http://localhost:8081 (la app movil las reescribe
+          sola, pero la WEB no):
+            UPDATE producto_imagen SET url = replace(url,'http://localhost:8081','<url-backend-railway>')
+            WHERE url LIKE 'http://localhost:8081%';
+          Se aplico: 199 filas.
+        - OJO con scripts/aplicar_en_railway.sh: usaba la imagen postgres:16 y
+          el plugin de Railway ya corre Postgres 18. psql 16 igual habla con un
+          servidor 18, pero pg_dump 16 NO puede respaldarlo. Se cambio a
+          postgres:18.
+        - Si en el futuro NO se quiere recrear la base entera, existe
+          db/reparaciones/cu16_vestidor_virtual.sql, que agrega solo lo de CU16
+          (color, los 2 productos, variantes, inventario, fotos y filas AR) y es
+          idempotente. Probado: aplica limpio sobre una base sin CU16 y la
+          segunda corrida no inserta nada. Necesita que el catalogo de 40
+          productos ya exista (usa las categorias botas/sandalias).
+
       VERIFICADO EN ESTA ENTREGA:
         - `docker compose down -v && up --build` (obligatorio por el cambio en
           03_datos_iniciales.sql) sin errores en el init de Postgres.
