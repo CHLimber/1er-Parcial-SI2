@@ -1,12 +1,10 @@
 // Espejo manual de app/modules/envios/schemas.py y admin_schemas.py (CU20).
+//
+// El reparto lo hace un servicio de delivery externo, no personal de FashionStore: la
+// sucursal solo marca cuando el paquete SALE hacia ese servicio (DESPACHADO) y cuando el
+// servicio confirma que LLEGO (ENTREGADO) o que fallo (FALLIDO).
 
-export type EstadoEnvio =
-  | 'PENDIENTE'
-  | 'ASIGNADO'
-  | 'EN_RUTA'
-  | 'ENTREGADO'
-  | 'FALLIDO'
-  | 'CANCELADO';
+export type EstadoEnvio = 'PENDIENTE' | 'DESPACHADO' | 'ENTREGADO' | 'FALLIDO' | 'CANCELADO';
 
 export interface CotizacionIn {
   sucursal_id: string;
@@ -50,10 +48,8 @@ export interface EnvioOut {
   distancia_km: number;
   duracion_min: number;
   costo: number;
-  repartidor: string | null;
   observacion: string | null;
   creado_en: string;
-  asignado_en: string | null;
   despachado_en: string | null;
   cerrado_en: string | null;
   eventos: EnvioEventoOut[];
@@ -78,11 +74,8 @@ export interface EnvioAdminOut {
   costo: number;
   proveedor_ruteo: string;
   total_venta: number;
-  repartidor_id: string | null;
-  repartidor: string | null;
   observacion: string | null;
   creado_en: string;
-  asignado_en: string | null;
   despachado_en: string | null;
   cerrado_en: string | null;
 }
@@ -107,18 +100,9 @@ export interface EnvioAdminDetalleOut extends EnvioAdminOut {
   eventos: EventoAdminOut[];
 }
 
-export interface RepartidorOut {
-  id: string;
-  nombre: string;
-  sucursal_id: string;
-  sucursal: string;
-  envios_activos: number;
-}
-
 export interface ResumenEnviosOut {
   pendientes: number;
-  asignados: number;
-  en_ruta: number;
+  despachados: number;
   entregados_hoy: number;
   fallidos: number;
 }

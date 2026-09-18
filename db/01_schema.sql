@@ -22,7 +22,7 @@ CREATE EXTENSION IF NOT EXISTS unaccent;   -- busqueda del catalogo sin tildes
 CREATE TYPE ciudad_bo         AS ENUM ('SANTA_CRUZ','LA_PAZ','EL_ALTO','COCHABAMBA','SUCRE',
                                        'ORURO','POTOSI','TARIJA','TRINIDAD','COBIJA');
 CREATE TYPE tipo_usuario      AS ENUM ('CLIENTE','STAFF');
-CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN','REPARTIDOR');
+CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN');
 CREATE TYPE estado_caja       AS ENUM ('ABIERTA','CERRADA');
 CREATE TYPE tipo_talla        AS ENUM ('LETRA','NUMERO','CALZADO');
 CREATE TYPE tipo_temporada    AS ENUM ('PRIMAVERA_VERANO','OTONO_INVIERNO','ESCOLAR',
@@ -43,7 +43,7 @@ CREATE TYPE estado_carrito    AS ENUM ('ACTIVO','CONVERTIDO','ABANDONADO');
 CREATE TYPE canal_venta       AS ENUM ('WEB','MOVIL','POS');
 CREATE TYPE modo_entrega      AS ENUM ('RETIRO_SUCURSAL','DOMICILIO');
 CREATE TYPE estado_venta      AS ENUM ('PENDIENTE','PAGADA','ENTREGADA','ANULADA');
-CREATE TYPE estado_envio      AS ENUM ('PENDIENTE','ASIGNADO','EN_RUTA','ENTREGADO','FALLIDO','CANCELADO');
+CREATE TYPE estado_envio      AS ENUM ('PENDIENTE','DESPACHADO','ENTREGADO','FALLIDO','CANCELADO');
 CREATE TYPE metodo_pago       AS ENUM ('EFECTIVO','TARJETA','QR','TRANSFERENCIA','PASARELA');
 CREATE TYPE pasarela_pago     AS ENUM ('STRIPE','QR');
 CREATE TYPE estado_pago       AS ENUM ('PENDIENTE','APROBADO','RECHAZADO','REEMBOLSADO');
@@ -599,8 +599,13 @@ CREATE TABLE comprobante (
 -- CU20 - ENTREGA A DOMICILIO (DELIVERY)
 -- Una venta con entrega = 'DOMICILIO' genera un envio recien cuando el pago queda APROBADO
 -- (lo crea el webhook, ver app/modules/pagos/router.py). El envio congela la direccion en
--- texto y coordenadas porque la clienta puede editar o borrar su direccion despues, y la
--- hoja de ruta del repartidor tiene que seguir mostrando a donde iba el paquete.
+-- texto y coordenadas porque la clienta puede editar o borrar su direccion despues, y el
+-- seguimiento tiene que seguir mostrando a donde iba el paquete.
+--
+-- El reparto en si NO es una operacion propia de FashionStore: se contrata a un servicio de
+-- delivery externo. La sucursal solo controla los dos momentos que le tocan a ella --
+-- despachar el paquete y confirmar que el servicio lo entrego (o que fallo)-- por eso no hay
+-- ni un cargo de empleado "repartidor" ni una hoja de ruta con asignacion/tramos intermedios.
 -- ---------------------------------------------------------------------
 
 CREATE TABLE envio (
@@ -608,7 +613,6 @@ CREATE TABLE envio (
     venta_id        UUID          NOT NULL UNIQUE REFERENCES venta(id) ON DELETE CASCADE,
     sucursal_id     UUID          NOT NULL REFERENCES sucursal(id),
     direccion_id    UUID          REFERENCES direccion(id) ON DELETE SET NULL,
-    repartidor_id   UUID          REFERENCES usuario(id),
     estado          estado_envio  NOT NULL DEFAULT 'PENDIENTE',
     -- lo que devolvio el proveedor de ruteo al cotizar (ORS = openrouteservice de HeiGIT,
     -- HAVERSINE = calculo propio de respaldo cuando no hay API key o el servicio no responde)
@@ -627,16 +631,14 @@ CREATE TABLE envio (
     -- (la base no conoce al usuario de la sesion HTTP, el backend lo escribe en el mismo UPDATE)
     actualizado_por_id UUID       REFERENCES usuario(id),
     creado_en       TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    asignado_en     TIMESTAMPTZ,
     despachado_en   TIMESTAMPTZ,
-    cerrado_en      TIMESTAMPTZ,
-    CONSTRAINT ck_envio_repartidor CHECK (estado IN ('PENDIENTE','CANCELADO') OR repartidor_id IS NOT NULL)
+    cerrado_en      TIMESTAMPTZ
 );
 CREATE INDEX ix_envio_sucursal ON envio(sucursal_id, estado, creado_en DESC);
-CREATE INDEX ix_envio_repartidor ON envio(repartidor_id, estado) WHERE repartidor_id IS NOT NULL;
 COMMENT ON TABLE envio IS
-    'CU20. Un envio por venta a domicilio. La tarifa ya cobrada vive en venta.costo_envio; aca '
-    'se guarda ademas la distancia y la duracion que devolvio el proveedor de ruteo.';
+    'CU20. Un envio por venta a domicilio, despachado a traves de un servicio de delivery '
+    'externo. La tarifa ya cobrada vive en venta.costo_envio; aca se guarda ademas la '
+    'distancia y la duracion que devolvio el proveedor de ruteo.';
 
 CREATE TABLE envio_evento (
     id         BIGSERIAL    PRIMARY KEY,

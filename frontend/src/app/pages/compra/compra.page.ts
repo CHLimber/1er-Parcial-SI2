@@ -84,10 +84,8 @@ export class CompraPage implements OnInit, OnDestroy {
     switch (estado) {
       case 'PENDIENTE':
         return 'Preparando tu pedido';
-      case 'ASIGNADO':
-        return 'Repartidor asignado';
-      case 'EN_RUTA':
-        return 'En camino';
+      case 'DESPACHADO':
+        return 'En camino con el servicio de delivery';
       case 'ENTREGADO':
         return 'Entregado';
       case 'FALLIDO':
@@ -101,15 +99,14 @@ export class CompraPage implements OnInit, OnDestroy {
 
   /** Posición del estado dentro de la línea de tiempo, para pintar los pasos cumplidos. */
   protected pasoActual(estado: EstadoEnvio): number {
-    const orden: EstadoEnvio[] = ['PENDIENTE', 'ASIGNADO', 'EN_RUTA', 'ENTREGADO'];
+    const orden: EstadoEnvio[] = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
     const indice = orden.indexOf(estado);
     return indice === -1 ? 0 : indice;
   }
 
   protected readonly pasos: { estado: EstadoEnvio; etiqueta: string }[] = [
     { estado: 'PENDIENTE', etiqueta: 'Preparando' },
-    { estado: 'ASIGNADO', etiqueta: 'Asignado' },
-    { estado: 'EN_RUTA', etiqueta: 'En camino' },
+    { estado: 'DESPACHADO', etiqueta: 'En camino' },
     { estado: 'ENTREGADO', etiqueta: 'Entregado' },
   ];
 }

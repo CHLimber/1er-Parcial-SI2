@@ -65,7 +65,7 @@ const ACCESOS: Acceso[] = [
   {
     ruta: '/panel/envios',
     titulo: 'Envíos',
-    descripcion: 'Pedidos a domicilio: asigná repartidor, seguí la ruta y cerrá la entrega.',
+    descripcion: 'Pedidos a domicilio: marcá cuándo salen hacia el delivery y cuándo se entregan.',
     caso: 'CU20',
     permisos: ['envios.leer', 'envios.actualizar'],
   },

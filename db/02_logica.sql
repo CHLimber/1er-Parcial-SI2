@@ -381,7 +381,7 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
         INSERT INTO envio_evento (envio_id, estado, nota, usuario_id)
-        VALUES (NEW.id, NEW.estado, 'Envio generado por el pago aprobado', NEW.actualizado_por_id);
+        VALUES (NEW.id, NEW.estado, 'Envio generado por el pago aprobado, pendiente de despacho', NEW.actualizado_por_id);
     ELSIF NEW.estado IS DISTINCT FROM OLD.estado THEN
         INSERT INTO envio_evento (envio_id, estado, nota, usuario_id)
         VALUES (NEW.id, NEW.estado, NEW.observacion, NEW.actualizado_por_id);

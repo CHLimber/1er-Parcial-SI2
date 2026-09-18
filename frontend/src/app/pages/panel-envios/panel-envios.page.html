@@ -1,20 +1,16 @@
 <app-panel-shell
   titulo="Envíos"
-  bajada="CU20 — pedidos a domicilio: asigná repartidor, seguí la ruta y cerrá la entrega."
+  bajada="CU20 — pedidos a domicilio: marcá cuándo salen hacia el servicio de delivery y cuándo se confirma la entrega."
 >
   @if (resumen(); as r) {
     <div class="tarjetas">
       <div class="tarjeta">
         <span class="tarjeta__valor">{{ r.pendientes }}</span>
-        <span class="tarjeta__etiqueta">Sin asignar</span>
+        <span class="tarjeta__etiqueta">Pendientes</span>
       </div>
       <div class="tarjeta">
-        <span class="tarjeta__valor">{{ r.asignados }}</span>
-        <span class="tarjeta__etiqueta">Asignados</span>
-      </div>
-      <div class="tarjeta">
-        <span class="tarjeta__valor">{{ r.en_ruta }}</span>
-        <span class="tarjeta__etiqueta">En ruta</span>
+        <span class="tarjeta__valor">{{ r.despachados }}</span>
+        <span class="tarjeta__etiqueta">Despachados</span>
       </div>
       <div class="tarjeta">
         <span class="tarjeta__valor">{{ r.entregados_hoy }}</span>
@@ -32,9 +28,8 @@
       <label for="f-estado">Estado</label>
       <select id="f-estado" name="estado" [(ngModel)]="filtroEstado" (ngModelChange)="cargar()">
         <option value="">Todos</option>
-        <option value="PENDIENTE">Sin asignar</option>
-        <option value="ASIGNADO">Asignado</option>
-        <option value="EN_RUTA">En ruta</option>
+        <option value="PENDIENTE">Pendiente</option>
+        <option value="DESPACHADO">Despachado</option>
         <option value="ENTREGADO">Entregado</option>
         <option value="FALLIDO">Fallido</option>
         <option value="CANCELADO">Cancelado</option>
@@ -82,7 +77,7 @@
 
   <div class="columnas">
     <section class="panel">
-      <h2 class="panel__titulo">Cola de reparto</h2>
+      <h2 class="panel__titulo">Pedidos a domicilio</h2>
 
       @if (cargando()) {
         <p class="estado">Cargando envíos…</p>
@@ -101,7 +96,6 @@
                 <th>Destino</th>
                 <th class="tabla__numero">Km</th>
                 <th class="tabla__numero">Envío</th>
-                <th>Repartidor</th>
                 <th>Estado</th>
               </tr>
             </thead>
@@ -116,7 +110,6 @@
                   </td>
                   <td class="tabla__numero">{{ envio.distancia_km.toFixed(1) }}</td>
                   <td class="tabla__numero">{{ precio(envio.costo) }}</td>
-                  <td>{{ envio.repartidor ?? '—' }}</td>
                   <td><span [class]="claseBadge(envio.estado)">{{ etiqueta(envio.estado) }}</span></td>
                 </tr>
               }
@@ -172,25 +165,7 @@
           }
         </ul>
 
-        @if (puedeAsignar() && (d.estado === 'PENDIENTE' || d.estado === 'ASIGNADO')) {
-          <h3 class="subtitulo">Asignar repartidor</h3>
-          <div class="campo">
-            <label for="repartidor">Repartidor</label>
-            <select id="repartidor" name="repartidor" [(ngModel)]="repartidorElegido">
-              <option value="">Elegí uno</option>
-              @for (repartidor of repartidores(); track repartidor.id) {
-                <option [value]="repartidor.id">
-                  {{ repartidor.nombre }} ({{ repartidor.envios_activos }} en curso)
-                </option>
-              }
-            </select>
-          </div>
-          <button type="button" class="boton" [disabled]="trabajando()" (click)="asignar()">
-            {{ d.estado === 'ASIGNADO' ? 'Reasignar' : 'Asignar' }}
-          </button>
-        }
-
-        @if (siguientes(d.estado).length > 0) {
+        @if (puedeActualizar() && siguientes(d.estado).length > 0) {
           <h3 class="subtitulo">Mover el envío</h3>
           <div class="campo">
             <label for="observacion">Nota <span class="campo__ayuda">(obligatoria si falla)</span></label>
@@ -199,7 +174,7 @@
               name="observacion"
               rows="2"
               [(ngModel)]="observacion"
-              placeholder="Ej: nadie atendió el timbre"
+              placeholder="Ej: el servicio de delivery no pudo entregar"
             ></textarea>
           </div>
           <div class="acciones">

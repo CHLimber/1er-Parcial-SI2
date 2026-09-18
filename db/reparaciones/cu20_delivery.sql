@@ -21,6 +21,14 @@
 --
 --  Es idempotente: se puede correr las veces que haga falta.
 --
+--  OJO (2026-09-18): este archivo deja el esquema ORIGINAL de CU20 (reparto con repartidor
+--  propio, estados ASIGNADO/EN_RUTA). La decision de negocio paso a ser que el delivery lo
+--  hace un servicio externo, no personal de FashionStore -- despues de correr este archivo
+--  hay que correr tambien db/reparaciones/cu20_delivery_simplificado.sql, que colapsa esos
+--  estados y saca el concepto de repartidor interno. Un deploy nuevo no necesita ninguno de
+--  los dos: 01_schema.sql/02_logica.sql/03_datos_iniciales.sql ya nacen con el esquema
+--  simplificado.
+--
 --  Uso:
 --    docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1 \
 --      < db/reparaciones/cu20_delivery.sql

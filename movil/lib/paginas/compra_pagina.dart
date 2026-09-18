@@ -263,7 +263,7 @@ class _SeguimientoEnvio extends StatelessWidget {
 
   final EnvioOut envio;
 
-  static const _pasos = ['PENDIENTE', 'ASIGNADO', 'EN_RUTA', 'ENTREGADO'];
+  static const _pasos = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
 
   @override
   Widget build(BuildContext context) {
@@ -322,7 +322,6 @@ class _SeguimientoEnvio extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             [
-              if (envio.repartidor != null) 'Reparte ${envio.repartidor}',
               '${envio.distanciaKm.toStringAsFixed(1)} km desde ${envio.sucursal}',
               'unos ${envio.duracionMin} min',
             ].join(' - '),

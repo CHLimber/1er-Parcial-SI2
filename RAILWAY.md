@@ -174,6 +174,23 @@ La tarifa no se toca por codigo: vive en la tabla `configuracion`
 (`delivery_tarifa_base`, `delivery_precio_km`, `delivery_costo_minimo`, `delivery_radio_km`,
 `delivery_gratis_desde`) y la lee `fn_cotizar_envio()` en cada cotizacion.
 
+## 5 ter. Simplificar CU20 a delivery externo (decision de negocio 2026-09-18)
+
+FashionStore no reparte con personal propio: contrata un servicio de delivery externo. Un
+deploy que ya corrio el paso 5 bis queda con el esquema viejo (rol/cargo REPARTIDOR, estados
+ASIGNADO/EN_RUTA). Este script lo colapsa: los estados intermedios pasan a `DESPACHADO`, se
+saca la columna `envio.repartidor_id` y el rol REPARTIDOR (reasignando a quien lo tuviera, con
+la cuenta desactivada para que un ADMIN le ponga un cargo real desde CU13).
+
+```bash
+cd fashionstore
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/cu20_delivery_simplificado.sql
+```
+
+Es idempotente y corre despues del paso 5 bis. Al final imprime los conteos de
+`empleados_repartidor`/`rol_repartidor` (tienen que dar 0) y los valores actuales de los enums
+`estado_envio` y `cargo_empleado`.
+
 ## 6. Verificacion
 
 - Abrí la URL publica del frontend, iniciá sesion con `cliente@fashionstore.bo` / `demo1234` (o

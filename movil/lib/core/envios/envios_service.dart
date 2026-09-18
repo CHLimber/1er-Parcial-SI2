@@ -53,23 +53,9 @@ class EnviosService {
     return ResumenEnvios.desdeJson(respuesta as Map<String, dynamic>);
   }
 
-  Future<List<RepartidorOut>> repartidores({String? sucursalId}) async {
-    final respuesta =
-        await api.get('/admin/envios/repartidores', query: {'sucursal_id': sucursalId});
-    return comoLista(respuesta).map(RepartidorOut.desdeJson).toList();
-  }
-
   Future<EnvioAdminDetalle> detalle(String envioId) async {
     final respuesta = await api.get('/admin/envios/$envioId');
     return EnvioAdminDetalle.desdeJson(respuesta as Map<String, dynamic>);
-  }
-
-  Future<EnvioAdminOut> asignar(String envioId, String repartidorId, {String? observacion}) async {
-    final respuesta = await api.post(
-      '/admin/envios/$envioId/asignar',
-      cuerpo: {'repartidor_id': repartidorId, 'observacion': observacion},
-    );
-    return EnvioAdminOut.desdeJson(respuesta as Map<String, dynamic>);
   }
 
   Future<EnvioAdminOut> cambiarEstado(String envioId, String estado, {String? observacion}) async {

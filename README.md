@@ -108,7 +108,6 @@ Password de todos: `demo1234`.
 | cajero.cbba@fashionstore.bo         | STAFF   | CAJERO — Cala Cala (Cochabamba)  |
 | vendedor.scz@fashionstore.bo        | STAFF   | VENDEDOR — Equipetrol (Santa Cruz) |
 | almacen.scz@fashionstore.bo         | STAFF   | ALMACEN — Equipetrol (Santa Cruz) |
-| repartidor.scz@fashionstore.bo      | STAFF   | REPARTIDOR — Equipetrol (Santa Cruz) |
 | cliente@fashionstore.bo             | CLIENTE | —                                |
 | cliente2@fashionstore.bo            | CLIENTE | —                                |
 

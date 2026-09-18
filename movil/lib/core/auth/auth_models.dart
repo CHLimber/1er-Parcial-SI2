@@ -19,7 +19,8 @@ class UsuarioOut {
   final String tipo; // CLIENTE | STAFF
   final String? rol;
 
-  /// Cargo del empleado (CU20): ENCARGADO, CAJERO, VENDEDOR, ALMACEN o REPARTIDOR.
+  /// Cargo del empleado: ENCARGADO, CAJERO, VENDEDOR o ALMACEN. El delivery (CU20) lo hace
+  /// un servicio externo, no personal con este cargo.
   final String? cargo;
 
   /// Codigos de permiso del rol (CU13). Vacio para clientes.

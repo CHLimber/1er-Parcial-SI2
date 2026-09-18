@@ -1,7 +1,7 @@
 """CU20 - cara de la clienta del delivery: cotizar la tarifa y seguir el pedido.
 
-La gestion (asignar repartidor, mover estados) esta en admin_router.py, con prefijo /admin y
-permisos de CU13, igual que catalogo/ y sucursales/.
+La gestion (marcar despachado/entregado/fallido) esta en admin_router.py, con prefijo /admin
+y permisos de CU13, igual que catalogo/ y sucursales/.
 """
 
 from uuid import UUID
@@ -78,12 +78,10 @@ SELECT_ENVIO = """
 SELECT e.id, e.venta_id, v.numero AS numero_venta, e.estado, s.nombre AS sucursal,
        e.ciudad, e.direccion_texto, e.referencia, e.latitud, e.longitud,
        e.distancia_km, e.duracion_min, e.costo, e.observacion,
-       e.creado_en, e.asignado_en, e.despachado_en, e.cerrado_en,
-       CASE WHEN r.id IS NULL THEN NULL ELSE r.nombre || ' ' || r.apellido END AS repartidor
+       e.creado_en, e.despachado_en, e.cerrado_en
 FROM envio e
 JOIN venta v       ON v.id = e.venta_id
 JOIN sucursal s    ON s.id = e.sucursal_id
-LEFT JOIN usuario r ON r.id = e.repartidor_id
 """
 
 
@@ -106,10 +104,8 @@ async def armar_envio_out(conn: asyncpg.Connection, fila: asyncpg.Record) -> Env
         distancia_km=float(fila["distancia_km"]),
         duracion_min=fila["duracion_min"],
         costo=float(fila["costo"]),
-        repartidor=fila["repartidor"],
         observacion=fila["observacion"],
         creado_en=fila["creado_en"],
-        asignado_en=fila["asignado_en"],
         despachado_en=fila["despachado_en"],
         cerrado_en=fila["cerrado_en"],
         eventos=[

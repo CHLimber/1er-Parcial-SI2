@@ -1,6 +1,10 @@
 import '../api.dart';
 
 /// Espejo manual de `backend/app/modules/envios/schemas.py` y `admin_schemas.py` (CU20).
+///
+/// El reparto lo hace un servicio de delivery externo, no personal de FashionStore: la
+/// sucursal solo marca cuando el paquete SALE hacia ese servicio (DESPACHADO) y cuando el
+/// servicio confirma que LLEGO (ENTREGADO) o que fallo (FALLIDO).
 
 class CotizacionEnvio {
   const CotizacionEnvio({
@@ -78,7 +82,6 @@ class EnvioOut {
     required this.distanciaKm,
     required this.duracionMin,
     required this.costo,
-    required this.repartidor,
     required this.observacion,
     required this.eventos,
   });
@@ -94,7 +97,6 @@ class EnvioOut {
   final double distanciaKm;
   final int duracionMin;
   final double costo;
-  final String? repartidor;
   final String? observacion;
   final List<EventoEnvio> eventos;
 
@@ -110,7 +112,6 @@ class EnvioOut {
         distanciaKm: aDouble(j['distancia_km']),
         duracionMin: aEntero(j['duracion_min']),
         costo: aDouble(j['costo']),
-        repartidor: j['repartidor'] as String?,
         observacion: j['observacion'] as String?,
         eventos: comoLista(j['eventos']).map(EventoEnvio.desdeJson).toList(),
       );
@@ -137,8 +138,6 @@ class EnvioAdminOut {
     required this.costo,
     required this.proveedorRuteo,
     required this.totalVenta,
-    required this.repartidorId,
-    required this.repartidor,
     required this.observacion,
   });
 
@@ -160,8 +159,6 @@ class EnvioAdminOut {
   final double costo;
   final String proveedorRuteo;
   final double totalVenta;
-  final String? repartidorId;
-  final String? repartidor;
   final String? observacion;
 
   factory EnvioAdminOut.desdeJson(Map<String, dynamic> j) => EnvioAdminOut(
@@ -183,8 +180,6 @@ class EnvioAdminOut {
         costo: aDouble(j['costo']),
         proveedorRuteo: j['proveedor_ruteo'] as String,
         totalVenta: aDouble(j['total_venta']),
-        repartidorId: j['repartidor_id'] as String?,
-        repartidor: j['repartidor'] as String?,
         observacion: j['observacion'] as String?,
       );
 }
@@ -231,49 +226,22 @@ class EnvioAdminDetalle {
       );
 }
 
-class RepartidorOut {
-  const RepartidorOut({
-    required this.id,
-    required this.nombre,
-    required this.sucursalId,
-    required this.sucursal,
-    required this.enviosActivos,
-  });
-
-  final String id;
-  final String nombre;
-  final String sucursalId;
-  final String sucursal;
-  final int enviosActivos;
-
-  factory RepartidorOut.desdeJson(Map<String, dynamic> j) => RepartidorOut(
-        id: j['id'] as String,
-        nombre: j['nombre'] as String,
-        sucursalId: j['sucursal_id'] as String,
-        sucursal: j['sucursal'] as String,
-        enviosActivos: aEntero(j['envios_activos']),
-      );
-}
-
 class ResumenEnvios {
   const ResumenEnvios({
     required this.pendientes,
-    required this.asignados,
-    required this.enRuta,
+    required this.despachados,
     required this.entregadosHoy,
     required this.fallidos,
   });
 
   final int pendientes;
-  final int asignados;
-  final int enRuta;
+  final int despachados;
   final int entregadosHoy;
   final int fallidos;
 
   factory ResumenEnvios.desdeJson(Map<String, dynamic> j) => ResumenEnvios(
         pendientes: aEntero(j['pendientes']),
-        asignados: aEntero(j['asignados']),
-        enRuta: aEntero(j['en_ruta']),
+        despachados: aEntero(j['despachados']),
         entregadosHoy: aEntero(j['entregados_hoy']),
         fallidos: aEntero(j['fallidos']),
       );
@@ -283,11 +251,9 @@ class ResumenEnvios {
 String etiquetaEstadoEnvio(String estado) {
   switch (estado) {
     case 'PENDIENTE':
-      return 'Sin asignar';
-    case 'ASIGNADO':
-      return 'Asignado';
-    case 'EN_RUTA':
-      return 'En camino';
+      return 'Pendiente';
+    case 'DESPACHADO':
+      return 'Despachado';
     case 'ENTREGADO':
       return 'Entregado';
     case 'FALLIDO':
@@ -301,10 +267,9 @@ String etiquetaEstadoEnvio(String estado) {
 
 /// Transiciones que ofrece la app; el backend las vuelve a validar.
 const transicionesEnvio = <String, List<String>>{
-  'PENDIENTE': ['CANCELADO'],
-  'ASIGNADO': ['EN_RUTA', 'PENDIENTE', 'CANCELADO'],
-  'EN_RUTA': ['ENTREGADO', 'FALLIDO'],
-  'FALLIDO': ['EN_RUTA', 'CANCELADO'],
+  'PENDIENTE': ['DESPACHADO', 'CANCELADO'],
+  'DESPACHADO': ['ENTREGADO', 'FALLIDO'],
+  'FALLIDO': ['DESPACHADO', 'CANCELADO'],
   'ENTREGADO': <String>[],
   'CANCELADO': <String>[],
 };

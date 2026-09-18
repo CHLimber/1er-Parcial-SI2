@@ -100,7 +100,7 @@ async def confirmar_aprobado(conn: asyncpg.Connection, pago_id: UUID, venta: dic
             INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
             SELECT usuario_id, 'VENTA', 'Tu pedido sale a reparto',
                    'Preparamos el pedido ' || numero || ' para llevarlo a tu domicilio. '
-                   || 'Te avisamos cuando el repartidor salga.',
+                   || 'Te avisamos cuando lo despachemos al servicio de delivery.',
                    'ENVIO', $2
             FROM venta WHERE id = $1
             """,

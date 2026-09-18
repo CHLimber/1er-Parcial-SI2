@@ -60,10 +60,8 @@ class EnvioOut(BaseModel):
     distancia_km: float
     duracion_min: int
     costo: float
-    repartidor: str | None
     observacion: str | None
     creado_en: datetime
-    asignado_en: datetime | None
     despachado_en: datetime | None
     cerrado_en: datetime | None
     eventos: list[EnvioEventoOut]

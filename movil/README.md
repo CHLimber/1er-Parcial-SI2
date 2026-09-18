@@ -60,7 +60,6 @@ Entrar con cualquiera de los usuarios semilla (password `demo1234` para todos):
 | `encargada.lapaz@fashionstore.bo` | CU08, atender reservas de La Paz |
 | `cajero.cbba@fashionstore.bo` | CU07, caja de Cochabamba |
 | `almacen.scz@fashionstore.bo` | CU09, recepciones (rol sin acceso al resto) |
-| `repartidor.scz@fashionstore.bo` | CU20, hoja de ruta de envios de Santa Cruz |
 
 La pantalla **Cuenta** muestra abajo un badge `LOCAL` / `RAILWAY` con la URL
 activa: sirve para confirmar de un vistazo contra que base estas probando.
@@ -164,8 +163,9 @@ tambien cuelga de **Cuenta**, pero del lado del cliente.
 
 Para probar CU20 de punta a punta: con `cliente@fashionstore.bo` guarda una direccion (viene
 una de fabrica), elegi "A domicilio" en el carrito, pagas con Libelula (la pantalla de pago
-simulado confirma el webhook) y despues entras con `admin@fashionstore.bo` o
-`repartidor.scz@fashionstore.bo` para moverlo hasta ENTREGADO desde **Cuenta > Envios**.
+simulado confirma el webhook) y despues entras con `admin@fashionstore.bo` para marcarlo
+DESPACHADO y despues ENTREGADO desde **Cuenta > Envios**. El reparto en si lo hace un
+servicio de delivery externo -- la app solo registra esos dos momentos, no una hoja de ruta.
 
 ## Autorizacion
 

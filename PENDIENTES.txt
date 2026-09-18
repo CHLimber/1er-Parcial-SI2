@@ -892,6 +892,55 @@
       completo con curl/UI contra Postgres real (reservar -> Encargado prepara -> cliente
       convierte a carrito web -> paga) -- no se hizo en esta sesion.
 
+[2.16] [HECHO 2026-09-18] CU20 simplificado a "delivery externo": decision de negocio, no bug.
+      El diseño original de CU20 (2.13) modelaba el reparto como si fuera operacion propia de
+      FashionStore: cargo de empleado REPARTIDOR, panel con asignacion y estados intermedios
+      ASIGNADO/EN_RUTA, hoja de ruta en el movil. El dueño del proyecto aclaro que el delivery
+      lo hace un servicio externo contratado, no personal propio, y que la tienda ni siquiera
+      deberia trackear el tramo intermedio (eso es responsabilidad del servicio).
+
+      CAMBIO: estado_envio pasa de (PENDIENTE, ASIGNADO, EN_RUTA, ENTREGADO, FALLIDO,
+      CANCELADO) a (PENDIENTE, DESPACHADO, ENTREGADO, FALLIDO, CANCELADO). La sucursal solo
+      marca los dos momentos que le tocan: cuando el paquete SALE hacia el servicio externo
+      (DESPACHADO) y cuando ese servicio confirma que LLEGO o que fallo. Se elimina el cargo
+      REPARTIDOR de cargo_empleado, el rol REPARTIDOR y sus permisos, la columna
+      envio.repartidor_id (con su constraint/indice) y envio.asignado_en. El endpoint
+      POST /admin/envios/{id}/asignar y GET /admin/envios/repartidores desaparecen.
+
+      BASE DE DATOS: 01_schema.sql/02_logica.sql/03_datos_iniciales.sql ya nacen con el
+      esquema simplificado (no hay usuario repartidor.scz@fashionstore.bo en el seed). Para
+      una base ya desplegada (Railway) que corrio el cu20_delivery.sql original:
+      db/reparaciones/cu20_delivery_simplificado.sql (idempotente) colapsa ASIGNADO/EN_RUTA a
+      DESPACHADO, reasigna cualquier empleado/usuario REPARTIDOR (cargo -> ALMACEN, cuenta
+      desactivada para que un ADMIN le ponga un cargo real desde CU13) y recrea los ENUMs
+      estado_envio/cargo_empleado sin los valores viejos (Postgres no soporta DROP VALUE).
+      Ver RAILWAY.md "5 ter" para el paso a paso.
+
+      BACKEND: envios/admin_router.py y admin_schemas.py sin RepartidorOut/AsignarRepartidorIn
+      ni el scoping por cargo REPARTIDOR; TRANSICIONES colapsadas a
+      PENDIENTE->DESPACHADO->ENTREGADO/FALLIDO->(DESPACHADO otra vez | CANCELADO). envios/
+      schemas.py y router.py (cara de la clienta) ya no exponen `repartidor`. usuarios/
+      admin_router.py no necesito cambios: CARGOS ya no incluia REPARTIDOR (ver bug encontrado
+      y cerrado por este mismo cambio, mas abajo).
+
+      FRONTEND Y MOVIL: panel-envios (web) y panel_envios_pagina.dart (movil) pierden la
+      seccion "Asignar repartidor" y la columna/dato de repartidor; los contadores pasan de 5
+      a 4 (pendientes/despachados/entregados hoy/fallidos). El seguimiento del lado de la
+      clienta (compra.page, compra_pagina.dart) ya no muestra "Reparte fulano" y la linea de
+      tiempo pasa de 4 pasos a 3. Verificado: `npx tsc --noEmit` y `ng build` limpios (frontend,
+      solo quedan los warnings de presupuesto CSS preexistentes), `flutter analyze` sin issues
+      y `flutter test` en verde (movil), `python -c "import app.main"` limpio (backend).
+
+      CIERRA TAMBIEN: el hallazgo de que CU13 (panel de Rol y usuario) no permitia crear ni
+      editar un STAFF con cargo REPARTIDOR porque `CARGOS` en usuarios/admin_router.py y
+      `CargoEmpleado`/`CARGOS` en usuarios-admin.models.ts nunca se actualizaron cuando CU20
+      agrego ese cargo -- al sacar el cargo por completo, el hueco deja de existir.
+
+      FALTA: no se pudo probar visualmente el panel de envios simplificado en un navegador ni
+      en el emulador en esta sesion (mismo limite que otras CU recientes) -- si algo se ve mal,
+      avisar. Tampoco se corrio la migracion cu20_delivery_simplificado.sql contra una base
+      real (ni local ni Railway) en esta sesion, solo se revisó a mano.
+
 -------------------------------------------------------------------------------
  3. DEUDA TECNICA
 -------------------------------------------------------------------------------

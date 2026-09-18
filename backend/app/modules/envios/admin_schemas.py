@@ -4,31 +4,18 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-# Transiciones validas del envio (las valida el router, no la base):
-#   PENDIENTE -> ASIGNADO | CANCELADO
-#   ASIGNADO  -> EN_RUTA  | PENDIENTE (se libera al repartidor) | CANCELADO
-#   EN_RUTA   -> ENTREGADO | FALLIDO
-#   FALLIDO   -> EN_RUTA (segundo intento) | CANCELADO
-#   ENTREGADO -> terminal
-EstadoEnvio = Literal["PENDIENTE", "ASIGNADO", "EN_RUTA", "ENTREGADO", "FALLIDO", "CANCELADO"]
-
-
-class AsignarRepartidorIn(BaseModel):
-    repartidor_id: UUID
-    observacion: str | None = Field(default=None, max_length=250)
+# Transiciones validas del envio (las valida el router, no la base). El reparto lo hace un
+# servicio de delivery externo, asi que la sucursal solo marca los dos momentos que le tocan:
+#   PENDIENTE  -> DESPACHADO | CANCELADO
+#   DESPACHADO -> ENTREGADO  | FALLIDO
+#   FALLIDO    -> DESPACHADO (segundo intento) | CANCELADO
+#   ENTREGADO  -> terminal
+EstadoEnvio = Literal["PENDIENTE", "DESPACHADO", "ENTREGADO", "FALLIDO", "CANCELADO"]
 
 
 class CambioEstadoIn(BaseModel):
     estado: EstadoEnvio
     observacion: str | None = Field(default=None, max_length=250)
-
-
-class RepartidorOut(BaseModel):
-    id: UUID
-    nombre: str
-    sucursal_id: UUID
-    sucursal: str
-    envios_activos: int
 
 
 class EnvioAdminOut(BaseModel):
@@ -50,11 +37,8 @@ class EnvioAdminOut(BaseModel):
     costo: float
     proveedor_ruteo: str
     total_venta: float
-    repartidor_id: UUID | None
-    repartidor: str | None
     observacion: str | None
     creado_en: datetime
-    asignado_en: datetime | None
     despachado_en: datetime | None
     cerrado_en: datetime | None
 
@@ -85,7 +69,6 @@ class ResumenEnviosOut(BaseModel):
     """Contadores del tablero de despacho, por estado."""
 
     pendientes: int
-    asignados: int
-    en_ruta: int
+    despachados: int
     entregados_hoy: int
     fallidos: int

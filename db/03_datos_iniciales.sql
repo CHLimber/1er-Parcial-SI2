@@ -19,8 +19,7 @@ INSERT INTO rol (nombre, descripcion, es_sistema) VALUES
     ('ENCARGADO',  'Responsable de una sucursal', TRUE),
     ('CAJERO',     'Maneja caja y ventas presenciales', TRUE),
     ('VENDEDOR',   'Atiende clientes y reservas en tienda', TRUE),
-    ('ALMACEN',    'Recibe mercaderia y controla existencias', TRUE),
-    ('REPARTIDOR', 'Lleva los pedidos a domicilio (CU20)', TRUE);
+    ('ALMACEN',    'Recibe mercaderia y controla existencias', TRUE);
 
 -- ---------------------------------------------------------------------
 -- PERMISOS Y ASIGNACION A ROLES (CU13)
@@ -70,8 +69,8 @@ INSERT INTO permiso (codigo, modulo, descripcion) VALUES
     ('ventas.crear',          'ventas',      'Registrar ventas presenciales'),
     ('reportes.leer',         'reportes',    'Consultar los tableros de gestion'),
     ('auditoria.leer',        'auditoria',   'Consultar la bitacora de auditoria del sistema'),
-    ('envios.leer',           'envios',      'Consultar los envios a domicilio y su hoja de ruta'),
-    ('envios.actualizar',     'envios',      'Asignar repartidor y mover el estado de un envio');
+    ('envios.leer',           'envios',      'Consultar los envios a domicilio y su estado de despacho'),
+    ('envios.actualizar',     'envios',      'Marcar un envio como despachado, entregado o fallido');
 
 -- ADMIN: todo
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -108,13 +107,6 @@ INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
   FROM permiso p
  WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar');
-
--- REPARTIDOR (CU20): solo la hoja de ruta de los envios. El backend ademas acota lo que ve
--- un repartidor a los envios que tiene asignados (ver app/modules/envios/admin_router.py).
-INSERT INTO rol_permiso (rol_id, permiso_id)
-SELECT (SELECT id FROM rol WHERE nombre = 'REPARTIDOR'), p.id
-  FROM permiso p
- WHERE p.codigo IN ('envios.leer','envios.actualizar');
 
 -- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
 -- fn_cotizar_envio no tiene distancia que cobrar. Son las de cada barrio real.
@@ -155,9 +147,7 @@ INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email
     ('vendedor.scz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Camila',  'Rocha',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'VENDEDOR'),  TRUE),
     ('almacen.scz@fashionstore.bo',     crypt('demo1234', gen_salt('bf')), 'Ruben',   'Mamani',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE),
-    ('repartidor.scz@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Diego',   'Suarez',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'REPARTIDOR'), TRUE);
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE);
 
 INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado) VALUES
     ('cliente@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Cliente', 'Demo',   'CLIENTE', TRUE),
@@ -173,9 +163,7 @@ INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
     ((SELECT id FROM usuario WHERE email = 'vendedor.scz@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'VENDEDOR', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'almacen.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'repartidor.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'REPARTIDOR', CURRENT_DATE);
+     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE);
 
 INSERT INTO perfil_cliente (usuario_id, talla_superior_id, talla_inferior_id, talla_calzado_id,
                              color_favorito_id, fecha_nacimiento, puntos_fidelidad, acepta_marketing)

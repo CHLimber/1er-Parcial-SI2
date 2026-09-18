@@ -98,9 +98,6 @@
           }
 
           <p class="envio__dato">
-            @if (e.repartidor) {
-              Reparte <strong>{{ e.repartidor }}</strong> ·
-            }
             {{ e.distancia_km.toFixed(1) }} km desde {{ e.sucursal }} · unos {{ e.duracion_min }} min
           </p>
           @if (e.observacion) {

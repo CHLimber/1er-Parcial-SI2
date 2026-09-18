@@ -10,7 +10,6 @@ import {
   EnvioAdminOut,
   EnvioOut,
   EstadoEnvio,
-  RepartidorOut,
   ResumenEnviosOut,
 } from './envios.models';
 
@@ -54,21 +53,8 @@ export class EnviosService {
     return this.http.get<ResumenEnviosOut>(`${this.baseAdmin}/resumen`, { params });
   }
 
-  repartidores(sucursalId?: string | null): Observable<RepartidorOut[]> {
-    let params = new HttpParams();
-    if (sucursalId) params = params.set('sucursal_id', sucursalId);
-    return this.http.get<RepartidorOut[]>(`${this.baseAdmin}/repartidores`, { params });
-  }
-
   detalle(envioId: string): Observable<EnvioAdminDetalleOut> {
     return this.http.get<EnvioAdminDetalleOut>(`${this.baseAdmin}/${envioId}`);
-  }
-
-  asignar(envioId: string, repartidorId: string, observacion?: string | null): Observable<EnvioAdminOut> {
-    return this.http.post<EnvioAdminOut>(`${this.baseAdmin}/${envioId}/asignar`, {
-      repartidor_id: repartidorId,
-      observacion: observacion ?? null,
-    });
   }
 
   cambiarEstado(

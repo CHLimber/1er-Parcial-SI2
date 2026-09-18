@@ -412,7 +412,7 @@ class _CarritoPaginaState extends State<CarritoPagina> {
                         child: _OpcionPasarela(
                           nombre: 'Efectivo',
                           detalle: _entrega == 'DOMICILIO'
-                              ? 'Le pagas al repartidor'
+                              ? 'Pagas al recibir el pedido'
                               : 'Pagas al retirar en tienda',
                           elegida: _metodoPago == 'EFECTIVO',
                           alElegir: () => setState(() => _metodoPago = 'EFECTIVO'),

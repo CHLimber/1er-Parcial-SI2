@@ -20,7 +20,8 @@ import asyncpg
 
 from app.core.ruteo import calcular_ruta
 
-# el envio nace asi y el panel de despacho lo mueve de ahi en adelante
+# el envio nace asi; la sucursal lo mueve a DESPACHADO cuando se lo entrega al servicio de
+# delivery externo, y a ENTREGADO/FALLIDO cuando ese servicio confirma el resultado
 ESTADO_INICIAL = "PENDIENTE"
 
 
@@ -89,7 +90,7 @@ async def crear_envio_de_venta(conn: asyncpg.Connection, venta_id: UUID) -> UUID
     envio. Devuelve None si la venta no es a domicilio o si el envio ya existia.
 
     La tarifa NO se vuelve a cotizar: se usa venta.costo_envio, que es lo que la clienta pago.
-    La distancia se recalcula solo para la hoja de ruta del repartidor, y si el proveedor de
+    La distancia se recalcula solo para mostrarla en el seguimiento, y si el proveedor de
     mapas no contesta queda la del respaldo, que no cambia lo cobrado.
     """
     venta = await conn.fetchrow(

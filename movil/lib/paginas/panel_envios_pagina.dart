@@ -2,21 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
 
 import '../compartido/widgets.dart';
-import '../core/auth/auth_service.dart';
 import '../core/config.dart';
 import '../core/envios/envios_models.dart';
 import '../core/envios/envios_service.dart';
 import '../core/errores.dart';
 import '../core/tema.dart';
 
-/// CU20 - panel de despacho en el telefono. Es la pantalla que mas sentido tiene en movil:
-/// el repartidor sale con el celular y desde ahi marca "en camino" y "entregado".
-///
-/// Un ENCARGADO ve la cola de su sucursal y asigna; un REPARTIDOR ve solo lo suyo. La API
-/// acota las dos cosas (ver `envios/admin_router.py`), aca solo se evitan botones inutiles.
+/// CU20 - panel de despacho en el telefono. El reparto lo hace un servicio de delivery
+/// externo, no personal de FashionStore: un ENCARGADO/ADMIN solo marca cuando el paquete
+/// sale hacia ese servicio y cuando se confirma la entrega (o la falla).
 class PanelEnviosPagina extends StatefulWidget {
   const PanelEnviosPagina({super.key});
 
@@ -74,11 +70,9 @@ class _PanelEnviosPaginaState extends State<PanelEnviosPagina> {
 
   @override
   Widget build(BuildContext context) {
-    final esRepartidor = context.watch<AuthService>().usuario?.cargo == 'REPARTIDOR';
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(esRepartidor ? 'Mi hoja de ruta' : 'Envios'),
+        title: const Text('Envios'),
         actions: [
           IconButton(
             tooltip: 'Actualizar',
@@ -145,8 +139,7 @@ class _PanelEnviosPaginaState extends State<PanelEnviosPagina> {
                           const SizedBox(height: 4),
                           Text(
                             '${envio.distanciaKm.toStringAsFixed(1)} km · '
-                            '~${envio.duracionMin} min · envio ${formatearPrecio(envio.costo)}'
-                            '${envio.repartidor == null ? '' : ' · ${envio.repartidor}'}',
+                            '~${envio.duracionMin} min · envio ${formatearPrecio(envio.costo)}',
                             style: const TextStyle(color: Paleta.inkSuave, fontSize: 12.5),
                           ),
                         ],
@@ -170,9 +163,8 @@ class _Contadores extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final datos = <(String, int)>[
-      ('Sin asignar', resumen.pendientes),
-      ('Asignados', resumen.asignados),
-      ('En ruta', resumen.enRuta),
+      ('Pendientes', resumen.pendientes),
+      ('Despachados', resumen.despachados),
       ('Entregados hoy', resumen.entregadosHoy),
       ('Fallidos', resumen.fallidos),
     ];
@@ -222,8 +214,6 @@ class _DetalleEnvioPaginaState extends State<_DetalleEnvioPagina> {
   final _formatoFecha = DateFormat('dd/MM HH:mm');
 
   EnvioAdminDetalle? _detalle;
-  List<RepartidorOut> _repartidores = const [];
-  String? _repartidorElegido;
   bool _cargando = true;
   bool _trabajando = false;
   bool _huboCambios = false;
@@ -241,8 +231,6 @@ class _DetalleEnvioPaginaState extends State<_DetalleEnvioPagina> {
     super.dispose();
   }
 
-  bool get _esRepartidor => context.read<AuthService>().usuario?.cargo == 'REPARTIDOR';
-
   Future<void> _cargar() async {
     setState(() {
       _cargando = true;
@@ -250,19 +238,9 @@ class _DetalleEnvioPaginaState extends State<_DetalleEnvioPagina> {
     });
     try {
       final detalle = await enviosService.detalle(widget.envioId);
-      List<RepartidorOut> repartidores = const [];
-      if (!_esRepartidor) {
-        try {
-          repartidores = await enviosService.repartidores(sucursalId: detalle.envio.sucursalId);
-        } catch (_) {
-          repartidores = const [];
-        }
-      }
       if (!mounted) return;
       setState(() {
         _detalle = detalle;
-        _repartidores = repartidores;
-        _repartidorElegido = detalle.envio.repartidorId;
         _cargando = false;
       });
     } catch (error) {
@@ -271,33 +249,6 @@ class _DetalleEnvioPaginaState extends State<_DetalleEnvioPagina> {
         _error = interpretarError(error);
         _cargando = false;
       });
-    }
-  }
-
-  Future<void> _asignar() async {
-    final repartidor = _repartidorElegido;
-    if (repartidor == null) {
-      mostrarAviso(context, 'Elegi un repartidor', esError: true);
-      return;
-    }
-
-    setState(() => _trabajando = true);
-    try {
-      await enviosService.asignar(
-        widget.envioId,
-        repartidor,
-        observacion: _observacion.text.trim().isEmpty ? null : _observacion.text.trim(),
-      );
-      _huboCambios = true;
-      _observacion.clear();
-      if (!mounted) return;
-      mostrarAviso(context, 'Repartidor asignado');
-      await _cargar();
-    } catch (error) {
-      if (!mounted) return;
-      mostrarAviso(context, interpretarError(error), esError: true);
-    } finally {
-      if (mounted) setState(() => _trabajando = false);
     }
   }
 
@@ -427,33 +378,6 @@ class _DetalleEnvioPaginaState extends State<_DetalleEnvioPagina> {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    if (!_esRepartidor &&
-                        (detalle.envio.estado == 'PENDIENTE' ||
-                            detalle.envio.estado == 'ASIGNADO')) ...[
-                      const EtiquetaDato('Asignar repartidor'),
-                      const SizedBox(height: 8),
-                      DropdownButtonFormField<String>(
-                        initialValue: _repartidorElegido,
-                        decoration: const InputDecoration(labelText: 'Repartidor'),
-                        items: _repartidores
-                            .map(
-                              (r) => DropdownMenuItem(
-                                value: r.id,
-                                child: Text('${r.nombre} (${r.enviosActivos} en curso)'),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (valor) => setState(() => _repartidorElegido = valor),
-                      ),
-                      const SizedBox(height: 10),
-                      FilledButton(
-                        onPressed: _trabajando ? null : _asignar,
-                        child: Text(
-                          detalle.envio.estado == 'ASIGNADO' ? 'REASIGNAR' : 'ASIGNAR',
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                    ],
                     if ((transicionesEnvio[detalle.envio.estado] ?? const []).isNotEmpty) ...[
                       const EtiquetaDato('Mover el envio'),
                       const SizedBox(height: 8),
@@ -462,7 +386,7 @@ class _DetalleEnvioPaginaState extends State<_DetalleEnvioPagina> {
                         maxLines: 2,
                         decoration: const InputDecoration(
                           labelText: 'Nota (obligatoria si falla)',
-                          hintText: 'Ej: nadie atendio el timbre',
+                          hintText: 'Ej: el servicio de delivery no pudo entregar',
                         ),
                       ),
                       const SizedBox(height: 10),
