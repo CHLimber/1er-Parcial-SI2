@@ -55,3 +55,45 @@ class StockSucursalOut(BaseModel):
 class ReservaEstadoOut(BaseModel):
     estado: str
     cantidad: int
+
+
+class EnvioEstadoOut(BaseModel):
+    estado: str
+    cantidad: int
+
+
+class ProductoSinMovimientoOut(BaseModel):
+    variante_id: UUID
+    producto: str
+    talla: str
+    color: str
+    sucursal_id: UUID
+    sucursal: str
+    cantidad_fisica: int
+
+
+class ClienteRankingOut(BaseModel):
+    usuario_id: UUID
+    cliente: str
+    email: str
+    cantidad_compras: int
+    monto_total: float
+
+
+class CajaOcupacionOut(BaseModel):
+    sucursal_id: UUID
+    sucursal: str
+    total_cajas: int
+    cajas_abiertas: int
+
+
+class RecepcionPendienteProveedorOut(BaseModel):
+    proveedor_id: UUID
+    proveedor: str
+    cantidad: int
+    monto_total: float
+
+
+class VendedorOut(BaseModel):
+    id: UUID
+    nombre: str

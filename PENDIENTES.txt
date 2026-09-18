@@ -105,6 +105,110 @@
           endpoint, sin ANTHROPIC_API_KEY en .env, sin dependencia del SDK de
           Claude. Es una tarea aparte, CU15 (reportes) ya esta cerrado sin ella.
 
+      [2.5.1] [HECHO 2026-09-18] Ampliacion de CU15: mas filtros en los dinamicos +
+      4 estaticos nuevos + 1 endpoint auxiliar, backend + web (movil sigue sin CU15,
+      a proposito). Filtros nuevos en los 4 endpoints dinamicos (indicadores,
+      ventas-diarias, ventas-por-sucursal, top-productos): categoria_id (EXISTS
+      contra venta_detalle/reserva_detalle, no JOIN, para no multiplicar filas al
+      agregar sobre venta/reserva), vendedor_id (venta.registrada_por_id -- queda
+      NULL en WEB/MOVIL, solo tiene datos en POS/CU08; y su equivalente en reservas
+      es reserva.atendida_por_id), canal (ya estaba solo en ventas-diarias, ahora en
+      los 4) y entrega (venta.entrega, RETIRO_SUCURSAL/DOMICILIO). Ojo: el seed no
+      trae ventas por POS, asi que vendedor_id hoy siempre da vacio contra datos
+      demo -- probado igual con curl y el filtro arma bien el SQL (parametro nunca
+      matchea nada porque no hay filas, no es un bug).
+      Estaticos nuevos (mismo patron: SQL fija, foto actual, solo filtro de
+      sucursal): /reportes/envios-por-estado (espejo de reservas-por-estado para
+      CU20), /reportes/productos-sin-movimiento (variantes con cantidad_fisica > 0
+      sin ninguna fila historica en venta_detalle, limite 1-200 default 50),
+      /reportes/top-clientes (ranking historico por venta.usuario_id, ignora ventas
+      sin cliente identificado como las de POS), /reportes/ocupacion-cajas (cajas
+      activas de la sucursal vs. cuantas tienen sesion_caja en estado ABIERTA ahora
+      mismo) y /reportes/recepciones-pendientes (recepcion en BORRADOR agrupadas por
+      proveedor). Se descarto un quinto (recepciones por proveedor termino siendo
+      el mismo que "recepciones pendientes", no hizo falta duplicar).
+      /reportes/vendedores es nuevo pero NO es un reporte: es un endpoint auxiliar
+      de solo lectura (mismo permiso reportes.leer, mismo scoping por sucursal) que
+      lista empleados activos para poblar el <select> del filtro vendedor en la UI
+      -- se opto por esto en vez de pegarle a GET /admin/usuarios porque ese
+      requiere usuarios.leer, que un ENCARGADO no tiene (solo reportes.leer).
+      Web: el <select> de categoria reusa CatalogoService.obtenerFiltros() (publico,
+      ya se llamaba desde tienda.page) en vez de duplicar un fetch de categorias
+      admin -- ningun modulo importa schemas de otro pero en el frontend esto es
+      solo reusar un servicio publico existente para poblar un dropdown. Probado
+      con curl contra Postgres real: los 11 endpoints (7 originales + 4 nuevos +
+      vendedores), filtros categoria_id/vendedor_id/canal/entrega combinados en
+      top-productos y ventas-por-sucursal, y el 403 de ENCARGADO cruzando sucursal
+      en los estaticos nuevos. `ng build` limpio.
+
+      [2.5.2] [HECHO 2026-09-18] panel-reportes ahora tiene un submenu con 4
+      vistas (senial `vista` en panel-reportes.page.ts): "Graficas" (el tablero
+      original con Chart.js, intacto -- no se le cambio nada), "Reporte Estaticos"
+      y "Reporte Dinamicos" (los mismos datos que ya se cargaban para las graficas,
+      pero en tabla nomas, sin canvas -- a pedido explicito del usuario) y "Reporte
+      con IA" (el placeholder "Consultas por voz" que antes vivia suelto al final
+      de la pagina, ahora es su propia pestania). El submenu no dispara fetches
+      nuevos: `cargarTodo()` sigue trayendo todo de una sola vez al entrar a la
+      pagina (igual que antes) y el `vista` signal solo decide que se muestra;
+      cambiar de pestania es instantaneo. OJO con el mecanismo de ocultamiento:
+      la vista "Graficas" se oculta con `[hidden]`, NO con `@if` -- si se sacara
+      del DOM con `@if` los `@ViewChild` de los <canvas> quedarian apuntando a
+      elementos destruidos la proxima vez que llega una respuesta HTTP con esa
+      vista oculta (p.ej. al aplicar el filtro estando en otra pestania) y
+      Chart.js tiraria sobre un nativeElement inexistente; "Estaticos"/"Dinamicos"/
+      "IA" si usan `@if` porque no tienen canvas. Se agregaron 5 signals nuevos
+      (`reservas`, `envios`, `ventasDiarias`, `ventasPorSucursal`, `topProductos`)
+      solo para poder pintar la version tabla de datos que antes solo alimentaban
+      un grafico -- `ocupacionCajas`/`stock`/`topClientes`/`sinMovimiento`/
+      `recepcionesPendientes` ya guardaban las filas crudas de antes, se
+      reutilizaron sin cambios. `ng build` limpio (un warning NG8102 de
+      nullish-coalescing en las etiquetas de estado se corrigio tipando esos dos
+      diccionarios como `Record<string, string | undefined>`). No se probo a ojo
+      en un navegador real (sin herramienta de captura en esta sesion), solo se
+      verifico que compile y que el flujo de datos sea el mismo que ya estaba
+      probado con curl en [2.5.1].
+
+      [2.5.3] [HECHO 2026-09-18] Correccion de [2.5.2] a pedido del usuario: cada
+      pestania del submenu ahora tiene SU PROPIO filtro, en vez de compartir uno
+      solo. "Graficas" volvio a tener nada mas que desde/hasta/sucursal (el canal
+      de "Ventas diarias" sigue embebido en esa seccion, como en el diseno
+      original de CU15) -- se le sacaron categoria_id/vendedor_id/entrega, que
+      habian quedado ahi por error en [2.5.2]. "Reporte Estaticos" ahora solo deja
+      elegir sucursal + un selector "Tipo de consulta" (los 7 reportes de foto
+      actual) y muestra UNA tabla a la vez (la del tipo elegido), en vez de las 7
+      juntas. "Reporte Dinamicos" es el que gano filtros: selector "Tipo de
+      consulta" (indicadores/ventas-diarias/ventas-por-sucursal/top-productos) +
+      TODOS los filtros que el backend acepta (desde, hasta, sucursal, categoria,
+      vendedor, canal, entrega) aplicados de una sola vez a la consulta elegida --
+      antes el mismo filtro compartido le pegaba a los 4 endpoints dinamicos en
+      simultaneo, que es justo lo que el usuario marco como redundante.
+      Cambio de arquitectura en el componente: se agregaron dos FormGroup nuevos
+      (`filtroEstatico`, `filtroDinamico`), cada uno con su propio campo `tipo`, y
+      dos metodos dispatcher (`consultarEstatico()`/`consultarDinamico()`) con un
+      switch sobre `tipo` que llama al endpoint que corresponda y guarda el
+      resultado en signals namespaced aparte (`est*`/`din*`) para no compartir
+      estado con los signals de "Graficas" (que siguen alimentando los graficos
+      sin tocar). Un signal separado del control del formulario
+      (`estaticoTipoActivo`/`dinTipoActivo`) recuerda cual fue el ULTIMO tipo
+      consultado con exito, para que el template sepa que tabla dibujar aunque el
+      usuario ya haya cambiado el select sin apretar "Consultar" todavia.
+      `cambiarVista()` dispara una consulta por defecto (tipo inicial de cada
+      form) la primera vez que se entra a cada pestania, asi no arranca vacia.
+      `reportes.models.ts`/`reportes.service.ts`: se sumo `canal` a
+      `FiltroReportes` y se unifico `ventasDiarias()` para leerlo de ahi (antes
+      era un segundo parametro separado solo para esa funcion). Backend sin
+      cambios (ya soportaba todos estos filtros desde [2.5.1]). `ng build`
+      limpio. Sigue sin probarse a ojo en un navegador real.
+
+      [2.5.4] [HECHO 2026-09-18] Se agrego `border-right` a `.tabla th`/`.tabla td`
+      en `shared/panel/panel-comun.css` (quitado en `:last-child`) porque las
+      columnas de las tablas nuevas de reportes eran dificiles de leer sin un
+      delimitante vertical. Este archivo es compartido por TODAS las tablas del
+      panel (catalogo, usuarios, recepciones, proveedores, sucursales, envios,
+      auditoria, reportes), asi que el cambio se ve en todas, no solo en
+      reportes -- es intencional, mismo sistema de diseno para toda la pantalla
+      de gestion. `ng build` limpio.
+
 [2.6] Ajustes manuales de stock: idem.
       El permiso inventario.ajustar esta asignado a ADMIN, ENCARGADO y ALMACEN,
       y fn_mover_inventario() acepta ajustes, pero no hay endpoint que los

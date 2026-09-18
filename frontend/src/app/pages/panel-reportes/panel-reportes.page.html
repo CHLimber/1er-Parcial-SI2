@@ -2,162 +2,751 @@
   titulo="Reportes"
   bajada="CU15 — indicadores dinámicos (con filtro de fecha y sucursal) y estáticos (foto actual de stock y reservas)."
 >
-  <form class="barra" [formGroup]="filtro" (ngSubmit)="aplicarFiltro()">
-    <div class="campo">
-      <label for="f-desde">Desde</label>
-      <input id="f-desde" type="date" formControlName="desde" />
-    </div>
-    <div class="campo">
-      <label for="f-hasta">Hasta</label>
-      <input id="f-hasta" type="date" formControlName="hasta" />
-    </div>
-    @if (puedeElegirSucursal) {
-      <div class="campo">
-        <label for="f-sucursal">Sucursal</label>
-        <select id="f-sucursal" formControlName="sucursal_id">
-          <option value="">Todas</option>
-          @for (s of sucursales(); track s.id) {
-            <option [value]="s.id">{{ s.nombre }}</option>
-          }
-        </select>
-      </div>
-    }
-    <div class="barra__espacio"></div>
-    <button type="submit" class="boton">Actualizar</button>
-  </form>
+  <nav class="submenu">
+    <button
+      type="button"
+      class="submenu__item"
+      [class.submenu__item--activo]="vista() === 'graficas'"
+      (click)="cambiarVista('graficas')"
+    >
+      Gráficas
+    </button>
+    <button
+      type="button"
+      class="submenu__item"
+      [class.submenu__item--activo]="vista() === 'estaticos'"
+      (click)="cambiarVista('estaticos')"
+    >
+      Reporte Estáticos
+    </button>
+    <button
+      type="button"
+      class="submenu__item"
+      [class.submenu__item--activo]="vista() === 'dinamicos'"
+      (click)="cambiarVista('dinamicos')"
+    >
+      Reporte Dinámicos
+    </button>
+    <button
+      type="button"
+      class="submenu__item"
+      [class.submenu__item--activo]="vista() === 'ia'"
+      (click)="cambiarVista('ia')"
+    >
+      Reporte con IA
+    </button>
+  </nav>
 
   @if (error()) {
     <p class="error">{{ error() }}</p>
   }
 
-  <section class="panel">
-    <h2 class="panel__titulo">Resumen del período</h2>
-    @if (cargandoIndicadores()) {
-      <p class="estado">Cargando…</p>
-    } @else if (indicadores(); as ind) {
-      <div class="kpis">
-        <div class="kpi">
-          <span class="kpi__etiqueta">Ventas</span>
-          <span class="kpi__valor">Bs {{ ind.ventas_monto | number: '1.0-2' }}</span>
-          <span class="kpi__detalle">
-            {{ ind.ventas_cantidad }} ventas · ticket promedio Bs {{ ind.ticket_promedio | number: '1.0-2' }}
-          </span>
-        </div>
-        <div class="kpi">
-          <span class="kpi__etiqueta">Reservas del período</span>
-          <span class="kpi__valor">{{ ind.reservas_creadas }}</span>
-          <span class="kpi__detalle">
-            {{ ind.reservas_convertidas }} convertidas · {{ ind.tasa_conversion_reservas }}% de conversión
-          </span>
-        </div>
-        <div class="kpi" [class.kpi--alerta]="ind.variantes_agotadas > 0">
-          <span class="kpi__etiqueta">Variantes agotadas</span>
-          <span class="kpi__valor">{{ ind.variantes_agotadas }}</span>
-          <span class="kpi__detalle">Foto actual de inventario</span>
-        </div>
-        <div class="kpi" [class.kpi--alerta]="ind.variantes_stock_bajo > 0">
-          <span class="kpi__etiqueta">Stock bajo</span>
-          <span class="kpi__valor">{{ ind.variantes_stock_bajo }}</span>
-          <span class="kpi__detalle">Por debajo del mínimo definido</span>
-        </div>
+  <!-- Graficas: tablero original con Chart.js, solo filtra por desde/hasta/sucursal. Se oculta con
+       [hidden] (no @if) para que los <canvas> nunca salgan del DOM. -->
+  <div [hidden]="vista() !== 'graficas'">
+    <form class="barra" [formGroup]="filtro" (ngSubmit)="aplicarFiltro()">
+      <div class="campo">
+        <label for="f-desde">Desde</label>
+        <input id="f-desde" type="date" formControlName="desde" />
       </div>
-    }
-  </section>
-
-  <section class="panel">
-    <div class="panel__cabecera">
-      <h2 class="panel__titulo">Ventas diarias</h2>
-      <select [formControl]="filtro.controls.canal" (change)="aplicarFiltro()">
-        <option value="">Todos los canales</option>
-        <option value="WEB">Web</option>
-        <option value="MOVIL">Móvil</option>
-        <option value="POS">Caja (POS)</option>
-      </select>
-    </div>
-    <div class="grafico">
-      <canvas #canvasVentasDiarias></canvas>
-    </div>
-    @if (sinVentasDiarias()) {
-      <p class="estado">Sin ventas en el período y sucursal seleccionados.</p>
-    }
-  </section>
-
-  <section class="panel">
-    <h2 class="panel__titulo">Ventas por sucursal</h2>
-    <div class="grafico">
-      <canvas #canvasVentasSucursal></canvas>
-    </div>
-    @if (sinVentasSucursal()) {
-      <p class="estado">Sin ventas en el período seleccionado.</p>
-    }
-  </section>
-
-  <section class="panel">
-    <h2 class="panel__titulo">Top 10 productos más vendidos</h2>
-    <div class="grafico grafico--alto">
-      <canvas #canvasTopProductos></canvas>
-    </div>
-    @if (sinTopProductos()) {
-      <p class="estado">Sin ventas en el período seleccionado.</p>
-    }
-  </section>
-
-  <section class="panel">
-    <h2 class="panel__titulo">Stock disponible por sucursal</h2>
-    <p class="secundario">Foto actual del inventario, no depende del rango de fechas.</p>
-    <div class="grafico">
-      <canvas #canvasStock></canvas>
-    </div>
-    @if (sinStock()) {
-      <p class="estado">No hay inventario para mostrar.</p>
-    } @else {
-      <div class="tabla-envoltorio">
-        <table class="tabla">
-          <thead>
-            <tr>
-              <th>Sucursal</th>
-              <th class="tabla__numero">Físico</th>
-              <th class="tabla__numero">Reservado</th>
-              <th class="tabla__numero">Disponible</th>
-              <th class="tabla__numero">Agotadas</th>
-              <th class="tabla__numero">Stock bajo</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (fila of stock(); track fila.sucursal_id) {
-              <tr>
-                <td>{{ fila.sucursal }}</td>
-                <td class="tabla__numero">{{ fila.total_fisico }}</td>
-                <td class="tabla__numero">{{ fila.total_reservado }}</td>
-                <td class="tabla__numero">{{ fila.total_disponible }}</td>
-                <td class="tabla__numero">{{ fila.variantes_agotadas }}</td>
-                <td class="tabla__numero">{{ fila.variantes_stock_bajo }}</td>
-              </tr>
+      <div class="campo">
+        <label for="f-hasta">Hasta</label>
+        <input id="f-hasta" type="date" formControlName="hasta" />
+      </div>
+      @if (puedeElegirSucursal) {
+        <div class="campo">
+          <label for="f-sucursal">Sucursal</label>
+          <select id="f-sucursal" formControlName="sucursal_id">
+            <option value="">Todas</option>
+            @for (s of sucursales(); track s.id) {
+              <option [value]="s.id">{{ s.nombre }}</option>
             }
-          </tbody>
-        </table>
+          </select>
+        </div>
+      }
+      <div class="barra__espacio"></div>
+      <button type="submit" class="boton">Actualizar</button>
+    </form>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Resumen del período</h2>
+      @if (cargandoIndicadores()) {
+        <p class="estado">Cargando…</p>
+      } @else if (indicadores(); as ind) {
+        <div class="kpis">
+          <div class="kpi">
+            <span class="kpi__etiqueta">Ventas</span>
+            <span class="kpi__valor">Bs {{ ind.ventas_monto | number: '1.0-2' }}</span>
+            <span class="kpi__detalle">
+              {{ ind.ventas_cantidad }} ventas · ticket promedio Bs {{ ind.ticket_promedio | number: '1.0-2' }}
+            </span>
+          </div>
+          <div class="kpi">
+            <span class="kpi__etiqueta">Reservas del período</span>
+            <span class="kpi__valor">{{ ind.reservas_creadas }}</span>
+            <span class="kpi__detalle">
+              {{ ind.reservas_convertidas }} convertidas · {{ ind.tasa_conversion_reservas }}% de conversión
+            </span>
+          </div>
+          <div class="kpi" [class.kpi--alerta]="ind.variantes_agotadas > 0">
+            <span class="kpi__etiqueta">Variantes agotadas</span>
+            <span class="kpi__valor">{{ ind.variantes_agotadas }}</span>
+            <span class="kpi__detalle">Foto actual de inventario</span>
+          </div>
+          <div class="kpi" [class.kpi--alerta]="ind.variantes_stock_bajo > 0">
+            <span class="kpi__etiqueta">Stock bajo</span>
+            <span class="kpi__valor">{{ ind.variantes_stock_bajo }}</span>
+            <span class="kpi__detalle">Por debajo del mínimo definido</span>
+          </div>
+        </div>
+      }
+    </section>
+
+    <section class="panel">
+      <div class="panel__cabecera">
+        <h2 class="panel__titulo">Ventas diarias</h2>
+        <select [formControl]="filtro.controls.canal" (change)="aplicarFiltro()">
+          <option value="">Todos los canales</option>
+          <option value="WEB">Web</option>
+          <option value="MOVIL">Móvil</option>
+          <option value="POS">Caja (POS)</option>
+        </select>
       </div>
-    }
-  </section>
+      <div class="grafico">
+        <canvas #canvasVentasDiarias></canvas>
+      </div>
+      @if (sinVentasDiarias()) {
+        <p class="estado">Sin ventas en el período y sucursal seleccionados.</p>
+      }
+    </section>
 
-  <section class="panel">
-    <h2 class="panel__titulo">Reservas por estado</h2>
-    <p class="secundario">Foto actual de la cola de reservas, no depende del rango de fechas.</p>
-    <div class="grafico">
-      <canvas #canvasReservas></canvas>
-    </div>
-    @if (sinReservas()) {
-      <p class="estado">No hay reservas para mostrar.</p>
-    }
-  </section>
+    <section class="panel">
+      <h2 class="panel__titulo">Ventas por sucursal</h2>
+      <div class="grafico">
+        <canvas #canvasVentasSucursal></canvas>
+      </div>
+      @if (sinVentasSucursal()) {
+        <p class="estado">Sin ventas en el período seleccionado.</p>
+      }
+    </section>
 
-  <section class="panel panel--proximamente">
-    <h2 class="panel__titulo">Consultas por voz (próximamente)</h2>
-    <p class="aviso">
-      Acá va a vivir un asistente que arme estos mismos reportes a partir de un comando de voz,
-      usando la API de Claude. Por ahora es solo un espacio reservado: los reportes dinámicos y
-      estáticos de arriba ya cubren CU15.
-    </p>
-    <button type="button" class="boton boton--secundario" disabled>Hacer una consulta por voz</button>
-  </section>
+    <section class="panel">
+      <h2 class="panel__titulo">Top 10 productos más vendidos</h2>
+      <div class="grafico grafico--alto">
+        <canvas #canvasTopProductos></canvas>
+      </div>
+      @if (sinTopProductos()) {
+        <p class="estado">Sin ventas en el período seleccionado.</p>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Stock disponible por sucursal</h2>
+      <p class="secundario">Foto actual del inventario, no depende del rango de fechas.</p>
+      <div class="grafico">
+        <canvas #canvasStock></canvas>
+      </div>
+      @if (sinStock()) {
+        <p class="estado">No hay inventario para mostrar.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Sucursal</th>
+                <th class="tabla__numero">Físico</th>
+                <th class="tabla__numero">Reservado</th>
+                <th class="tabla__numero">Disponible</th>
+                <th class="tabla__numero">Agotadas</th>
+                <th class="tabla__numero">Stock bajo</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of stock(); track fila.sucursal_id) {
+                <tr>
+                  <td>{{ fila.sucursal }}</td>
+                  <td class="tabla__numero">{{ fila.total_fisico }}</td>
+                  <td class="tabla__numero">{{ fila.total_reservado }}</td>
+                  <td class="tabla__numero">{{ fila.total_disponible }}</td>
+                  <td class="tabla__numero">{{ fila.variantes_agotadas }}</td>
+                  <td class="tabla__numero">{{ fila.variantes_stock_bajo }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Reservas por estado</h2>
+      <p class="secundario">Foto actual de la cola de reservas, no depende del rango de fechas.</p>
+      <div class="grafico">
+        <canvas #canvasReservas></canvas>
+      </div>
+      @if (sinReservas()) {
+        <p class="estado">No hay reservas para mostrar.</p>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Envíos por estado</h2>
+      <p class="secundario">Foto actual del despacho a domicilio (CU20), no depende del rango de fechas.</p>
+      <div class="grafico">
+        <canvas #canvasEnvios></canvas>
+      </div>
+      @if (sinEnvios()) {
+        <p class="estado">No hay envíos para mostrar.</p>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Ocupación de cajas</h2>
+      <p class="secundario">Cajas abiertas en este momento sobre el total de cajas activas de la sucursal.</p>
+      <div class="grafico">
+        <canvas #canvasOcupacionCajas></canvas>
+      </div>
+      @if (sinOcupacionCajas()) {
+        <p class="estado">No hay cajas activas para mostrar.</p>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Top clientes</h2>
+      <p class="secundario">Ranking histórico por monto comprado, no depende del rango de fechas.</p>
+      @if (sinTopClientes()) {
+        <p class="estado">Sin compras de clientes identificados para mostrar.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Email</th>
+                <th class="tabla__numero">Compras</th>
+                <th class="tabla__numero">Monto total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of topClientes(); track fila.usuario_id) {
+                <tr>
+                  <td>{{ fila.cliente }}</td>
+                  <td>{{ fila.email }}</td>
+                  <td class="tabla__numero">{{ fila.cantidad_compras }}</td>
+                  <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Productos sin movimiento</h2>
+      <p class="secundario">Variantes con stock físico que nunca se vendieron, foto actual.</p>
+      @if (sinSinMovimiento()) {
+        <p class="estado">No hay variantes sin movimiento para mostrar.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Talla</th>
+                <th>Color</th>
+                <th>Sucursal</th>
+                <th class="tabla__numero">Stock físico</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of sinMovimiento(); track fila.variante_id) {
+                <tr>
+                  <td>{{ fila.producto }}</td>
+                  <td>{{ fila.talla }}</td>
+                  <td>{{ fila.color }}</td>
+                  <td>{{ fila.sucursal }}</td>
+                  <td class="tabla__numero">{{ fila.cantidad_fisica }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Recepciones pendientes por proveedor</h2>
+      <p class="secundario">Recepciones en borrador (todavía no confirmadas), foto actual.</p>
+      @if (sinRecepcionesPendientes()) {
+        <p class="estado">No hay recepciones pendientes para mostrar.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th class="tabla__numero">Recepciones</th>
+                <th class="tabla__numero">Monto total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (fila of recepcionesPendientes(); track fila.proveedor_id) {
+                <tr>
+                  <td>{{ fila.proveedor }}</td>
+                  <td class="tabla__numero">{{ fila.cantidad }}</td>
+                  <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  </div>
+
+  <!-- Reporte Estaticos: se elige el tipo de consulta y la sucursal, nada mas. Muestra una sola
+       tabla a la vez (la del tipo elegido). -->
+  @if (vista() === 'estaticos') {
+    <form class="barra" [formGroup]="filtroEstatico" (ngSubmit)="consultarEstatico()">
+      <div class="campo">
+        <label for="e-tipo">Tipo de consulta</label>
+        <select id="e-tipo" formControlName="tipo">
+          <option value="stock">Stock disponible por sucursal</option>
+          <option value="reservas">Reservas por estado</option>
+          <option value="envios">Envíos por estado</option>
+          <option value="ocupacion">Ocupación de cajas</option>
+          <option value="clientes">Top clientes</option>
+          <option value="sinMovimiento">Productos sin movimiento</option>
+          <option value="recepciones">Recepciones pendientes por proveedor</option>
+        </select>
+      </div>
+      @if (puedeElegirSucursal) {
+        <div class="campo">
+          <label for="e-sucursal">Sucursal</label>
+          <select id="e-sucursal" formControlName="sucursal_id">
+            <option value="">Todas</option>
+            @for (s of sucursales(); track s.id) {
+              <option [value]="s.id">{{ s.nombre }}</option>
+            }
+          </select>
+        </div>
+      }
+      <div class="barra__espacio"></div>
+      <button type="submit" class="boton">Consultar</button>
+    </form>
+
+    @if (estaticoCargando()) {
+      <p class="estado">Cargando…</p>
+    } @else if (estaticoTipoActivo(); as tipo) {
+      <section class="panel">
+        <h2 class="panel__titulo">{{ ETIQUETAS_TIPO_ESTATICO[tipo] }}</h2>
+        <p class="secundario">Foto actual, no depende del rango de fechas.</p>
+        @if (estSinResultados()) {
+          <p class="estado">No hay datos para mostrar.</p>
+        } @else {
+          @switch (tipo) {
+            @case ('stock') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Sucursal</th>
+                      <th class="tabla__numero">Físico</th>
+                      <th class="tabla__numero">Reservado</th>
+                      <th class="tabla__numero">Disponible</th>
+                      <th class="tabla__numero">Agotadas</th>
+                      <th class="tabla__numero">Stock bajo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estStock(); track fila.sucursal_id) {
+                      <tr>
+                        <td>{{ fila.sucursal }}</td>
+                        <td class="tabla__numero">{{ fila.total_fisico }}</td>
+                        <td class="tabla__numero">{{ fila.total_reservado }}</td>
+                        <td class="tabla__numero">{{ fila.total_disponible }}</td>
+                        <td class="tabla__numero">{{ fila.variantes_agotadas }}</td>
+                        <td class="tabla__numero">{{ fila.variantes_stock_bajo }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            @case ('reservas') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th class="tabla__numero">Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estReservas(); track fila.estado) {
+                      <tr>
+                        <td>{{ ETIQUETAS_ESTADO_RESERVA[fila.estado] ?? fila.estado }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            @case ('envios') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th class="tabla__numero">Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estEnvios(); track fila.estado) {
+                      <tr>
+                        <td>{{ ETIQUETAS_ESTADO_ENVIO[fila.estado] ?? fila.estado }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            @case ('ocupacion') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Sucursal</th>
+                      <th class="tabla__numero">Cajas totales</th>
+                      <th class="tabla__numero">Abiertas</th>
+                      <th class="tabla__numero">Cerradas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estOcupacionCajas(); track fila.sucursal_id) {
+                      <tr>
+                        <td>{{ fila.sucursal }}</td>
+                        <td class="tabla__numero">{{ fila.total_cajas }}</td>
+                        <td class="tabla__numero">{{ fila.cajas_abiertas }}</td>
+                        <td class="tabla__numero">{{ fila.total_cajas - fila.cajas_abiertas }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            @case ('clientes') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Email</th>
+                      <th class="tabla__numero">Compras</th>
+                      <th class="tabla__numero">Monto total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estTopClientes(); track fila.usuario_id) {
+                      <tr>
+                        <td>{{ fila.cliente }}</td>
+                        <td>{{ fila.email }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad_compras }}</td>
+                        <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            @case ('sinMovimiento') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Talla</th>
+                      <th>Color</th>
+                      <th>Sucursal</th>
+                      <th class="tabla__numero">Stock físico</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estSinMovimiento(); track fila.variante_id) {
+                      <tr>
+                        <td>{{ fila.producto }}</td>
+                        <td>{{ fila.talla }}</td>
+                        <td>{{ fila.color }}</td>
+                        <td>{{ fila.sucursal }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad_fisica }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+            @case ('recepciones') {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Proveedor</th>
+                      <th class="tabla__numero">Recepciones</th>
+                      <th class="tabla__numero">Monto total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of estRecepcionesPendientes(); track fila.proveedor_id) {
+                      <tr>
+                        <td>{{ fila.proveedor }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad }}</td>
+                        <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+        }
+      </section>
+    }
+  }
+
+  <!-- Reporte Dinamicos: se elige el tipo de consulta y se puede combinar fecha, sucursal,
+       categoria, vendedor, canal y entrega -- todos los filtros que el backend acepta, aplicados
+       de una sola vez a UNA consulta (antes se repetian sin necesidad en los 4 endpoints a la vez). -->
+  @if (vista() === 'dinamicos') {
+    <form class="barra" [formGroup]="filtroDinamico" (ngSubmit)="consultarDinamico()">
+      <div class="campo">
+        <label for="d-tipo">Tipo de consulta</label>
+        <select id="d-tipo" formControlName="tipo">
+          <option value="indicadores">Indicadores del período</option>
+          <option value="ventasDiarias">Ventas diarias</option>
+          <option value="ventasPorSucursal">Ventas por sucursal</option>
+          <option value="topProductos">Top 10 productos más vendidos</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label for="d-desde">Desde</label>
+        <input id="d-desde" type="date" formControlName="desde" />
+      </div>
+      <div class="campo">
+        <label for="d-hasta">Hasta</label>
+        <input id="d-hasta" type="date" formControlName="hasta" />
+      </div>
+      @if (puedeElegirSucursal) {
+        <div class="campo">
+          <label for="d-sucursal">Sucursal</label>
+          <select
+            id="d-sucursal"
+            formControlName="sucursal_id"
+            (change)="cargarVendedores(filtroDinamico.controls.sucursal_id.value || null)"
+          >
+            <option value="">Todas</option>
+            @for (s of sucursales(); track s.id) {
+              <option [value]="s.id">{{ s.nombre }}</option>
+            }
+          </select>
+        </div>
+      }
+      <div class="campo">
+        <label for="d-categoria">Categoría</label>
+        <select id="d-categoria" formControlName="categoria_id">
+          <option value="">Todas</option>
+          @for (c of categorias(); track c.id) {
+            <option [value]="c.id">{{ c.nombre }}</option>
+          }
+        </select>
+      </div>
+      <div class="campo">
+        <label for="d-vendedor">Vendedor</label>
+        <select id="d-vendedor" formControlName="vendedor_id">
+          <option value="">Todos</option>
+          @for (v of vendedores(); track v.id) {
+            <option [value]="v.id">{{ v.nombre }}</option>
+          }
+        </select>
+      </div>
+      <div class="campo">
+        <label for="d-canal">Canal</label>
+        <select id="d-canal" formControlName="canal">
+          <option value="">Todos</option>
+          <option value="WEB">Web</option>
+          <option value="MOVIL">Móvil</option>
+          <option value="POS">Caja (POS)</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label for="d-entrega">Entrega</label>
+        <select id="d-entrega" formControlName="entrega">
+          <option value="">Todas</option>
+          <option value="RETIRO_SUCURSAL">Retiro en sucursal</option>
+          <option value="DOMICILIO">Domicilio</option>
+        </select>
+      </div>
+      <div class="barra__espacio"></div>
+      <button type="submit" class="boton">Consultar</button>
+    </form>
+
+    @if (dinCargando()) {
+      <p class="estado">Cargando…</p>
+    } @else if (dinTipoActivo(); as tipo) {
+      <section class="panel">
+        <h2 class="panel__titulo">{{ ETIQUETAS_TIPO_DINAMICO[tipo] }}</h2>
+        @switch (tipo) {
+          @case ('indicadores') {
+            @if (dinIndicadores(); as ind) {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Métrica</th>
+                      <th class="tabla__numero">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Ventas ({{ ind.desde }} a {{ ind.hasta }})</td>
+                      <td class="tabla__numero">{{ ind.ventas_cantidad }}</td>
+                    </tr>
+                    <tr>
+                      <td>Monto vendido</td>
+                      <td class="tabla__numero">Bs {{ ind.ventas_monto | number: '1.0-2' }}</td>
+                    </tr>
+                    <tr>
+                      <td>Ticket promedio</td>
+                      <td class="tabla__numero">Bs {{ ind.ticket_promedio | number: '1.0-2' }}</td>
+                    </tr>
+                    <tr>
+                      <td>Reservas creadas</td>
+                      <td class="tabla__numero">{{ ind.reservas_creadas }}</td>
+                    </tr>
+                    <tr>
+                      <td>Reservas convertidas</td>
+                      <td class="tabla__numero">{{ ind.reservas_convertidas }}</td>
+                    </tr>
+                    <tr>
+                      <td>Tasa de conversión</td>
+                      <td class="tabla__numero">{{ ind.tasa_conversion_reservas }}%</td>
+                    </tr>
+                    <tr>
+                      <td>Variantes con stock bajo</td>
+                      <td class="tabla__numero">{{ ind.variantes_stock_bajo }}</td>
+                    </tr>
+                    <tr>
+                      <td>Variantes agotadas</td>
+                      <td class="tabla__numero">{{ ind.variantes_agotadas }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+          @case ('ventasDiarias') {
+            @if (dinSinResultados()) {
+              <p class="estado">Sin ventas para los filtros seleccionados.</p>
+            } @else {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Día</th>
+                      <th>Sucursal</th>
+                      <th>Canal</th>
+                      <th class="tabla__numero">Ventas</th>
+                      <th class="tabla__numero">Monto total</th>
+                      <th class="tabla__numero">Ticket promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of dinVentasDiarias(); track fila.dia + fila.sucursal_id + fila.canal) {
+                      <tr>
+                        <td>{{ fila.dia }}</td>
+                        <td>{{ fila.sucursal }}</td>
+                        <td>{{ fila.canal }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad_ventas }}</td>
+                        <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
+                        <td class="tabla__numero">Bs {{ fila.ticket_promedio | number: '1.0-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+          @case ('ventasPorSucursal') {
+            @if (dinSinResultados()) {
+              <p class="estado">Sin ventas para los filtros seleccionados.</p>
+            } @else {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Sucursal</th>
+                      <th class="tabla__numero">Ventas</th>
+                      <th class="tabla__numero">Monto total</th>
+                      <th class="tabla__numero">Ticket promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of dinVentasPorSucursal(); track fila.sucursal_id) {
+                      <tr>
+                        <td>{{ fila.sucursal }}</td>
+                        <td class="tabla__numero">{{ fila.cantidad_ventas }}</td>
+                        <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
+                        <td class="tabla__numero">Bs {{ fila.ticket_promedio | number: '1.0-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+          @case ('topProductos') {
+            @if (dinSinResultados()) {
+              <p class="estado">Sin ventas para los filtros seleccionados.</p>
+            } @else {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th class="tabla__numero">Unidades vendidas</th>
+                      <th class="tabla__numero">Monto vendido</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (fila of dinTopProductos(); track fila.producto_id) {
+                      <tr>
+                        <td>{{ fila.producto }}</td>
+                        <td class="tabla__numero">{{ fila.unidades_vendidas }}</td>
+                        <td class="tabla__numero">Bs {{ fila.monto_vendido | number: '1.0-2' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          }
+        }
+      </section>
+    }
+  }
+
+  <!-- Reporte con IA: placeholder, sin implementar todavia. -->
+  @if (vista() === 'ia') {
+    <section class="panel panel--proximamente">
+      <h2 class="panel__titulo">Consultas por voz (próximamente)</h2>
+      <p class="aviso">
+        Acá va a vivir un asistente que arme estos mismos reportes a partir de un comando de voz,
+        usando la API de Claude. Por ahora es solo un espacio reservado: los reportes dinámicos y
+        estáticos de las otras pestañas ya cubren CU15.
+      </p>
+      <button type="button" class="boton boton--secundario" disabled>Hacer una consulta por voz</button>
+    </section>
+  }
 </app-panel-shell>

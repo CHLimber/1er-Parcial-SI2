@@ -232,14 +232,21 @@
   color: var(--ink-soft);
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--paper-line);
+  border-right: 1px solid var(--paper-line);
   white-space: nowrap;
 }
 
 .tabla td {
   padding: 0.6rem;
   border-bottom: 1px solid var(--paper-line);
+  border-right: 1px solid var(--paper-line);
   vertical-align: middle;
   color: var(--ink);
+}
+
+.tabla th:last-child,
+.tabla td:last-child {
+  border-right: none;
 }
 
 .tabla tbody tr:hover {

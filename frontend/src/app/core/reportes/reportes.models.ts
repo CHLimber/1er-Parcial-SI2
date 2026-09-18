@@ -1,9 +1,19 @@
 export type CanalVenta = 'WEB' | 'MOVIL' | 'POS';
+export type ModoEntrega = 'RETIRO_SUCURSAL' | 'DOMICILIO';
 
 export interface FiltroReportes {
   desde?: string | null;
   hasta?: string | null;
   sucursal_id?: string | null;
+  categoria_id?: string | null;
+  vendedor_id?: string | null;
+  canal?: CanalVenta | null;
+  entrega?: ModoEntrega | null;
+}
+
+export interface VendedorOut {
+  id: string;
+  nombre: string;
 }
 
 export interface IndicadoresOut {
@@ -57,4 +67,41 @@ export interface StockSucursalOut {
 export interface ReservaEstadoOut {
   estado: string;
   cantidad: number;
+}
+
+export interface EnvioEstadoOut {
+  estado: string;
+  cantidad: number;
+}
+
+export interface ProductoSinMovimientoOut {
+  variante_id: string;
+  producto: string;
+  talla: string;
+  color: string;
+  sucursal_id: string;
+  sucursal: string;
+  cantidad_fisica: number;
+}
+
+export interface ClienteRankingOut {
+  usuario_id: string;
+  cliente: string;
+  email: string;
+  cantidad_compras: number;
+  monto_total: number;
+}
+
+export interface CajaOcupacionOut {
+  sucursal_id: string;
+  sucursal: string;
+  total_cajas: number;
+  cajas_abiertas: number;
+}
+
+export interface RecepcionPendienteProveedorOut {
+  proveedor_id: string;
+  proveedor: string;
+  cantidad: number;
+  monto_total: number;
 }

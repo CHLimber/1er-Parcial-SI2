@@ -69,3 +69,32 @@
 .panel--proximamente {
   opacity: 0.85;
 }
+
+.submenu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.submenu__item {
+  padding: 0.55rem 1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.submenu__item:hover {
+  color: var(--ink);
+}
+
+.submenu__item--activo {
+  color: var(--flame-dark);
+  border-bottom-color: var(--flame);
+}
