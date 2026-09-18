@@ -74,10 +74,25 @@
 
 .matriz-permisos {
   margin-top: 0.75rem;
+  table-layout: fixed;
+}
+
+.matriz-permisos th:first-child,
+.matriz-permisos td:first-child {
+  width: 10rem;
+  white-space: normal;
 }
 
 .matriz-permisos th:first-child {
   text-align: left;
+}
+
+.matriz-permisos th:not(:first-child) {
+  text-align: center;
+}
+
+.matriz-permisos tbody tr:nth-child(even) {
+  background: var(--paper);
 }
 
 .matriz-permisos__celda {
@@ -86,6 +101,13 @@
 
 .matriz-permisos__casilla {
   display: inline-flex;
+  padding: 0.25rem;
+  cursor: pointer;
+}
+
+.matriz-permisos__casilla input {
+  width: 1.05rem;
+  height: 1.05rem;
   cursor: pointer;
 }
 

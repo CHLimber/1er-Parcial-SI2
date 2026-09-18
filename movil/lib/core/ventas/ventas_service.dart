@@ -11,14 +11,14 @@ class VentasService {
     String? sucursalId,
     String entrega = 'RETIRO_SUCURSAL',
     String? direccionId,
-    required String pasarela,
+    required String metodoPago,
     String? codigoCupon,
   }) async {
     final respuesta = await api.post('/ventas/checkout', cuerpo: {
       'sucursal_id': sucursalId,
       'entrega': entrega,
       'direccion_id': direccionId,
-      'pasarela': pasarela,
+      'metodo_pago': metodoPago,
       'codigo_cupon': (codigoCupon?.isEmpty ?? true) ? null : codigoCupon,
       'canal': 'MOVIL',
     });
@@ -50,7 +50,7 @@ class VentasService {
   }
 }
 
-/// CU06. Stripe confirma por webhook firmado desde sus servidores; LIBELULA no tiene
+/// CU06. Stripe confirma por webhook firmado desde sus servidores; QR no tiene
 /// sandbox real, asi que la pantalla de pago simulado manda el resultado a mano. El
 /// backend usa `evento_id` como clave de idempotencia (tabla `evento_pasarela`).
 class PagosService {

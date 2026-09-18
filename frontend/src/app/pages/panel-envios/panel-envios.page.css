@@ -1,0 +1,76 @@
+/* CU20 - panel de despacho. El vocabulario comun esta en shared/panel/panel-comun.css. */
+
+.tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.tarjeta {
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tarjeta__valor {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.tarjeta__etiqueta {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.fila {
+  cursor: pointer;
+}
+
+.dato {
+  margin: 0 0 0.7rem;
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.9rem;
+}
+
+.subtitulo {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  margin: 1.1rem 0 0.5rem;
+}
+
+.mapa {
+  height: 12rem;
+  margin-bottom: 0.5rem;
+}
+
+.items,
+.eventos {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+}
+
+.items li,
+.eventos li {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.eventos__estado {
+  font-weight: 600;
+}

@@ -107,6 +107,8 @@ Password de todos: `demo1234`.
 | encargada.lapaz@fashionstore.bo     | STAFF   | ENCARGADO — Sopocachi (La Paz)   |
 | cajero.cbba@fashionstore.bo         | STAFF   | CAJERO — Cala Cala (Cochabamba)  |
 | vendedor.scz@fashionstore.bo        | STAFF   | VENDEDOR — Equipetrol (Santa Cruz) |
+| almacen.scz@fashionstore.bo         | STAFF   | ALMACEN — Equipetrol (Santa Cruz) |
+| repartidor.scz@fashionstore.bo      | STAFF   | REPARTIDOR — Equipetrol (Santa Cruz) |
 | cliente@fashionstore.bo             | CLIENTE | —                                |
 | cliente2@fashionstore.bo            | CLIENTE | —                                |
 
@@ -119,7 +121,9 @@ mas 3 promociones de ejemplo (`BIENVENIDA10`, `VERANO15`, `INVIERNO30`).
 
 - `POST /auth/login` — autentica y devuelve un JWT.
 - `GET /catalogo/productos` — lista productos activos (filtros: `categoria_slug`, `q`, `limit`, `offset`).
+- `GET /direcciones` / `POST /envios/cotizar` — libreta de direcciones y tarifa del delivery (CU20).
 - `GET /health` — chequeo de salud.
+- La lista completa esta en `http://localhost:8081/docs` (OpenAPI).
 
 ## Desarrollo del backend sin Docker
 

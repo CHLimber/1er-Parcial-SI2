@@ -156,11 +156,38 @@
   color: var(--flame-dark);
 }
 
-.carrito__total {
-  align-self: flex-end;
+.resumen {
+  display: grid;
+  gap: 0.35rem;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+}
+
+.resumen__linea,
+.resumen__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
   margin: 0;
+}
+
+.resumen__linea {
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+}
+
+.resumen__total {
+  border-top: 1px solid var(--paper-line);
+  padding-top: 0.5rem;
   font-size: 1.1rem;
   color: var(--ink);
+}
+
+.resumen__total strong {
+  font-family: var(--font-mono);
 }
 
 .formulario {
@@ -233,6 +260,39 @@
   color: var(--white);
 }
 
+.campo__ayuda {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* CU06 - Stripe embebido: se monta inline abajo del boton, nunca se sale del carrito */
+.oculto {
+  display: none;
+}
+
+.stripe-embed {
+  margin-top: 0.75rem;
+}
+
+.qr-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.qr-preview__imagen {
+  width: 100%;
+  max-width: 14rem;
+  border-radius: var(--radius-sm);
+}
+
 .formulario__error {
   color: var(--flame-dark);
   font-size: 0.85rem;
@@ -258,4 +318,39 @@
 .boton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* CU20 - entrega a domicilio */
+.envio {
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.envio__titulo {
+  margin: 0;
+  font-weight: 600;
+}
+
+.envio__detalle {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.envio__estado,
+.envio__aviso {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.envio__enlace {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  justify-self: start;
 }

@@ -53,6 +53,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'mis-direcciones',
+    loadComponent: () =>
+      import('./pages/mis-direcciones/mis-direcciones.page').then((m) => m.MisDireccionesPage),
+    canActivate: [authGuard],
+  },
+  {
     path: 'asistente',
     loadComponent: () => import('./pages/asistente/asistente.page').then((m) => m.AsistentePage),
     canActivate: [authGuard],
@@ -165,6 +171,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),
         canActivate: [permisoGuard('auditoria.leer')],
+      },
+      {
+        path: 'envios',
+        loadComponent: () =>
+          import('./pages/panel-envios/panel-envios.page').then((m) => m.PanelEnviosPage),
+        canActivate: [permisoGuard('envios.leer', 'envios.actualizar')],
       },
     ],
   },

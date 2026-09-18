@@ -8,7 +8,7 @@ import '../core/tema.dart';
 import '../core/ventas/ventas_models.dart';
 import '../core/ventas/ventas_service.dart';
 
-/// CU06 con LIBELULA: no hay sandbox real, asi que esta pantalla hace de pasarela y
+/// CU06 con QR: no hay sandbox real, asi que esta pantalla hace de pasarela y
 /// manda el resultado al webhook. El backend es idempotente por `evento_id`.
 class PagoSimuladoPagina extends StatefulWidget {
   const PagoSimuladoPagina({super.key, required this.ventaId});
@@ -78,7 +78,7 @@ class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
     final venta = _venta;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Pago con Libelula')),
+      appBar: AppBar(title: const Text('Pago con QR')),
       body: VistaAsincrona(
         cargando: _cargando,
         error: _error,
@@ -96,7 +96,7 @@ class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: const Text(
-                      'Entorno de prueba: Libelula no tiene sandbox disponible, asi que esta '
+                      'Entorno de prueba: el QR no tiene sandbox disponible, asi que esta '
                       'pantalla simula la respuesta de la pasarela.',
                       style: TextStyle(fontSize: 13, height: 1.4),
                     ),

@@ -1,11 +1,14 @@
-export type Pasarela = 'STRIPE' | 'LIBELULA';
+/** STRIPE y QR van por pasarela (pago.pasarela); EFECTIVO no tiene pasarela y se aprueba de una
+ * en el checkout mismo -- ver CheckoutIn.metodo_pago en el backend. */
+export type Pasarela = 'STRIPE' | 'QR';
+export type MetodoPagoCheckout = Pasarela | 'EFECTIVO';
 export type ModoEntrega = 'RETIRO_SUCURSAL' | 'DOMICILIO';
 
 export interface CheckoutIn {
   sucursal_id: string | null;
   entrega: ModoEntrega;
   direccion_id?: string | null;
-  pasarela: Pasarela;
+  metodo_pago: MetodoPagoCheckout;
   codigo_cupon?: string | null;
   canal: 'WEB' | 'MOVIL';
 }
@@ -14,11 +17,17 @@ export interface CheckoutOut {
   venta_id: string;
   numero: string;
   pago_id: string;
-  pasarela: Pasarela;
-  id_transaccion: string;
-  url_pago: string;
+  pasarela: Pasarela | null;
+  id_transaccion: string | null;
+  /** STRIPE en web no la manda (se paga inline con client_secret); en los demás casos es a
+   * dónde navegar (pasarela simulada, o directo a /compra/{id} si ya quedó pagada). */
+  url_pago: string | null;
+  /** Solo STRIPE en web: Stripe.js lo usa para montar el Checkout embebido inline. */
+  client_secret: string | null;
   subtotal: number;
   descuento: number;
+  /** CU20: tarifa del delivery ya cobrada. 0 si se retira en tienda o si el envío salió gratis. */
+  costo_envio: number;
   iva: number;
   total: number;
   estado: string;
@@ -61,6 +70,7 @@ export interface VentaOut {
   sucursal: string;
   subtotal: number;
   descuento: number;
+  costo_envio: number;
   iva: number;
   total: number;
   fecha: string;

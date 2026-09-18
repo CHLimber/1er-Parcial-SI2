@@ -5,7 +5,7 @@
 --
 --  Alcance: una empresa con multiples sucursales en Bolivia.
 --  Moneda BOB e IVA 13% fijos en la aplicacion, no se parametrizan.
---  43 tablas en 7 bloques.
+--  45 tablas en 7 bloques.
 -- =====================================================================
  
 -- ---------------------------------------------------------------------
@@ -22,7 +22,7 @@ CREATE EXTENSION IF NOT EXISTS unaccent;   -- busqueda del catalogo sin tildes
 CREATE TYPE ciudad_bo         AS ENUM ('SANTA_CRUZ','LA_PAZ','EL_ALTO','COCHABAMBA','SUCRE',
                                        'ORURO','POTOSI','TARIJA','TRINIDAD','COBIJA');
 CREATE TYPE tipo_usuario      AS ENUM ('CLIENTE','STAFF');
-CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN');
+CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN','REPARTIDOR');
 CREATE TYPE estado_caja       AS ENUM ('ABIERTA','CERRADA');
 CREATE TYPE tipo_talla        AS ENUM ('LETRA','NUMERO','CALZADO');
 CREATE TYPE tipo_temporada    AS ENUM ('PRIMAVERA_VERANO','OTONO_INVIERNO','ESCOLAR',
@@ -43,8 +43,9 @@ CREATE TYPE estado_carrito    AS ENUM ('ACTIVO','CONVERTIDO','ABANDONADO');
 CREATE TYPE canal_venta       AS ENUM ('WEB','MOVIL','POS');
 CREATE TYPE modo_entrega      AS ENUM ('RETIRO_SUCURSAL','DOMICILIO');
 CREATE TYPE estado_venta      AS ENUM ('PENDIENTE','PAGADA','ENTREGADA','ANULADA');
+CREATE TYPE estado_envio      AS ENUM ('PENDIENTE','ASIGNADO','EN_RUTA','ENTREGADO','FALLIDO','CANCELADO');
 CREATE TYPE metodo_pago       AS ENUM ('EFECTIVO','TARJETA','QR','TRANSFERENCIA','PASARELA');
-CREATE TYPE pasarela_pago     AS ENUM ('STRIPE','LIBELULA');
+CREATE TYPE pasarela_pago     AS ENUM ('STRIPE','QR');
 CREATE TYPE estado_pago       AS ENUM ('PENDIENTE','APROBADO','RECHAZADO','REEMBOLSADO');
 CREATE TYPE tipo_comprobante  AS ENUM ('RECIBO','FACTURA');
 CREATE TYPE estado_devolucion AS ENUM ('SOLICITADA','APROBADA','RECHAZADA');
@@ -527,6 +528,10 @@ CREATE TABLE venta (
     fecha             TIMESTAMPTZ   NOT NULL DEFAULT now(),
     subtotal          NUMERIC(12,2) NOT NULL CHECK (subtotal >= 0),
     descuento         NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (descuento >= 0),
+    -- CU20: tarifa del delivery cotizada al cerrar la compra. Entra en la base imponible junto
+    -- con la mercaderia (el flete se factura con el mismo IVA 13%), por eso se guarda aparte
+    -- del subtotal pero antes del iva.
+    costo_envio       NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (costo_envio >= 0),
     iva               NUMERIC(12,2) NOT NULL DEFAULT 0,
     total             NUMERIC(12,2) NOT NULL CHECK (total >= 0),
     estado            estado_venta  NOT NULL DEFAULT 'PENDIENTE',
@@ -590,6 +595,63 @@ CREATE TABLE comprobante (
     emitido_en   TIMESTAMPTZ      NOT NULL DEFAULT now()
 );
  
+-- ---------------------------------------------------------------------
+-- CU20 - ENTREGA A DOMICILIO (DELIVERY)
+-- Una venta con entrega = 'DOMICILIO' genera un envio recien cuando el pago queda APROBADO
+-- (lo crea el webhook, ver app/modules/pagos/router.py). El envio congela la direccion en
+-- texto y coordenadas porque la clienta puede editar o borrar su direccion despues, y la
+-- hoja de ruta del repartidor tiene que seguir mostrando a donde iba el paquete.
+-- ---------------------------------------------------------------------
+
+CREATE TABLE envio (
+    id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    venta_id        UUID          NOT NULL UNIQUE REFERENCES venta(id) ON DELETE CASCADE,
+    sucursal_id     UUID          NOT NULL REFERENCES sucursal(id),
+    direccion_id    UUID          REFERENCES direccion(id) ON DELETE SET NULL,
+    repartidor_id   UUID          REFERENCES usuario(id),
+    estado          estado_envio  NOT NULL DEFAULT 'PENDIENTE',
+    -- lo que devolvio el proveedor de ruteo al cotizar (ORS = openrouteservice de HeiGIT,
+    -- HAVERSINE = calculo propio de respaldo cuando no hay API key o el servicio no responde)
+    proveedor_ruteo VARCHAR(20)   NOT NULL DEFAULT 'HAVERSINE',
+    distancia_km    NUMERIC(8,3)  NOT NULL CHECK (distancia_km >= 0),
+    duracion_min    INT           NOT NULL DEFAULT 0 CHECK (duracion_min >= 0),
+    costo           NUMERIC(12,2) NOT NULL CHECK (costo >= 0),
+    -- foto de la direccion al momento de comprar
+    ciudad          ciudad_bo     NOT NULL,
+    direccion_texto VARCHAR(250)  NOT NULL,
+    referencia      VARCHAR(250),
+    latitud         NUMERIC(10,7),
+    longitud        NUMERIC(10,7),
+    observacion     VARCHAR(250),
+    -- quien hizo el ultimo cambio de estado; lo lee tg_envio_historial para firmar el evento
+    -- (la base no conoce al usuario de la sesion HTTP, el backend lo escribe en el mismo UPDATE)
+    actualizado_por_id UUID       REFERENCES usuario(id),
+    creado_en       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    asignado_en     TIMESTAMPTZ,
+    despachado_en   TIMESTAMPTZ,
+    cerrado_en      TIMESTAMPTZ,
+    CONSTRAINT ck_envio_repartidor CHECK (estado IN ('PENDIENTE','CANCELADO') OR repartidor_id IS NOT NULL)
+);
+CREATE INDEX ix_envio_sucursal ON envio(sucursal_id, estado, creado_en DESC);
+CREATE INDEX ix_envio_repartidor ON envio(repartidor_id, estado) WHERE repartidor_id IS NOT NULL;
+COMMENT ON TABLE envio IS
+    'CU20. Un envio por venta a domicilio. La tarifa ya cobrada vive en venta.costo_envio; aca '
+    'se guarda ademas la distancia y la duracion que devolvio el proveedor de ruteo.';
+
+CREATE TABLE envio_evento (
+    id         BIGSERIAL    PRIMARY KEY,
+    envio_id   UUID         NOT NULL REFERENCES envio(id) ON DELETE CASCADE,
+    estado     estado_envio NOT NULL,
+    nota       VARCHAR(250),
+    usuario_id UUID         REFERENCES usuario(id),
+    fecha      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_envio_evento ON envio_evento(envio_id, fecha);
+COMMENT ON TABLE envio_evento IS
+    'Bitacora append-only del envio (mismo espiritu que movimiento_inventario y '
+    'reserva_historial): nunca se actualiza ni se borra. La escribe el trigger '
+    'tg_envio_historial, que firma el evento con envio.actualizado_por_id.';
+
 CREATE TABLE devolucion (
     id             UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
     venta_id       UUID              NOT NULL REFERENCES venta(id),

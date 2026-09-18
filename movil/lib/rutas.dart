@@ -9,9 +9,11 @@ import 'paginas/compra_pagina.dart';
 import 'paginas/cuenta_pagina.dart';
 import 'paginas/login_pagina.dart';
 import 'paginas/mis_compras_pagina.dart';
+import 'paginas/mis_direcciones_pagina.dart';
 import 'paginas/mis_reservas_pagina.dart';
 import 'paginas/pago_simulado_pagina.dart';
 import 'paginas/panel_catalogo_pagina.dart';
+import 'paginas/panel_envios_pagina.dart';
 import 'paginas/panel_pagina.dart';
 import 'paginas/panel_proveedores_pagina.dart';
 import 'paginas/panel_recepciones_pagina.dart';
@@ -60,6 +62,7 @@ const Map<String, List<String>> _permisosPorRuta = {
     'usuarios.eliminar',
     'roles.leer',
   ],
+  '/panel/envios': ['envios.leer', 'envios.actualizar'],
 };
 
 GoRouter construirRouter(AuthService auth) {
@@ -121,6 +124,10 @@ GoRouter construirRouter(AuthService auth) {
       GoRoute(path: '/reservar', builder: (contexto, estado) => const ReservarPagina()),
       GoRoute(path: '/mis-compras', builder: (contexto, estado) => const MisComprasPagina()),
       GoRoute(
+        path: '/mis-direcciones',
+        builder: (contexto, estado) => const MisDireccionesPagina(),
+      ),
+      GoRoute(
         path: '/pago-simulado/:ventaId',
         builder: (contexto, estado) =>
             PagoSimuladoPagina(ventaId: estado.pathParameters['ventaId']!),
@@ -159,6 +166,10 @@ GoRouter construirRouter(AuthService auth) {
       GoRoute(
         path: '/panel/usuarios',
         builder: (contexto, estado) => const PanelUsuariosPagina(),
+      ),
+      GoRoute(
+        path: '/panel/envios',
+        builder: (contexto, estado) => const PanelEnviosPagina(),
       ),
     ],
   );

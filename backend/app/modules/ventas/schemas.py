@@ -11,7 +11,10 @@ class CheckoutIn(BaseModel):
     )
     entrega: Literal["RETIRO_SUCURSAL", "DOMICILIO"] = "RETIRO_SUCURSAL"
     direccion_id: UUID | None = None
-    pasarela: Literal["STRIPE", "LIBELULA"]
+    # STRIPE y QR pasan por pago.pasarela (metodo PASARELA); EFECTIVO no tiene pasarela y se
+    # aprueba de una en el checkout mismo -- retiro lo cobra la sucursal, domicilio queda a
+    # cargo del servicio de delivery (se asume cobrado, no hay confirmacion posterior).
+    metodo_pago: Literal["STRIPE", "QR", "EFECTIVO"]
     codigo_cupon: str | None = Field(default=None, max_length=40)
     canal: Literal["WEB", "MOVIL"] = "WEB"
 
@@ -20,11 +23,18 @@ class CheckoutOut(BaseModel):
     venta_id: UUID
     numero: str
     pago_id: UUID
-    pasarela: str
-    id_transaccion: str
-    url_pago: str
+    pasarela: str | None
+    id_transaccion: str | None
+    # STRIPE en canal WEB no manda url_pago (se paga inline con client_secret); en los demas
+    # casos es a donde navega el frontend (pasarela simulada o directo a /compra/{id}).
+    url_pago: str | None
+    # Solo canal WEB + STRIPE: Stripe.js lo usa para montar el Checkout embebido inline.
+    client_secret: str | None = None
     subtotal: float
     descuento: float
+    # CU20: tarifa del delivery ya cotizada contra la direccion elegida. 0 si se retira en tienda
+    # o si el pedido supero el monto de envio gratis.
+    costo_envio: float
     iva: float
     total: float
     estado: str
@@ -67,6 +77,7 @@ class VentaOut(BaseModel):
     sucursal: str
     subtotal: float
     descuento: float
+    costo_envio: float
     iva: float
     total: float
     fecha: datetime

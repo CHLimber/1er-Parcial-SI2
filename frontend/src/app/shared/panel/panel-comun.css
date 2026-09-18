@@ -34,21 +34,55 @@
   margin-bottom: 0.75rem;
 }
 
+/*
+ * Flex y no grid a propósito: la columna lateral (formulario, panel de roles) es
+ * condicional en varias pantallas (proveedores, sucursales, usuarios). Con
+ * `display: grid` y columnas explícitas, la pista de la segunda columna reserva su
+ * ancho aunque no haya ningún elemento adentro, dejando la tabla angosta con un
+ * hueco vacío a la derecha. Con flex, un hijo ausente simplemente no cuenta.
+ */
 .columnas {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 1.25rem;
-  align-items: start;
 }
 
-.columnas--detalle {
-  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+.columnas > section:first-child {
+  flex: 1 1 30rem;
+  min-width: 0;
+}
+
+.columnas > aside {
+  flex: 1 1 20rem;
+  max-width: 24rem;
+  min-width: 0;
+}
+
+/*
+ * En usuarios y sucursales el <aside> del layout es un contenedor fijo cuyo
+ * contenido (formulario, panel de cajas) es condicional -- vacío la mayor parte
+ * del tiempo. Si queda en el DOM sin contenido, igual reclama su flex-basis y dejaba
+ * el mismo hueco a la derecha que el bug de grid que reemplaza este archivo.
+ */
+.columnas > aside:empty {
+  display: none;
+}
+
+.columnas--detalle > section:first-child {
+  flex: 0 1 20rem;
+  min-width: 16rem;
+}
+
+.columnas--detalle > section:last-child {
+  flex: 3 1 30rem;
 }
 
 @media (max-width: 62rem) {
-  .columnas,
-  .columnas--detalle {
-    grid-template-columns: 1fr;
+  .columnas > section,
+  .columnas > aside {
+    flex-basis: 100%;
+    max-width: none;
   }
 }
 

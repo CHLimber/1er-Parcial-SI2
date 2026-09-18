@@ -8,6 +8,7 @@ class UsuarioOut {
     required this.apellido,
     required this.tipo,
     required this.rol,
+    required this.cargo,
     required this.permisos,
   });
 
@@ -17,6 +18,9 @@ class UsuarioOut {
   final String apellido;
   final String tipo; // CLIENTE | STAFF
   final String? rol;
+
+  /// Cargo del empleado (CU20): ENCARGADO, CAJERO, VENDEDOR, ALMACEN o REPARTIDOR.
+  final String? cargo;
 
   /// Codigos de permiso del rol (CU13). Vacio para clientes.
   final List<String> permisos;
@@ -31,6 +35,7 @@ class UsuarioOut {
         apellido: json['apellido'] as String,
         tipo: json['tipo'] as String,
         rol: json['rol'] as String?,
+        cargo: json['cargo'] as String?,
         permisos: (json['permisos'] as List? ?? const []).map((p) => p.toString()).toList(),
       );
 
@@ -41,6 +46,7 @@ class UsuarioOut {
         'apellido': apellido,
         'tipo': tipo,
         'rol': rol,
+        'cargo': cargo,
         'permisos': permisos,
       };
 }

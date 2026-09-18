@@ -48,6 +48,10 @@ export interface WebhookOut {
   mensaje: string;
 }
 
+export interface ConfigPagoOut {
+  stripe_publishable_key: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PagosService {
   private readonly http = inject(HttpClient);
@@ -59,5 +63,9 @@ export class PagosService {
       estado,
     };
     return this.http.post<WebhookOut>(`${environment.apiUrl}/pagos/webhook/${pasarela}`, body);
+  }
+
+  obtenerConfig(): Observable<ConfigPagoOut> {
+    return this.http.get<ConfigPagoOut>(`${environment.apiUrl}/pagos/config`);
   }
 }

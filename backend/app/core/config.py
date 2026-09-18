@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5"
 
+    # CU20 - delivery (app/core/ruteo.py). openrouteservice de HeiGIT: la API key del plan
+    # gratuito se saca en https://openrouteservice.org/dev/#/signup sin tarjeta de credito.
+    # Sin ORS_API_KEY el backend no se cae: cotiza con la distancia Haversine de respaldo y
+    # marca la cotizacion como proveedor "HAVERSINE".
+    ors_api_key: str = ""
+    ors_base_url: str = "https://api.openrouteservice.org"
+    ors_perfil: str = "driving-car"
+    ors_timeout: float = 8.0
+
     # CU10 - subida de imagenes de catalogo (app/core/media.py). media_dir es relativo al
     # WORKDIR del contenedor (/app), montado como volumen en docker-compose para persistir
     # entre rebuilds; en Railway hace falta un Volume propio en la misma ruta.

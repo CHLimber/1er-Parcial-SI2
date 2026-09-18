@@ -14,3 +14,11 @@ class WebhookOut(BaseModel):
     venta_estado: str | None = None
     pago_estado: str | None = None
     mensaje: str
+
+
+class ConfigPagoOut(BaseModel):
+    """CU06: la publishable key de Stripe no es secreta (esta pensada para viajar al navegador),
+    asi que se expone por un endpoint publico en vez de hornearla en el build del frontend --
+    asi cambia por entorno (local/Railway) sin recompilar."""
+
+    stripe_publishable_key: str

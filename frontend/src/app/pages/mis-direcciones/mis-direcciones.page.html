@@ -1,0 +1,180 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <div class="titulo-fila">
+      <div>
+        <h1 class="titulo">Tus direcciones</h1>
+        <p class="bajada">
+          Guardá dónde querés recibir tus pedidos. Marcamos el punto en el mapa para calcular la
+          tarifa del envío desde la sucursal que despacha.
+        </p>
+      </div>
+      <button type="button" class="boton" (click)="nueva()">Agregar dirección</button>
+    </div>
+
+    @if (aviso()) {
+      <p class="aviso" role="status">{{ aviso() }}</p>
+    }
+    @if (error() && !formularioAbierto()) {
+      <p class="error" role="alert">{{ error() }}</p>
+    }
+
+    @if (cargando()) {
+      <p class="estado">Cargando tus direcciones…</p>
+    } @else if (direcciones().length === 0 && !formularioAbierto()) {
+      <p class="estado">
+        Todavía no tenés ninguna dirección guardada. Agregá una y vas a poder pedir que te llevemos
+        el pedido a casa.
+      </p>
+    } @else {
+      <ul class="lista">
+        @for (direccion of direcciones(); track direccion.id) {
+          <li class="tarjeta">
+            <div class="tarjeta__cabecera">
+              <span class="tarjeta__alias">{{ direccion.alias }}</span>
+              @if (direccion.es_principal) {
+                <span class="insignia">Principal</span>
+              }
+            </div>
+            <p class="tarjeta__calle">{{ direccion.direccion }}</p>
+            <p class="tarjeta__ciudad">{{ nombreCiudad(direccion.ciudad) }}</p>
+            @if (direccion.referencia) {
+              <p class="tarjeta__referencia">{{ direccion.referencia }}</p>
+            }
+            @if (direccion.latitud === null) {
+              <p class="tarjeta__sinpin">Sin punto en el mapa: no se puede calcular el envío.</p>
+            }
+            <div class="tarjeta__acciones">
+              <button type="button" class="enlace" (click)="editar(direccion)">Editar</button>
+              @if (!direccion.es_principal) {
+                <button type="button" class="enlace" (click)="marcarPrincipal(direccion)">
+                  Hacer principal
+                </button>
+              }
+              <button type="button" class="enlace enlace--riesgo" (click)="eliminar(direccion)">
+                Borrar
+              </button>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (formularioAbierto()) {
+      <section class="formulario">
+        <h2 class="formulario__titulo">
+          {{ editandoId() ? 'Editar dirección' : 'Nueva dirección' }}
+        </h2>
+
+        <div class="campos">
+          <div class="campo">
+            <label for="alias">Nombre</label>
+            <input id="alias" name="alias" type="text" [(ngModel)]="alias" placeholder="Casa, Oficina…" />
+          </div>
+
+          <div class="campo">
+            <label for="ciudad">Ciudad</label>
+            <select id="ciudad" name="ciudad" [(ngModel)]="ciudad">
+              @for (opcion of ciudades; track opcion.valor) {
+                <option [value]="opcion.valor">{{ opcion.etiqueta }}</option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="campo">
+          <label for="calle">Calle y número</label>
+          <input
+            id="calle"
+            name="calle"
+            type="text"
+            [(ngModel)]="direccion"
+            placeholder="Av. Cristóbal de Mendoza #1200"
+          />
+        </div>
+
+        <div class="campo">
+          <label for="referencia">Referencia <span class="campo__opcional">(opcional)</span></label>
+          <input
+            id="referencia"
+            name="referencia"
+            type="text"
+            [(ngModel)]="referencia"
+            placeholder="Portón verde, frente a la plaza"
+          />
+        </div>
+
+        <div class="campo">
+          <label for="buscar">Buscar en el mapa</label>
+          <div class="buscador">
+            <input
+              id="buscar"
+              name="buscar"
+              type="search"
+              [(ngModel)]="textoBusqueda"
+              (keydown.enter)="buscar()"
+              placeholder="Escribí la dirección y presioná Enter"
+            />
+            <button type="button" class="boton boton--secundario" (click)="buscar()">
+              {{ buscando() ? 'Buscando…' : 'Buscar' }}
+            </button>
+            <button type="button" class="boton boton--secundario" (click)="usarMiUbicacion()">
+              Usar mi ubicación
+            </button>
+          </div>
+
+          @if (sugerencias().length > 0) {
+            <ul class="sugerencias">
+              @for (sugerencia of sugerencias(); track sugerencia.etiqueta) {
+                <li>
+                  <button type="button" (click)="usarSugerencia(sugerencia)">
+                    {{ sugerencia.etiqueta }}
+                  </button>
+                </li>
+              }
+            </ul>
+          } @else if (!geocodificadorDisponible()) {
+            <p class="nota">
+              El buscador de direcciones no está configurado en este servidor. Tocá el mapa para
+              marcar dónde queda.
+            </p>
+          }
+        </div>
+
+        <app-mapa-punto
+          class="mapa"
+          [latitud]="latitud()"
+          [longitud]="longitud()"
+          (puntoCambiado)="moverPin($event)"
+        />
+        @if (latitud() !== null) {
+          <p class="nota">Punto elegido: {{ latitud() }}, {{ longitud() }}</p>
+        } @else {
+          <p class="nota">Tocá el mapa o arrastrá el pin hasta la puerta de tu casa.</p>
+        }
+
+        <label class="principal">
+          <input type="checkbox" name="principal" [(ngModel)]="esPrincipal" />
+          Usar como dirección principal
+        </label>
+
+        @if (error()) {
+          <p class="error" role="alert">{{ error() }}</p>
+        }
+
+        <div class="formulario__acciones">
+          <button type="button" class="boton" [disabled]="guardando()" (click)="guardar()">
+            {{ guardando() ? 'Guardando…' : 'Guardar dirección' }}
+          </button>
+          <button type="button" class="boton boton--secundario" (click)="cerrar()">Cancelar</button>
+        </div>
+      </section>
+    }
+  </main>
+</div>

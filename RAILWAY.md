@@ -65,6 +65,8 @@ Los archivos que ya quedaron preparados para esto:
    | `STRIPE_PUBLISHABLE_KEY` | idem |
    | `STRIPE_WEBHOOK_SECRET` | ver nota de Stripe mas abajo |
    | `PUBLIC_BASE_URL` | la URL publica de este mismo servicio backend (ver paso 3) -- sin esto las imagenes subidas por CU10 quedan con una URL que apunta a `localhost` |
+   | `ANTHROPIC_API_KEY` | clave de la API de Claude (CU18). Sin ella `/asistente/chat` responde 503, el resto del backend anda igual |
+   | `ORS_API_KEY` | clave de openrouteservice (CU20, gratis y sin tarjeta en <https://openrouteservice.org/dev/#/signup>). Sin ella el delivery igual cotiza, pero con distancia estimada (Haversine) y sin buscador de direcciones |
 
 3. Generá el dominio publico en **Settings → Networking → Generate Domain**. Anotá la URL
    (`https://fashionstore-backend-production.up.railway.app` o similar) -- la vas a necesitar
@@ -146,6 +148,31 @@ Al final imprime el conteo por rol: tiene que dar **ADMIN 19, ENCARGADO 11, ALMA
 CAJERO 4, VENDEDOR 3**. Despues hay que **volver a iniciar sesion** (o tocar "actualizar
 permisos" en la app movil): el JWT no guarda los permisos, pero la sesion guardada en el
 navegador/telefono si, y queda vieja hasta que se refresque con `GET /auth/yo`.
+
+## 5 bis. Migrar la base para CU20 (delivery)
+
+Un deploy que ya tenia la base creada **no** tiene nada de lo que CU20 agrego al esquema
+(`estado_envio`, `venta.costo_envio`, las tablas `envio`/`envio_evento`, `fn_cotizar_envio`,
+los permisos `envios.*` y las coordenadas de las sucursales). Con el backend nuevo desplegado
+sobre esa base, `/direcciones` y `/envios` fallan con `relation "envio" does not exist` y el
+checkout a domicilio no puede cotizar.
+
+Arreglo (idempotente, probado sobre una base con y sin CU20):
+
+```bash
+cd fashionstore
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/cu20_delivery.sql
+```
+
+Al final imprime `permisos_envios 2`, `permisos_del_repartidor 2`, `sucursales_ubicadas 3` y
+`parametros_tarifa 5`. Como agrega permisos nuevos, despues hay que **volver a iniciar sesion**
+igual que en el paso 5. El script no crea el usuario repartidor de demo (en una base real el
+personal se da de alta desde CU13); al final del archivo hay un `INSERT` comentado por si se
+quiere para probar.
+
+La tarifa no se toca por codigo: vive en la tabla `configuracion`
+(`delivery_tarifa_base`, `delivery_precio_km`, `delivery_costo_minimo`, `delivery_radio_km`,
+`delivery_gratis_desde`) y la lee `fn_cotizar_envio()` en cada cotizacion.
 
 ## 6. Verificacion
 

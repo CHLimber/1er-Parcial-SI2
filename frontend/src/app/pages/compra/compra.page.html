@@ -68,9 +68,57 @@
           @if (v.descuento > 0) {
             <div><dt>Descuento</dt><dd>-{{ formatearPrecio(v.descuento) }}</dd></div>
           }
+          @if (v.costo_envio > 0) {
+            <div><dt>Envío a domicilio</dt><dd>{{ formatearPrecio(v.costo_envio) }}</dd></div>
+          } @else if (v.entrega === 'DOMICILIO') {
+            <div><dt>Envío a domicilio</dt><dd>Gratis</dd></div>
+          }
           <div><dt>IVA (13%)</dt><dd>{{ formatearPrecio(v.iva) }}</dd></div>
           <div class="totales__total"><dt>Total</dt><dd>{{ formatearPrecio(v.total) }}</dd></div>
         </dl>
+      }
+
+      <!-- CU20: seguimiento del delivery -->
+      @if (envio(); as e) {
+        <section class="envio">
+          <h2 class="envio__titulo">{{ etiquetaEnvio(e.estado) }}</h2>
+          <p class="envio__destino">
+            {{ e.direccion }}@if (e.referencia) { · {{ e.referencia }} }
+          </p>
+
+          @if (e.estado !== 'CANCELADO' && e.estado !== 'FALLIDO') {
+            <ol class="linea">
+              @for (paso of pasos; track paso.estado; let i = $index) {
+                <li class="linea__paso" [class.linea__paso--hecho]="i <= pasoActual(e.estado)">
+                  <span class="linea__punto"></span>
+                  <span class="linea__texto">{{ paso.etiqueta }}</span>
+                </li>
+              }
+            </ol>
+          }
+
+          <p class="envio__dato">
+            @if (e.repartidor) {
+              Reparte <strong>{{ e.repartidor }}</strong> ·
+            }
+            {{ e.distancia_km.toFixed(1) }} km desde {{ e.sucursal }} · unos {{ e.duracion_min }} min
+          </p>
+          @if (e.observacion) {
+            <p class="envio__dato">{{ e.observacion }}</p>
+          }
+
+          <ul class="envio__eventos">
+            @for (evento of e.eventos; track evento.fecha) {
+              <li>
+                <span class="envio__evento-estado">{{ etiquetaEnvio(evento.estado) }}</span>
+                <span class="envio__evento-fecha">{{ evento.fecha | date: 'short' }}</span>
+                @if (evento.nota) {
+                  <span class="envio__evento-nota">{{ evento.nota }}</span>
+                }
+              </li>
+            }
+          </ul>
+        </section>
       }
 
       <a class="cabecera__volver enlace-volver" routerLink="/tienda">Seguir comprando</a>

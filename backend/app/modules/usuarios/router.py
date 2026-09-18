@@ -70,9 +70,10 @@ async def login(
     row = await conn.fetchrow(
         """
         SELECT u.id, u.email, u.password_hash, u.nombre, u.apellido, u.tipo,
-               u.activo, r.nombre AS rol
+               u.activo, r.nombre AS rol, e.cargo
         FROM usuario u
-        LEFT JOIN rol r ON r.id = u.rol_id
+        LEFT JOIN rol r      ON r.id = u.rol_id
+        LEFT JOIN empleado e ON e.usuario_id = u.id AND e.activo
         WHERE u.email = $1
         """,
         body.email,
@@ -103,6 +104,7 @@ async def login(
         apellido=row["apellido"],
         tipo=row["tipo"],
         rol=row["rol"],
+        cargo=row["cargo"],
         permisos=await obtener_permisos(conn, row["id"]),
     )
     token = create_access_token(subject=str(row["id"]), extra_claims={"tipo": row["tipo"]})
@@ -118,9 +120,10 @@ async def usuario_actual(
     permisos del usuario (CU13), el frontend se entera al recargar."""
     fila = await conn.fetchrow(
         """
-        SELECT u.id, u.email, u.nombre, u.apellido, u.tipo, r.nombre AS rol
+        SELECT u.id, u.email, u.nombre, u.apellido, u.tipo, r.nombre AS rol, e.cargo
         FROM usuario u
-        LEFT JOIN rol r ON r.id = u.rol_id
+        LEFT JOIN rol r      ON r.id = u.rol_id
+        LEFT JOIN empleado e ON e.usuario_id = u.id AND e.activo
         WHERE u.id = $1
         """,
         usuario["id"],
@@ -135,5 +138,6 @@ async def usuario_actual(
         apellido=fila["apellido"],
         tipo=fila["tipo"],
         rol=fila["rol"],
+        cargo=fila["cargo"],
         permisos=await obtener_permisos(conn, fila["id"]),
     )

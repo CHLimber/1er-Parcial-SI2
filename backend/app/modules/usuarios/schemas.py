@@ -38,6 +38,9 @@ class UsuarioOut(BaseModel):
     apellido: str
     tipo: str
     rol: str | None = None
+    # cargo del empleado (CU20): el permiso dice QUE puede hacer, el cargo QUIEN es. La web y el
+    # movil lo usan para mostrarle al REPARTIDOR su hoja de ruta en vez del tablero de despacho.
+    cargo: str | None = None
     # codigos de permiso del rol (CU13). El frontend los usa para mostrar u ocultar el panel.
     permisos: list[str] = []
 

@@ -11,6 +11,7 @@ class CheckoutOut {
     required this.urlPago,
     required this.subtotal,
     required this.descuento,
+    required this.costoEnvio,
     required this.iva,
     required this.total,
     required this.estado,
@@ -19,29 +20,37 @@ class CheckoutOut {
   final String ventaId;
   final String numero;
   final String pagoId;
-  final String pasarela;
-  final String idTransaccion;
-  final String urlPago;
+
+  /// STRIPE o QR; null si el metodo fue EFECTIVO (no hay pasarela de por medio).
+  final String? pasarela;
+  final String? idTransaccion;
+
+  /// STRIPE devuelve una URL absoluta de checkout.stripe.com (hay que abrir el navegador);
+  /// QR devuelve la ruta interna `/pago-simulado/{venta_id}` (pantalla nativa); EFECTIVO
+  /// devuelve directo `/compra/{venta_id}` porque ya quedo pagada al toque.
+  final String? urlPago;
   final double subtotal;
   final double descuento;
+
+  /// CU20: tarifa del delivery ya cobrada. 0 si se retira en tienda o si el envio fue gratis.
+  final double costoEnvio;
   final double iva;
   final double total;
   final String estado;
 
-  /// STRIPE devuelve una URL absoluta de checkout.stripe.com (hay que abrir el navegador);
-  /// LIBELULA devuelve la ruta interna `/pago-simulado/{venta_id}`, que en movil se
-  /// resuelve con una pantalla nativa.
-  bool get esUrlExterna => urlPago.startsWith('http://') || urlPago.startsWith('https://');
+  bool get esUrlExterna => urlPago != null && (urlPago!.startsWith('http://') || urlPago!.startsWith('https://'));
+  bool get esPagoSimulado => urlPago != null && urlPago!.startsWith('/pago-simulado');
 
   factory CheckoutOut.desdeJson(Map<String, dynamic> j) => CheckoutOut(
         ventaId: j['venta_id'] as String,
         numero: j['numero'] as String,
         pagoId: j['pago_id'] as String,
-        pasarela: j['pasarela'] as String,
-        idTransaccion: j['id_transaccion'] as String,
-        urlPago: j['url_pago'] as String,
+        pasarela: j['pasarela'] as String?,
+        idTransaccion: j['id_transaccion'] as String?,
+        urlPago: j['url_pago'] as String?,
         subtotal: aDouble(j['subtotal']),
         descuento: aDouble(j['descuento']),
+        costoEnvio: aDouble(j['costo_envio']),
         iva: aDouble(j['iva']),
         total: aDouble(j['total']),
         estado: j['estado'] as String,
@@ -138,6 +147,7 @@ class VentaOut {
     required this.sucursal,
     required this.subtotal,
     required this.descuento,
+    required this.costoEnvio,
     required this.iva,
     required this.total,
     required this.fecha,
@@ -154,6 +164,9 @@ class VentaOut {
   final String sucursal;
   final double subtotal;
   final double descuento;
+
+  /// CU20: tarifa del delivery ya cobrada. 0 si se retira en tienda o si el envio fue gratis.
+  final double costoEnvio;
   final double iva;
   final double total;
   final DateTime? fecha;
@@ -170,6 +183,7 @@ class VentaOut {
         sucursal: j['sucursal'] as String,
         subtotal: aDouble(j['subtotal']),
         descuento: aDouble(j['descuento']),
+        costoEnvio: aDouble(j['costo_envio']),
         iva: aDouble(j['iva']),
         total: aDouble(j['total']),
         fecha: aFechaNula(j['fecha']),

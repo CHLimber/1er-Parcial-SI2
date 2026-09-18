@@ -84,6 +84,11 @@ export class PanelShell {
       etiqueta: 'Auditoría',
       visible: () => this.auth.tienePermiso('auditoria.leer'),
     },
+    {
+      ruta: '/panel/envios',
+      etiqueta: 'Envíos',
+      visible: () => this.auth.tienePermiso('envios.leer', 'envios.actualizar'),
+    },
     { ruta: '/caja', etiqueta: 'Caja', visible: () => this.auth.usuario()?.rol === 'CAJERO' },
     {
       ruta: '/atender-reservas',

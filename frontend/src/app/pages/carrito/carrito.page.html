@@ -57,40 +57,144 @@
           }
         </ul>
 
-        <p class="carrito__total">Subtotal: <strong>{{ formatearPrecio(c.subtotal) }}</strong></p>
-
         <section class="formulario">
           <h2 class="formulario__titulo">Pago</h2>
 
           @if (!c.reserva_id) {
             <div class="campo">
               <label for="sucursal">Sucursal de despacho</label>
-              <select id="sucursal" name="sucursal" [(ngModel)]="sucursalId">
+              <select
+                id="sucursal"
+                name="sucursal"
+                [(ngModel)]="sucursalId"
+                (ngModelChange)="actualizarCotizacionYPago()"
+              >
                 @for (sucursal of sucursales(); track sucursal.id) {
                   <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
                 }
               </select>
             </div>
+
+            <!-- CU20: retiro en tienda o delivery a domicilio -->
+            <div class="campo">
+              <span class="campo__etiqueta">¿Cómo lo querés recibir?</span>
+              <div class="pasarelas">
+                <button
+                  type="button"
+                  class="pasarela"
+                  [class.pasarela--activa]="entrega === 'RETIRO_SUCURSAL'"
+                  (click)="elegirEntrega('RETIRO_SUCURSAL')"
+                >
+                  Retiro en tienda
+                </button>
+                <button
+                  type="button"
+                  class="pasarela"
+                  [class.pasarela--activa]="entrega === 'DOMICILIO'"
+                  (click)="elegirEntrega('DOMICILIO')"
+                >
+                  Envío a domicilio
+                </button>
+              </div>
+            </div>
+
+            @if (entrega === 'DOMICILIO') {
+              @if (direcciones().length === 0) {
+                <p class="envio__aviso">
+                  Todavía no tenés direcciones guardadas.
+                  <a routerLink="/mis-direcciones">Agregá una</a> para que te llevemos el pedido.
+                </p>
+              } @else {
+                <div class="campo">
+                  <label for="direccion">Dirección de entrega</label>
+                  <select
+                    id="direccion"
+                    name="direccion"
+                    [(ngModel)]="direccionId"
+                    (ngModelChange)="actualizarCotizacionYPago()"
+                  >
+                    @for (direccion of direcciones(); track direccion.id) {
+                      <option [value]="direccion.id">
+                        {{ direccion.alias }} — {{ direccion.direccion }}
+                      </option>
+                    }
+                  </select>
+                  <a class="envio__enlace" routerLink="/mis-direcciones">Administrar direcciones</a>
+                </div>
+              }
+
+              @if (cotizando()) {
+                <p class="envio__estado">Calculando la tarifa del envío…</p>
+              } @else if (cotizacion(); as cot) {
+                <div class="envio">
+                  @if (cot.es_gratis) {
+                    <p class="envio__titulo">Envío gratis 🎉</p>
+                    <p class="envio__detalle">
+                      Tu compra supera los {{ formatearPrecio(cot.gratis_desde) }}, así que el
+                      delivery corre por nuestra cuenta.
+                    </p>
+                  } @else {
+                    <p class="envio__titulo">Envío: {{ formatearPrecio(cot.costo) }}</p>
+                    <p class="envio__detalle">
+                      {{ cot.distancia_km.toFixed(1) }} km desde la sucursal · llega en unos
+                      {{ cot.duracion_min }} min · {{ formatearPrecio(cot.tarifa_base) }} de base +
+                      {{ formatearPrecio(cot.precio_km) }} por km
+                    </p>
+                  }
+                </div>
+              }
+
+              @if (errorEnvio()) {
+                <p class="formulario__error" role="alert">{{ errorEnvio() }}</p>
+              }
+            }
           }
 
+          <!-- Un solo lugar con los importes, siempre con IVA incluido, para que lo que se ve
+               aca sea exactamente lo que cobra la pasarela. -->
+          <div class="resumen">
+            @if (entrega === 'DOMICILIO' && cotizacion()) {
+              <p class="resumen__linea">
+                <span>Prendas (IVA incluido)</span>
+                <span>{{ formatearPrecio(prendasConIva(c.subtotal)) }}</span>
+              </p>
+              <p class="resumen__linea">
+                <span>Delivery</span>
+                <span>{{ formatearPrecio(costoEnvio()) }}</span>
+              </p>
+            }
+            <p class="resumen__total">
+              <span>Total a pagar</span>
+              <strong>{{ formatearPrecio(totalConIva(c.subtotal)) }}</strong>
+            </p>
+          </div>
+
           <div class="campo">
-            <span class="campo__etiqueta">Pasarela de pago</span>
+            <span class="campo__etiqueta">Forma de pago</span>
             <div class="pasarelas">
               <button
                 type="button"
                 class="pasarela"
-                [class.pasarela--activa]="pasarela === 'STRIPE'"
-                (click)="elegirPasarela('STRIPE')"
+                [class.pasarela--activa]="metodoPago === 'STRIPE'"
+                (click)="elegirMetodoPago('STRIPE')"
               >
                 Stripe
               </button>
               <button
                 type="button"
                 class="pasarela"
-                [class.pasarela--activa]="pasarela === 'LIBELULA'"
-                (click)="elegirPasarela('LIBELULA')"
+                [class.pasarela--activa]="metodoPago === 'QR'"
+                (click)="elegirMetodoPago('QR')"
               >
-                Libélula
+                QR
+              </button>
+              <button
+                type="button"
+                class="pasarela"
+                [class.pasarela--activa]="metodoPago === 'EFECTIVO'"
+                (click)="elegirMetodoPago('EFECTIVO')"
+              >
+                Efectivo
               </button>
             </div>
           </div>
@@ -110,9 +214,38 @@
             <p class="formulario__error" role="alert">{{ errorMensaje() }}</p>
           }
 
-          <button type="button" class="boton" [disabled]="enviando()" (click)="pagar()">
-            {{ enviando() ? 'Procesando…' : 'Pagar con ' + (pasarela === 'STRIPE' ? 'Stripe' : 'Libélula') }}
-          </button>
+          <!-- Lo que carga aca abajo depende de la pasarela elegida arriba -->
+          @switch (metodoPago) {
+            @case ('STRIPE') {
+              @if (montandoStripe()) {
+                <p class="estado">Cargando el formulario de pago…</p>
+              }
+              <!-- Stripe embebido (CU06): se monta inline aca, nunca se sale de esta pagina. El
+                   boton de pago es el del propio formulario de Stripe, no hay uno aparte. -->
+              <div #stripeContenedor class="stripe-embed" [class.oculto]="!mostrandoStripe()"></div>
+            }
+            @case ('QR') {
+              <div class="qr-preview">
+                <img src="pago-qr.jpeg" alt="Código QR para pagar" class="qr-preview__imagen" />
+                <p class="campo__ayuda">Escaneá este código desde tu app bancaria y despues tocá "Pagar".</p>
+              </div>
+              <button type="button" class="boton" [disabled]="enviando()" (click)="pagar()">
+                {{ enviando() ? 'Procesando…' : 'Pagar con QR' }}
+              </button>
+            }
+            @case ('EFECTIVO') {
+              <p class="campo__ayuda">
+                @if (entrega === 'DOMICILIO' && !c.reserva_id) {
+                  Pagás en efectivo al repartidor cuando te entregue el pedido.
+                } @else {
+                  Pagás en efectivo al retirar el pedido en la sucursal.
+                }
+              </p>
+              <button type="button" class="boton" [disabled]="enviando()" (click)="pagar()">
+                {{ enviando() ? 'Procesando…' : 'Pagar con efectivo' }}
+              </button>
+            }
+          }
         </section>
       }
     }

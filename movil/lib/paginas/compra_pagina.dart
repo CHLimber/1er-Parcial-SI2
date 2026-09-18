@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../compartido/widgets.dart';
 import '../core/carrito/carrito_service.dart';
 import '../core/config.dart';
+import '../core/envios/envios_models.dart';
+import '../core/envios/envios_service.dart';
 import '../core/errores.dart';
 import '../core/tema.dart';
 import '../core/ventas/ventas_models.dart';
@@ -24,6 +26,7 @@ class CompraPagina extends StatefulWidget {
 
 class _CompraPaginaState extends State<CompraPagina> {
   VentaOut? _venta;
+  EnvioOut? _envio;
   bool _cargando = true;
   bool _refrescando = false;
   String? _error;
@@ -46,8 +49,20 @@ class _CompraPaginaState extends State<CompraPagina> {
     try {
       final venta = await ventasService.obtenerVenta(widget.ventaId);
       if (!mounted) return;
+      // CU20: el envio existe recien cuando el pago fue aprobado, asi que un 404 aca es
+      // lo normal mientras la pasarela no confirmo.
+      EnvioOut? envio;
+      if (venta.entrega == 'DOMICILIO' && venta.estado != 'PENDIENTE') {
+        try {
+          envio = await enviosService.envioDeVenta(widget.ventaId);
+        } catch (_) {
+          envio = null;
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _venta = venta;
+        _envio = envio;
         _cargando = false;
         _refrescando = false;
       });
@@ -138,6 +153,12 @@ class _CompraPaginaState extends State<CompraPagina> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  if (_envio != null) ...[
+                    const EtiquetaDato('Tu envio'),
+                    const SizedBox(height: 8),
+                    _SeguimientoEnvio(envio: _envio!),
+                    const SizedBox(height: 16),
+                  ],
                   if (venta.items.isNotEmpty) ...[
                     const EtiquetaDato('Detalle'),
                     const SizedBox(height: 8),
@@ -167,6 +188,7 @@ class _CompraPaginaState extends State<CompraPagina> {
                           const Divider(height: 20),
                           _totalFila('Subtotal', venta.subtotal),
                           if (venta.descuento > 0) _totalFila('Descuento', -venta.descuento),
+                          if (venta.costoEnvio > 0) _totalFila('Envio', venta.costoEnvio),
                           _totalFila('IVA 13%', venta.iva),
                           const SizedBox(height: 6),
                           Row(
@@ -233,4 +255,100 @@ class _CompraPaginaState extends State<CompraPagina> {
           ],
         ),
       );
+}
+
+/// CU20: en que anda el pedido a domicilio, con la bitacora que escribe tg_envio_historial.
+class _SeguimientoEnvio extends StatelessWidget {
+  const _SeguimientoEnvio({required this.envio});
+
+  final EnvioOut envio;
+
+  static const _pasos = ['PENDIENTE', 'ASIGNADO', 'EN_RUTA', 'ENTREGADO'];
+
+  @override
+  Widget build(BuildContext context) {
+    final indice = _pasos.indexOf(envio.estado);
+    final cerrado = envio.estado == 'FALLIDO' || envio.estado == 'CANCELADO';
+
+    return TarjetaPanel(
+      hijo: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  etiquetaEstadoEnvio(envio.estado),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+              BadgeEstado(envio.estado),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            envio.referencia == null
+                ? envio.direccion
+                : '${envio.direccion} - ${envio.referencia}',
+            style: const TextStyle(color: Paleta.inkSuave, fontSize: 13),
+          ),
+          if (!cerrado) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: List.generate(_pasos.length * 2 - 1, (posicion) {
+                if (posicion.isOdd) {
+                  final hecho = posicion ~/ 2 < indice;
+                  return Expanded(
+                    child: Container(
+                      height: 2,
+                      color: hecho ? Paleta.flame : Paleta.paperLinea,
+                    ),
+                  );
+                }
+                final paso = posicion ~/ 2;
+                final hecho = paso <= indice;
+                return Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: hecho ? Paleta.flame : Paleta.blanco,
+                    border: Border.all(color: hecho ? Paleta.flame : Paleta.paperLinea, width: 2),
+                  ),
+                );
+              }),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Text(
+            [
+              if (envio.repartidor != null) 'Reparte ${envio.repartidor}',
+              '${envio.distanciaKm.toStringAsFixed(1)} km desde ${envio.sucursal}',
+              'unos ${envio.duracionMin} min',
+            ].join(' - '),
+            style: const TextStyle(color: Paleta.inkSuave, fontSize: 12.5, height: 1.35),
+          ),
+          if (envio.observacion != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                envio.observacion!,
+                style: const TextStyle(color: Paleta.inkSuave, fontSize: 12.5),
+              ),
+            ),
+          const SizedBox(height: 10),
+          ...envio.eventos.map(
+            (evento) => Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '${etiquetaEstadoEnvio(evento.estado)} - ${fechaLegible(evento.fecha)}'
+                '${evento.nota == null ? '' : ' - ${evento.nota}'}',
+                style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

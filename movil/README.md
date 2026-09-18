@@ -1,6 +1,7 @@
 # FashionStore movil (Flutter)
 
-App Android/iOS que cubre los mismos casos de uso que la web (CU01 a CU14) contra la misma
+App Android/iOS que cubre los mismos casos de uso que la web (CU01 a CU14 y CU20), mas el
+vestidor virtual con realidad aumentada (CU16, que solo existe aca), contra la misma
 API de FastAPI. No tiene logica de negocio propia: la fuente de verdad sigue siendo la base
 de datos (`db/01_schema.sql`, `db/02_logica.sql`) y el backend.
 
@@ -59,6 +60,7 @@ Entrar con cualquiera de los usuarios semilla (password `demo1234` para todos):
 | `encargada.lapaz@fashionstore.bo` | CU08, atender reservas de La Paz |
 | `cajero.cbba@fashionstore.bo` | CU07, caja de Cochabamba |
 | `almacen.scz@fashionstore.bo` | CU09, recepciones (rol sin acceso al resto) |
+| `repartidor.scz@fashionstore.bo` | CU20, hoja de ruta de envios de Santa Cruz |
 
 La pantalla **Cuenta** muestra abajo un badge `LOCAL` / `RAILWAY` con la URL
 activa: sirve para confirmar de un vistazo contra que base estas probando.
@@ -152,10 +154,18 @@ de servicios son objetos sin estado que solo hablan con la API.
 | CU11 Gestionar proveedores | `panel_proveedores_pagina.dart` | `/panel/proveedores` |
 | CU12 Gestionar sucursales | `panel_sucursales_pagina.dart` | `/panel/sucursales` |
 | CU13 Gestionar usuarios y roles | `panel_usuarios_pagina.dart` | `/panel/usuarios` |
+| CU16 Vestidor virtual (RA) | `vestidor_virtual_pagina.dart` | desde el detalle de producto |
+| CU20 Entrega a domicilio | `mis_direcciones_pagina.dart`, `panel_envios_pagina.dart` | `/mis-direcciones`, `/panel/envios` |
 
 La barra inferior tiene las cuatro pantallas de uso diario del cliente (Tienda, Reservas,
-Carrito, Cuenta). Las pantallas de personal (CU07, CU08 y el panel CU09-CU13) se abren
-desde **Cuenta**, y solo aparecen si el usuario es STAFF.
+Carrito, Cuenta). Las pantallas de personal (CU07, CU08 y el panel CU09-CU13 y CU20) se abren
+desde **Cuenta**, y solo aparecen si el usuario es STAFF. La libreta de direcciones de CU20
+tambien cuelga de **Cuenta**, pero del lado del cliente.
+
+Para probar CU20 de punta a punta: con `cliente@fashionstore.bo` guarda una direccion (viene
+una de fabrica), elegi "A domicilio" en el carrito, pagas con Libelula (la pantalla de pago
+simulado confirma el webhook) y despues entras con `admin@fashionstore.bo` o
+`repartidor.scz@fashionstore.bo` para moverlo hasta ENTREGADO desde **Cuenta > Envios**.
 
 ## Autorizacion
 

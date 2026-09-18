@@ -15,6 +15,9 @@ from app.modules.caja.router import router as caja_router
 from app.modules.carrito.router import router as carrito_router
 from app.modules.catalogo.admin_router import router as catalogo_admin_router
 from app.modules.catalogo.router import router as catalogo_router
+from app.modules.direcciones.router import router as direcciones_router
+from app.modules.envios.admin_router import router as envios_admin_router
+from app.modules.envios.router import router as envios_router
 from app.modules.pagos.router import router as pagos_router
 from app.modules.proveedores.router import router as proveedores_router
 from app.modules.recepciones.router import router as recepciones_router
@@ -82,6 +85,9 @@ app.include_router(reportes_router)
 app.include_router(recomendaciones_router)
 app.include_router(asistente_router)
 app.include_router(auditoria_router)
+app.include_router(direcciones_router)
+app.include_router(envios_router)
+app.include_router(envios_admin_router)
 
 
 @app.get("/health")

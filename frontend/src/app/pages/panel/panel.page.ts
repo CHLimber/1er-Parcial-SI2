@@ -62,6 +62,13 @@ const ACCESOS: Acceso[] = [
     caso: 'CU19',
     permisos: ['auditoria.leer'],
   },
+  {
+    ruta: '/panel/envios',
+    titulo: 'Envíos',
+    descripcion: 'Pedidos a domicilio: asigná repartidor, seguí la ruta y cerrá la entrega.',
+    caso: 'CU20',
+    permisos: ['envios.leer', 'envios.actualizar'],
+  },
 ];
 
 @Component({

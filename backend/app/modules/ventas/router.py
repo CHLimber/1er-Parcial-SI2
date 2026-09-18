@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.core.db import get_connection
 from app.core.deps import get_cajero_actual, get_current_usuario
 from app.modules.caja.router import obtener_sesion_abierta
+from app.modules.envios.servicio import SinCoordenadas, cotizar
+from app.modules.pagos.servicio import _alertar_stock_bajo, confirmar_aprobado
 from app.modules.ventas.schemas import (
     CheckoutIn,
     CheckoutOut,
@@ -30,43 +32,63 @@ IVA_TASA = Decimal("0.13")
 stripe.api_key = settings.stripe_secret_key
 
 
-async def _crear_sesion_stripe(venta_id: UUID, numero: str, total: Decimal) -> tuple[str, str]:
-    """CU06 paso 1: envia la orden de cobro a la pasarela. Devuelve (id_transaccion, url_pago)."""
+async def _crear_sesion_stripe(
+    venta_id: UUID, numero: str, total: Decimal, *, embebido: bool
+) -> tuple[str, str | None, str | None]:
+    """CU06 paso 1: envia la orden de cobro a la pasarela. Devuelve
+    (id_transaccion, url_pago, client_secret).
+
+    `embebido=True` (canal WEB) pide un Checkout Session con `ui_mode="embedded"`: Stripe.js lo
+    monta inline en la misma pagina con el client_secret, sin redirigir a checkout.stripe.com, y
+    `redirect_on_completion="never"` evita que Stripe intente navegar por su cuenta al terminar
+    -- la confirmacion real sigue llegando por el webhook firmado, server-to-server, esto es solo
+    la UI. `embebido=False` (canal MOVIL, sin SDK de Stripe embebido en Flutter) pide el Checkout
+    hospedado de siempre, que la app abre en el navegador del telefono."""
+    parametros: dict = {
+        "mode": "payment",
+        "payment_method_types": ["card"],
+        "line_items": [
+            {
+                "price_data": {
+                    "currency": "bob",
+                    "product_data": {"name": f"Pedido {numero} - FashionStore"},
+                    "unit_amount": int(total * 100),
+                },
+                "quantity": 1,
+            }
+        ],
+        "metadata": {"venta_id": str(venta_id), "numero": numero},
+    }
+    if embebido:
+        parametros["ui_mode"] = "embedded"
+        parametros["redirect_on_completion"] = "never"
+    else:
+        parametros["success_url"] = f"{settings.frontend_url}/compra/{venta_id}"
+        parametros["cancel_url"] = f"{settings.frontend_url}/carrito"
+
     try:
-        sesion = await asyncio.to_thread(
-            stripe.checkout.Session.create,
-            mode="payment",
-            payment_method_types=["card"],
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "bob",
-                        "product_data": {"name": f"Pedido {numero} - FashionStore"},
-                        "unit_amount": int(total * 100),
-                    },
-                    "quantity": 1,
-                }
-            ],
-            success_url=f"{settings.frontend_url}/compra/{venta_id}",
-            cancel_url=f"{settings.frontend_url}/carrito",
-            metadata={"venta_id": str(venta_id), "numero": numero},
-        )
+        sesion = await asyncio.to_thread(stripe.checkout.Session.create, **parametros)
     except stripe.error.StripeError as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"No se pudo iniciar el pago con Stripe: {error}",
         ) from error
-    return sesion.id, sesion.url
+
+    if embebido:
+        return sesion.id, None, sesion.client_secret
+    return sesion.id, sesion.url, None
 
 
-async def _url_pago_pendiente(pasarela: str, id_transaccion: str, venta_id: UUID) -> str:
-    if pasarela != "STRIPE":
-        return f"/pago-simulado/{venta_id}"
+async def _pago_pendiente_stripe(id_transaccion: str, venta_id: UUID, *, embebido: bool) -> tuple[str | None, str | None]:
+    """Reintento de un checkout que ya se inicio (doble click): recupera la sesion en vez de
+    crear una nueva. Devuelve (url_pago, client_secret)."""
     try:
         sesion = await asyncio.to_thread(stripe.checkout.Session.retrieve, id_transaccion)
     except stripe.error.StripeError:
-        return f"/pago-simulado/{venta_id}"
-    return sesion.url or f"/pago-simulado/{venta_id}"
+        return (None, None) if embebido else (f"/pago-simulado/{venta_id}", None)
+    if embebido:
+        return None, sesion.client_secret
+    return sesion.url or f"/pago-simulado/{venta_id}", None
 
 
 def _exigir_cliente(usuario: dict) -> None:
@@ -164,36 +186,7 @@ async def iniciar_checkout(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Tu carrito esta vacio"
         )
 
-    # reintento de un checkout que ya se inicio (doble click): reusar la venta/pago pendientes
-    pendiente = await conn.fetchrow(
-        """
-        SELECT v.id AS venta_id, v.numero, v.subtotal, v.descuento, v.iva, v.total, v.estado,
-               p.id AS pago_id, p.pasarela, p.id_transaccion
-        FROM venta v
-        JOIN pago p ON p.venta_id = v.id
-        WHERE v.carrito_id = $1 AND v.estado = 'PENDIENTE' AND p.estado = 'PENDIENTE'
-        ORDER BY v.fecha DESC
-        LIMIT 1
-        """,
-        carrito["id"],
-    )
-    if pendiente is not None:
-        url_pago = await _url_pago_pendiente(
-            pendiente["pasarela"], pendiente["id_transaccion"], pendiente["venta_id"]
-        )
-        return CheckoutOut(
-            venta_id=pendiente["venta_id"],
-            numero=pendiente["numero"],
-            pago_id=pendiente["pago_id"],
-            pasarela=pendiente["pasarela"],
-            id_transaccion=pendiente["id_transaccion"],
-            url_pago=url_pago,
-            subtotal=float(pendiente["subtotal"]),
-            descuento=float(pendiente["descuento"]),
-            iva=float(pendiente["iva"]),
-            total=float(pendiente["total"]),
-            estado=pendiente["estado"],
-        )
+    destino_envio: tuple[float | None, float | None] | None = None
 
     if carrito["reserva_id"] is not None:
         # una compra nacida de una reserva se retira en la misma sucursal donde se comprometio el stock
@@ -221,7 +214,8 @@ async def iniciar_checkout(
         if entrega == "DOMICILIO":
             if direccion_id is None:
                 direccion = await conn.fetchrow(
-                    "SELECT id FROM direccion WHERE usuario_id = $1 AND es_principal", usuario["id"]
+                    "SELECT id, latitud, longitud FROM direccion WHERE usuario_id = $1 AND es_principal",
+                    usuario["id"],
                 )
                 if direccion is None:
                     raise HTTPException(
@@ -231,7 +225,7 @@ async def iniciar_checkout(
                 direccion_id = direccion["id"]
             else:
                 direccion = await conn.fetchrow(
-                    "SELECT id FROM direccion WHERE id = $1 AND usuario_id = $2",
+                    "SELECT id, latitud, longitud FROM direccion WHERE id = $1 AND usuario_id = $2",
                     direccion_id,
                     usuario["id"],
                 )
@@ -239,52 +233,201 @@ async def iniciar_checkout(
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND, detail="Esa direccion no te pertenece"
                     )
+            # CU20: la tarifa se cotiza mas abajo, cuando ya se sabe cuanto suma el pedido
+            # (de ese monto depende que el envio salga gratis)
+            destino_envio = (
+                float(direccion["latitud"]) if direccion["latitud"] is not None else None,
+                float(direccion["longitud"]) if direccion["longitud"] is not None else None,
+            )
 
     variante_ids = [item["variante_id"] for item in items]
-    disponibilidad = await conn.fetch(
-        """
-        SELECT variante_id, COALESCE(disponible, 0) AS disponible
-        FROM inventario
-        WHERE sucursal_id = $1 AND variante_id = ANY($2::uuid[])
-        """,
-        sucursal_id,
-        variante_ids,
-    )
-    disponible_por_variante = {fila["variante_id"]: fila["disponible"] for fila in disponibilidad}
-    sin_stock = [
-        str(item["variante_id"])
-        for item in items
-        if disponible_por_variante.get(item["variante_id"], 0) < item["cantidad"]
-    ]
-    if sin_stock:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "mensaje": "Algunas prendas ya no tienen stock suficiente en esa sucursal",
-                "variantes_sin_stock": sin_stock,
-            },
+    if carrito["reserva_id"] is not None:
+        # Estas unidades ya estan comprometidas por fn_reserva_compromete_stock: inventario.disponible
+        # (cantidad_fisica - cantidad_reservada) las excluye a proposito, asi que exigirles
+        # disponibilidad libre las rechaza aunque sean del propio cliente (p.ej. si eran la ultima
+        # unidad de la sucursal). Se valida en cambio que la reserva siga sosteniendo el compromiso.
+        comprometido = await conn.fetch(
+            """
+            SELECT variante_id, cantidad
+            FROM reserva_detalle
+            WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO', 'PROBADO')
+            """,
+            carrito["reserva_id"],
         )
+        cantidad_comprometida = {fila["variante_id"]: fila["cantidad"] for fila in comprometido}
+        sin_stock = [
+            str(item["variante_id"])
+            for item in items
+            if cantidad_comprometida.get(item["variante_id"], 0) < item["cantidad"]
+        ]
+        if sin_stock:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "mensaje": "Tu reserva ya no respalda estas prendas (se atendio, expiro o cambio)",
+                    "variantes_sin_stock": sin_stock,
+                },
+            )
+    else:
+        disponibilidad = await conn.fetch(
+            """
+            SELECT variante_id, COALESCE(disponible, 0) AS disponible
+            FROM inventario
+            WHERE sucursal_id = $1 AND variante_id = ANY($2::uuid[])
+            """,
+            sucursal_id,
+            variante_ids,
+        )
+        disponible_por_variante = {fila["variante_id"]: fila["disponible"] for fila in disponibilidad}
+        sin_stock = [
+            str(item["variante_id"])
+            for item in items
+            if disponible_por_variante.get(item["variante_id"], 0) < item["cantidad"]
+        ]
+        if sin_stock:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "mensaje": "Algunas prendas ya no tienen stock suficiente en esa sucursal",
+                    "variantes_sin_stock": sin_stock,
+                },
+            )
 
     subtotal = sum(
         (Decimal(str(item["precio_unitario"])) * item["cantidad"] for item in items), Decimal("0")
     )
+
+    # Reintento de un checkout ya iniciado (doble click): se reusan la venta y el pago pendientes
+    # en vez de crear otros. Pero SOLO si el pedido sigue siendo identico: a una Checkout Session
+    # de Stripe no se le puede cambiar el importe una vez creada, y _pago_pendiente_stripe la
+    # recupera tal cual, asi que reusarla despues de que la clienta sumo una prenda o paso a envio
+    # a domicilio le dejaba el monto viejo en el formulario embebido aunque el resto de la pantalla
+    # ya mostrara el nuevo. Si cambio algo que mueve el total (metodo de pago, sucursal, entrega,
+    # direccion, cupon o el contenido del carrito), el intento anterior se abandona aca abajo y el
+    # resto de la funcion arma una venta y una sesion nuevas con el importe correcto.
+    #
+    # Ademas de esos campos, se recalcula con la formula ACTUAL de IVA_TASA lo que el iva/total
+    # deberian dar a partir del subtotal/descuento/costo_envio ya guardados en la venta pendiente,
+    # y se compara contra lo que quedo grabado: si no coincide es que la formula de impuestos
+    # cambio (como paso al sacarle IVA al envio) desde que se creo esa venta, y reusarla devolveria
+    # -via Stripe Session.retrieve- un monto calculado con la regla vieja. Sin este chequeo, una
+    # venta pendiente de antes del cambio quedaba "atascada" con el monto incorrecto para siempre,
+    # porque los demas campos (sucursal, entrega, subtotal...) seguian siendo identicos.
+    codigo_cupon = body.codigo_cupon.strip().upper() if body.codigo_cupon else None
+    pendiente = await conn.fetchrow(
+        """
+        SELECT v.id AS venta_id, v.numero, v.subtotal, v.descuento, v.costo_envio, v.iva,
+               v.total, v.estado, v.promocion_id, v.sucursal_id, v.entrega, v.direccion_id,
+               p.id AS pago_id, p.pasarela, p.id_transaccion, pr.codigo_cupon
+        FROM venta v
+        JOIN pago p ON p.venta_id = v.id
+        LEFT JOIN promocion pr ON pr.id = v.promocion_id
+        WHERE v.carrito_id = $1 AND v.estado = 'PENDIENTE' AND p.estado = 'PENDIENTE'
+        ORDER BY v.fecha DESC
+        LIMIT 1
+        """,
+        carrito["id"],
+    )
+    formula_vigente = False
+    if pendiente is not None:
+        base_esperada = pendiente["subtotal"] - pendiente["descuento"]
+        iva_esperado = (base_esperada * IVA_TASA).quantize(Decimal("0.01"))
+        total_esperado = (base_esperada + iva_esperado + pendiente["costo_envio"]).quantize(
+            Decimal("0.01")
+        )
+        formula_vigente = pendiente["iva"] == iva_esperado and pendiente["total"] == total_esperado
+    if pendiente is not None and (
+        formula_vigente
+        and pendiente["pasarela"] == body.metodo_pago
+        and pendiente["sucursal_id"] == sucursal_id
+        and pendiente["entrega"] == entrega
+        and pendiente["direccion_id"] == direccion_id
+        and pendiente["subtotal"] == subtotal
+        and pendiente["codigo_cupon"] == codigo_cupon
+    ):
+        embebido = body.canal == "WEB"
+        client_secret = None
+        if pendiente["pasarela"] == "STRIPE":
+            url_pago, client_secret = await _pago_pendiente_stripe(
+                pendiente["id_transaccion"], pendiente["venta_id"], embebido=embebido
+            )
+        else:
+            url_pago = f"/pago-simulado/{pendiente['venta_id']}"
+        return CheckoutOut(
+            venta_id=pendiente["venta_id"],
+            numero=pendiente["numero"],
+            pago_id=pendiente["pago_id"],
+            pasarela=pendiente["pasarela"],
+            id_transaccion=pendiente["id_transaccion"],
+            url_pago=url_pago,
+            client_secret=client_secret,
+            subtotal=float(pendiente["subtotal"]),
+            descuento=float(pendiente["descuento"]),
+            costo_envio=float(pendiente["costo_envio"]),
+            iva=float(pendiente["iva"]),
+            total=float(pendiente["total"]),
+            estado=pendiente["estado"],
+        )
+    if pendiente is not None:
+        # el intento anterior ya no corresponde al pedido actual: se abandona (sin notificar a la
+        # clienta, no es un rechazo real) y se libera el uso del cupon que habia consumido, para
+        # que _aplicar_cupon lo pueda volver a tomar aca abajo
+        await conn.execute(
+            "UPDATE pago SET estado = 'RECHAZADO', confirmado_en = now() WHERE id = $1",
+            pendiente["pago_id"],
+        )
+        await conn.execute(
+            "UPDATE venta SET estado = 'ANULADA' WHERE id = $1", pendiente["venta_id"]
+        )
+        if pendiente["promocion_id"] is not None:
+            await conn.execute(
+                "UPDATE promocion SET usos_actuales = GREATEST(usos_actuales - 1, 0) WHERE id = $1",
+                pendiente["promocion_id"],
+            )
+
     descuento = Decimal("0")
     promocion_id = None
     if body.codigo_cupon:
         promocion_id, descuento = await _aplicar_cupon(conn, body.codigo_cupon, items, subtotal)
 
+    # CU20: el delivery se vuelve a cotizar aca, del lado del servidor. Lo que la clienta vio
+    # en /envios/cotizar es informativo; lo que se cobra es esto.
+    costo_envio = Decimal("0")
+    if entrega == "DOMICILIO" and destino_envio is not None:
+        try:
+            cotizacion = await cotizar(
+                conn, sucursal_id, destino_envio[0], destino_envio[1], subtotal - descuento
+            )
+        except SinCoordenadas as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
+        if not cotizacion.dentro_cobertura:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Tu direccion esta a {cotizacion.distancia_km:.1f} km de la sucursal y el "
+                    f"reparto llega hasta {cotizacion.radio_km:.0f} km. Elegi otra sucursal o "
+                    "retira tu pedido en tienda."
+                ),
+            )
+        costo_envio = cotizacion.costo
+
+    # El IVA se calcula solo sobre las prendas (subtotal - descuento): el flete no lleva impuesto,
+    # se suma aparte tal cual lo cotizo fn_cotizar_envio().
     base_imponible = subtotal - descuento
     iva = (base_imponible * IVA_TASA).quantize(Decimal("0.01"))
-    total = (base_imponible + iva).quantize(Decimal("0.01"))
+    total = (base_imponible + iva + costo_envio).quantize(Decimal("0.01"))
 
     numero = f"V-{uuid4().hex[:10].upper()}"
     async with conn.transaction():
         venta = await conn.fetchrow(
             """
             INSERT INTO venta (sucursal_id, usuario_id, canal, entrega, direccion_id, reserva_id,
-                                carrito_id, promocion_id, numero, subtotal, descuento, iva, total)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id, numero, subtotal, descuento, iva, total, estado
+                                carrito_id, promocion_id, numero, subtotal, descuento, costo_envio,
+                                iva, total)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id, numero, subtotal, descuento, costo_envio, iva, total, estado
             """,
             sucursal_id,
             usuario["id"],
@@ -297,26 +440,51 @@ async def iniciar_checkout(
             numero,
             subtotal,
             descuento,
+            costo_envio,
             iva,
             total,
         )
-        if body.pasarela == "STRIPE":
-            id_transaccion, url_pago = await _crear_sesion_stripe(venta["id"], venta["numero"], total)
-        else:
+        client_secret = None
+        if body.metodo_pago == "STRIPE":
+            pasarela_val = "STRIPE"
+            id_transaccion, url_pago, client_secret = await _crear_sesion_stripe(
+                venta["id"], venta["numero"], total, embebido=body.canal == "WEB"
+            )
+        elif body.metodo_pago == "QR":
+            pasarela_val = "QR"
             id_transaccion = f"SIM-{uuid4().hex}"
             url_pago = f"/pago-simulado/{venta['id']}"
+        else:
+            # EFECTIVO: no hay pasarela, se aprueba al toque mas abajo (retiro lo cobra la
+            # sucursal, domicilio queda a cargo del servicio de delivery)
+            pasarela_val = None
+            id_transaccion = None
+            url_pago = f"/compra/{venta['id']}"
 
+        metodo = "PASARELA" if pasarela_val is not None else "EFECTIVO"
         pago = await conn.fetchrow(
             """
             INSERT INTO pago (venta_id, metodo, pasarela, monto, id_transaccion)
-            VALUES ($1, 'PASARELA', $2, $3, $4)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING id, pasarela, id_transaccion
             """,
             venta["id"],
-            body.pasarela,
+            metodo,
+            pasarela_val,
             total,
             id_transaccion,
         )
+
+    estado_final = venta["estado"]
+    if body.metodo_pago == "EFECTIVO":
+        venta_para_confirmar = {
+            "id": venta["id"],
+            "carrito_id": carrito["id"],
+            "reserva_id": carrito["reserva_id"],
+            "sucursal_id": sucursal_id,
+        }
+        resultado = await confirmar_aprobado(conn, pago["id"], venta_para_confirmar)
+        estado_final = resultado["venta_estado"]
 
     return CheckoutOut(
         venta_id=venta["id"],
@@ -325,11 +493,13 @@ async def iniciar_checkout(
         pasarela=pago["pasarela"],
         id_transaccion=pago["id_transaccion"],
         url_pago=url_pago,
+        client_secret=client_secret,
         subtotal=float(venta["subtotal"]),
         descuento=float(venta["descuento"]),
+        costo_envio=float(venta["costo_envio"]),
         iva=float(venta["iva"]),
         total=float(venta["total"]),
-        estado=venta["estado"],
+        estado=estado_final,
     )
 
 
@@ -373,8 +543,8 @@ async def obtener_venta(
 
     venta = await conn.fetchrow(
         """
-        SELECT v.id, v.numero, v.canal, v.entrega, v.estado, v.subtotal, v.descuento, v.iva,
-               v.total, v.fecha, v.carrito_id, s.nombre AS sucursal
+        SELECT v.id, v.numero, v.canal, v.entrega, v.estado, v.subtotal, v.descuento,
+               v.costo_envio, v.iva, v.total, v.fecha, v.carrito_id, s.nombre AS sucursal
         FROM venta v
         JOIN sucursal s ON s.id = v.sucursal_id
         WHERE v.id = $1 AND v.usuario_id = $2
@@ -452,6 +622,7 @@ async def obtener_venta(
         sucursal=venta["sucursal"],
         subtotal=float(venta["subtotal"]),
         descuento=float(venta["descuento"]),
+        costo_envio=float(venta["costo_envio"]),
         iva=float(venta["iva"]),
         total=float(venta["total"]),
         fecha=venta["fecha"],
@@ -652,42 +823,3 @@ async def registrar_venta_pos(
         total=float(total),
         vuelto=vuelto,
     )
-
-
-async def _alertar_stock_bajo(conn: asyncpg.Connection, sucursal_id: UUID, venta_id: UUID) -> None:
-    variante_ids = [
-        fila["variante_id"]
-        for fila in await conn.fetch(
-            "SELECT variante_id FROM venta_detalle WHERE venta_id = $1", venta_id
-        )
-    ]
-    bajos = await conn.fetch(
-        """
-        SELECT DISTINCT p.nombre AS producto
-        FROM inventario i
-        JOIN producto_variante pv ON pv.id = i.variante_id
-        JOIN producto p ON p.id = pv.producto_id
-        WHERE i.sucursal_id = $1 AND i.variante_id = ANY($2::uuid[])
-          AND i.disponible <= i.stock_minimo
-        """,
-        sucursal_id,
-        variante_ids,
-    )
-    if not bajos:
-        return
-
-    encargados = await conn.fetch(
-        "SELECT usuario_id FROM empleado WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'",
-        sucursal_id,
-    )
-    nombres = ", ".join(fila["producto"] for fila in bajos)
-    for encargado in encargados:
-        await conn.execute(
-            """
-            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-            VALUES ($1, 'STOCK', 'Stock bajo el minimo', $2, 'VENTA', $3)
-            """,
-            encargado["usuario_id"],
-            f"Quedo poco stock de: {nombres}",
-            venta_id,
-        )

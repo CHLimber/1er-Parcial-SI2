@@ -20,6 +20,8 @@ export interface UsuarioOut {
   apellido: string;
   tipo: 'CLIENTE' | 'STAFF';
   rol: string | null;
+  /** Cargo del empleado (CU20): ENCARGADO, CAJERO, VENDEDOR, ALMACEN o REPARTIDOR. */
+  cargo: string | null;
   /** Codigos de permiso del rol (CU13). Vacio para clientes. */
   permisos: string[];
 }

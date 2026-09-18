@@ -305,3 +305,91 @@ $$;
 CREATE TRIGGER tg_confirmar_recepcion
     AFTER UPDATE ON recepcion
     FOR EACH ROW EXECUTE FUNCTION fn_confirmar_recepcion();
+
+
+-- ---------------------------------------------------------------------
+--  CU20 - TARIFA DEL DELIVERY
+--  La distancia la trae el backend del proveedor de ruteo (openrouteservice
+--  de HeiGIT, o el respaldo Haversine); el precio se arma aca, con los
+--  parametros de la tabla configuracion, para que la regla comercial viva
+--  en un solo lugar y no haya que redesplegar el backend para cambiarla.
+--    delivery_tarifa_base       Bs fijos por salir a repartir
+--    delivery_precio_km         Bs por kilometro de ruta
+--    delivery_costo_minimo      piso de la tarifa
+--    delivery_radio_km          hasta donde reparte una sucursal
+--    delivery_gratis_desde      monto de compra que deja el envio en 0
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_cotizar_envio(
+    p_distancia_km NUMERIC,
+    p_monto_pedido NUMERIC DEFAULT 0
+)
+RETURNS TABLE (
+    costo            NUMERIC,
+    tarifa_base      NUMERIC,
+    precio_km        NUMERIC,
+    radio_km         NUMERIC,
+    gratis_desde     NUMERIC,
+    es_gratis        BOOLEAN,
+    dentro_cobertura BOOLEAN
+)
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+    v_base    NUMERIC;
+    v_km      NUMERIC;
+    v_minimo  NUMERIC;
+    v_radio   NUMERIC;
+    v_gratis  NUMERIC;
+    v_costo   NUMERIC;
+BEGIN
+    SELECT COALESCE((SELECT valor FROM configuracion WHERE clave = 'delivery_tarifa_base'),  '8')::NUMERIC,
+           COALESCE((SELECT valor FROM configuracion WHERE clave = 'delivery_precio_km'),    '3.5')::NUMERIC,
+           COALESCE((SELECT valor FROM configuracion WHERE clave = 'delivery_costo_minimo'), '10')::NUMERIC,
+           COALESCE((SELECT valor FROM configuracion WHERE clave = 'delivery_radio_km'),     '12')::NUMERIC,
+           COALESCE((SELECT valor FROM configuracion WHERE clave = 'delivery_gratis_desde'), '800')::NUMERIC
+      INTO v_base, v_km, v_minimo, v_radio, v_gratis;
+
+    v_costo := GREATEST(v_base + (v_km * GREATEST(p_distancia_km, 0)), v_minimo);
+
+    costo            := ROUND(v_costo, 2);
+    tarifa_base      := v_base;
+    precio_km        := v_km;
+    radio_km         := v_radio;
+    gratis_desde     := v_gratis;
+    es_gratis        := v_gratis > 0 AND COALESCE(p_monto_pedido, 0) >= v_gratis;
+    dentro_cobertura := p_distancia_km IS NOT NULL AND p_distancia_km <= v_radio;
+
+    IF es_gratis THEN
+        costo := 0;
+    END IF;
+
+    RETURN NEXT;
+END;
+$$;
+COMMENT ON FUNCTION fn_cotizar_envio IS
+    'CU20. Precio del delivery a partir de la distancia de ruta y el monto del pedido. '
+    'Devuelve tambien los parametros usados para que el frontend pueda explicar la tarifa.';
+
+
+-- ---------------------------------------------------------------------
+--  CU20 - BITACORA AUTOMATICA DEL ENVIO
+--  Mismo patron que tg_reserva_historial: cada cambio de estado deja un
+--  asiento append-only en envio_evento, firmado con el usuario que el
+--  backend escribio en envio.actualizado_por_id.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_envio_historial()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO envio_evento (envio_id, estado, nota, usuario_id)
+        VALUES (NEW.id, NEW.estado, 'Envio generado por el pago aprobado', NEW.actualizado_por_id);
+    ELSIF NEW.estado IS DISTINCT FROM OLD.estado THEN
+        INSERT INTO envio_evento (envio_id, estado, nota, usuario_id)
+        VALUES (NEW.id, NEW.estado, NEW.observacion, NEW.actualizado_por_id);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER tg_envio_historial
+    AFTER INSERT OR UPDATE ON envio
+    FOR EACH ROW EXECUTE FUNCTION fn_envio_historial();

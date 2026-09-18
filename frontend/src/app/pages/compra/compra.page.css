@@ -162,3 +162,111 @@
   background: none;
   padding: 0;
 }
+
+/* CU20 - seguimiento del envio a domicilio */
+.envio {
+  margin-top: 2rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.3rem;
+}
+
+.envio__titulo {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.35rem;
+  margin-bottom: 0.3rem;
+}
+
+.envio__destino {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.linea {
+  list-style: none;
+  display: flex;
+  gap: 0;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.linea__paso {
+  flex: 1;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  position: relative;
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.linea__paso::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--paper-line);
+}
+
+.linea__paso:first-child::before {
+  display: none;
+}
+
+.linea__paso--hecho {
+  color: var(--ink);
+}
+
+.linea__paso--hecho::before {
+  background: var(--flame);
+}
+
+.linea__punto {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--paper-line);
+  background: var(--white);
+  position: relative;
+  z-index: 1;
+}
+
+.linea__paso--hecho .linea__punto {
+  border-color: var(--flame);
+  background: var(--flame);
+}
+
+.envio__dato {
+  margin: 0.2rem 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.envio__eventos {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.envio__eventos li {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.envio__evento-estado {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.envio__evento-fecha {
+  font-family: var(--font-mono);
+}

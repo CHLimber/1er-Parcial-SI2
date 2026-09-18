@@ -15,11 +15,12 @@
 -- ---------------------------------------------------------------------
 
 INSERT INTO rol (nombre, descripcion, es_sistema) VALUES
-    ('ADMIN',     'Administracion general del sistema', TRUE),
-    ('ENCARGADO', 'Responsable de una sucursal', TRUE),
-    ('CAJERO',    'Maneja caja y ventas presenciales', TRUE),
-    ('VENDEDOR',  'Atiende clientes y reservas en tienda', TRUE),
-    ('ALMACEN',   'Recibe mercaderia y controla existencias', TRUE);
+    ('ADMIN',      'Administracion general del sistema', TRUE),
+    ('ENCARGADO',  'Responsable de una sucursal', TRUE),
+    ('CAJERO',     'Maneja caja y ventas presenciales', TRUE),
+    ('VENDEDOR',   'Atiende clientes y reservas en tienda', TRUE),
+    ('ALMACEN',    'Recibe mercaderia y controla existencias', TRUE),
+    ('REPARTIDOR', 'Lleva los pedidos a domicilio (CU20)', TRUE);
 
 -- ---------------------------------------------------------------------
 -- PERMISOS Y ASIGNACION A ROLES (CU13)
@@ -68,7 +69,9 @@ INSERT INTO permiso (codigo, modulo, descripcion) VALUES
     ('ventas.leer',           'ventas',      'Consultar ventas'),
     ('ventas.crear',          'ventas',      'Registrar ventas presenciales'),
     ('reportes.leer',         'reportes',    'Consultar los tableros de gestion'),
-    ('auditoria.leer',        'auditoria',   'Consultar la bitacora de auditoria del sistema');
+    ('auditoria.leer',        'auditoria',   'Consultar la bitacora de auditoria del sistema'),
+    ('envios.leer',           'envios',      'Consultar los envios a domicilio y su hoja de ruta'),
+    ('envios.actualizar',     'envios',      'Asignar repartidor y mover el estado de un envio');
 
 -- ADMIN: todo
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -84,7 +87,8 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
                     'inventario.leer','inventario.actualizar',
                     'recepciones.leer','recepciones.crear','recepciones.actualizar','recepciones.eliminar',
                     'reservas.leer','reservas.actualizar',
-                    'reportes.leer');
+                    'reportes.leer',
+                    'envios.leer','envios.actualizar');
 
 -- ALMACEN: solo el flujo de entrada de mercaderia
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -105,10 +109,23 @@ SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
   FROM permiso p
  WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar');
 
-INSERT INTO sucursal (codigo, nombre, ciudad, direccion, hora_apertura, hora_cierre, cantidad_vestidores) VALUES
-    ('SC-01', 'FashionStore Equipetrol', 'SANTA_CRUZ', 'Av. San Martin #100',      '09:00', '20:00', 3),
-    ('LP-01', 'FashionStore Sopocachi',  'LA_PAZ',     'Av. 6 de Agosto #2050',    '09:30', '19:30', 2),
-    ('CB-01', 'FashionStore Cala Cala',  'COCHABAMBA', 'Av. America Este #480',    '09:00', '20:00', 2);
+-- REPARTIDOR (CU20): solo la hoja de ruta de los envios. El backend ademas acota lo que ve
+-- un repartidor a los envios que tiene asignados (ver app/modules/envios/admin_router.py).
+INSERT INTO rol_permiso (rol_id, permiso_id)
+SELECT (SELECT id FROM rol WHERE nombre = 'REPARTIDOR'), p.id
+  FROM permiso p
+ WHERE p.codigo IN ('envios.leer','envios.actualizar');
+
+-- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
+-- fn_cotizar_envio no tiene distancia que cobrar. Son las de cada barrio real.
+INSERT INTO sucursal (codigo, nombre, ciudad, direccion, latitud, longitud,
+                      hora_apertura, hora_cierre, cantidad_vestidores) VALUES
+    ('SC-01', 'FashionStore Equipetrol', 'SANTA_CRUZ', 'Av. San Martin #100',
+     -17.7620000, -63.1970000, '09:00', '20:00', 3),
+    ('LP-01', 'FashionStore Sopocachi',  'LA_PAZ',     'Av. 6 de Agosto #2050',
+     -16.5090000, -68.1290000, '09:30', '19:30', 2),
+    ('CB-01', 'FashionStore Cala Cala',  'COCHABAMBA', 'Av. America Este #480',
+     -17.3660000, -66.1540000, '09:00', '20:00', 2);
 
 INSERT INTO caja (sucursal_id, codigo, nombre) VALUES
     ((SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'CAJA-01', 'Caja principal Equipetrol'),
@@ -138,7 +155,9 @@ INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email
     ('vendedor.scz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Camila',  'Rocha',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'VENDEDOR'),  TRUE),
     ('almacen.scz@fashionstore.bo',     crypt('demo1234', gen_salt('bf')), 'Ruben',   'Mamani',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE);
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE),
+    ('repartidor.scz@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Diego',   'Suarez',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'REPARTIDOR'), TRUE);
 
 INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado) VALUES
     ('cliente@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Cliente', 'Demo',   'CLIENTE', TRUE),
@@ -154,7 +173,9 @@ INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
     ((SELECT id FROM usuario WHERE email = 'vendedor.scz@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'VENDEDOR', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'almacen.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE);
+     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'repartidor.scz@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'REPARTIDOR', CURRENT_DATE);
 
 INSERT INTO perfil_cliente (usuario_id, talla_superior_id, talla_inferior_id, talla_calzado_id,
                              color_favorito_id, fecha_nacimiento, puntos_fidelidad, acepta_marketing)
@@ -164,10 +185,22 @@ VALUES (
     '1998-05-14', 120, TRUE
 );
 
-INSERT INTO direccion (usuario_id, alias, ciudad, direccion, referencia, es_principal)
+-- CU20: las direcciones nacen con coordenadas para que el delivery se pueda cotizar apenas
+-- se levanta el seed. La de "Casa" cae a ~2,5 km de la sucursal de Equipetrol y la de
+-- "Oficina" a ~4 km de Sopocachi: las dos dentro del radio de reparto de 12 km.
+INSERT INTO direccion (usuario_id, alias, ciudad, direccion, referencia, latitud, longitud, es_principal)
 VALUES (
     (SELECT id FROM usuario WHERE email = 'cliente@fashionstore.bo'),
-    'Casa', 'SANTA_CRUZ', 'Calle Beni #345', 'Porton verde, frente a la plaza', TRUE
+    'Casa', 'SANTA_CRUZ', 'Calle Beni #345', 'Porton verde, frente a la plaza',
+    -17.7810000, -63.1790000, TRUE
+), (
+    (SELECT id FROM usuario WHERE email = 'cliente@fashionstore.bo'),
+    'Trabajo', 'SANTA_CRUZ', 'Av. Cristobal de Mendoza #1200', 'Edificio Torre Sur, piso 4',
+    -17.7745000, -63.1846000, FALSE
+), (
+    (SELECT id FROM usuario WHERE email = 'cliente2@fashionstore.bo'),
+    'Oficina', 'LA_PAZ', 'Calle Sagarnaga #220', 'A media cuadra de la iglesia',
+    -16.4970000, -68.1380000, TRUE
 );
 
 -- ---------------------------------------------------------------------
@@ -2286,4 +2319,11 @@ VALUES (
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('reserva_horas_vigencia', '4', 'Horas antes de que una reserva pendiente expire automaticamente'),
     ('empresa_razon_social',   'FashionStore Bolivia S.R.L.', 'Razon social para comprobantes'),
-    ('empresa_nit',            '1234567890', 'NIT para comprobantes');
+    ('empresa_nit',            '1234567890', 'NIT para comprobantes'),
+    -- CU20: los lee fn_cotizar_envio(). Valores tomados del mercado boliviano de delivery
+    -- (Yango / PedidosYa en Santa Cruz y La Paz, tramo corto urbano en moto).
+    ('delivery_tarifa_base',   '8',   'Bs fijos por salida de reparto'),
+    ('delivery_precio_km',     '3.5', 'Bs por kilometro de ruta entre la sucursal y el domicilio'),
+    ('delivery_costo_minimo',  '10',  'Piso de la tarifa de delivery en Bs'),
+    ('delivery_radio_km',      '12',  'Radio maximo de reparto de una sucursal, en km'),
+    ('delivery_gratis_desde',  '800', 'Monto de compra en Bs desde el que el envio es gratis');

@@ -6,6 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../compartido/widgets.dart';
 import '../core/carrito/carrito_service.dart';
 import '../core/config.dart';
+import '../core/direcciones/direcciones_models.dart';
+import '../core/direcciones/direcciones_service.dart';
+import '../core/envios/envios_models.dart';
+import '../core/envios/envios_service.dart';
 import '../core/errores.dart';
 import '../core/sucursales/sucursales_models.dart';
 import '../core/sucursales/sucursales_service.dart';
@@ -29,7 +33,15 @@ class _CarritoPaginaState extends State<CarritoPagina> {
   CarritoOut? _carrito;
   List<SucursalOut> _sucursales = [];
   String? _sucursalId;
-  String _pasarela = 'STRIPE';
+  String _metodoPago = 'STRIPE';
+
+  // CU20 - entrega a domicilio
+  List<DireccionOut> _direcciones = const [];
+  String _entrega = 'RETIRO_SUCURSAL';
+  String? _direccionId;
+  CotizacionEnvio? _cotizacion;
+  bool _cotizando = false;
+  String? _errorEnvio;
 
   bool _cargando = true;
   bool _procesando = false;
@@ -56,13 +68,25 @@ class _CarritoPaginaState extends State<CarritoPagina> {
     try {
       final carrito = await context.read<CarritoService>().verCarrito();
       final sucursales = _sucursales.isEmpty ? await sucursalesService.listar() : _sucursales;
+      // la libreta puede estar vacia (clienta recien registrada) y eso no rompe el carrito
+      var direcciones = _direcciones;
+      if (direcciones.isEmpty) {
+        try {
+          direcciones = await direccionesService.listar();
+        } catch (_) {
+          direcciones = const [];
+        }
+      }
       if (!mounted) return;
       setState(() {
         _carrito = carrito;
         _sucursales = sucursales;
         _sucursalId ??= sucursales.isEmpty ? null : sucursales.first.id;
+        _direcciones = direcciones;
+        _direccionId ??= _direccionPorDefecto(direcciones);
         _cargando = false;
       });
+      _cotizarEnvio();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -85,6 +109,53 @@ class _CarritoPaginaState extends State<CarritoPagina> {
     }
   }
 
+  String? _direccionPorDefecto(List<DireccionOut> direcciones) {
+    if (direcciones.isEmpty) return null;
+    for (final direccion in direcciones) {
+      if (direccion.esPrincipal) return direccion.id;
+    }
+    return direcciones.first.id;
+  }
+
+  /// CU20: la tarifa depende de la sucursal, de la direccion y del monto del carrito (de ese
+  /// monto sale el envio gratis). Es informativa: el backend vuelve a cotizar antes de cobrar.
+  Future<void> _cotizarEnvio() async {
+    final carrito = _carrito;
+    if (_entrega != 'DOMICILIO' || carrito == null || _sucursalId == null || _direccionId == null) {
+      if (mounted) setState(() => _cotizacion = null);
+      return;
+    }
+
+    setState(() {
+      _cotizando = true;
+      _errorEnvio = null;
+    });
+    try {
+      final cotizacion = await enviosService.cotizar(
+        sucursalId: _sucursalId!,
+        direccionId: _direccionId,
+        montoPedido: carrito.subtotal,
+      );
+      if (!mounted) return;
+      setState(() {
+        _cotizacion = cotizacion;
+        _cotizando = false;
+        _errorEnvio = cotizacion.dentroCobertura
+            ? null
+            : 'Tu direccion queda a ${cotizacion.distanciaKm.toStringAsFixed(1)} km y esta '
+                'sucursal reparte hasta ${cotizacion.radioKm.toStringAsFixed(0)} km. '
+                'Proba con otra sucursal o retira en tienda.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _cotizacion = null;
+        _cotizando = false;
+        _errorEnvio = interpretarError(error);
+      });
+    }
+  }
+
   Future<void> _pagar() async {
     final carrito = _carrito;
     if (carrito == null || carrito.items.isEmpty) return;
@@ -96,6 +167,13 @@ class _CarritoPaginaState extends State<CarritoPagina> {
       return;
     }
 
+    // una compra nacida de una reserva se retira si o si donde se comprometio el stock
+    final entrega = desdeReserva ? 'RETIRO_SUCURSAL' : _entrega;
+    if (entrega == 'DOMICILIO' && _direccionId == null) {
+      setState(() => _errorCheckout = 'Elegi la direccion a la que llevamos tu pedido.');
+      return;
+    }
+
     setState(() {
       _procesando = true;
       _errorCheckout = null;
@@ -104,7 +182,9 @@ class _CarritoPaginaState extends State<CarritoPagina> {
     try {
       final checkout = await ventasService.checkout(
         sucursalId: desdeReserva ? null : _sucursalId,
-        pasarela: _pasarela,
+        entrega: entrega,
+        direccionId: entrega == 'DOMICILIO' ? _direccionId : null,
+        metodoPago: _metodoPago,
         codigoCupon: _cupon.text.trim(),
       );
       if (!mounted) return;
@@ -113,7 +193,7 @@ class _CarritoPaginaState extends State<CarritoPagina> {
       if (checkout.esUrlExterna) {
         // Stripe: la pagina de pago la aloja la pasarela, se abre en el navegador.
         final abierto = await launchUrl(
-          Uri.parse(checkout.urlPago),
+          Uri.parse(checkout.urlPago!),
           mode: LaunchMode.externalApplication,
         );
         if (!mounted) return;
@@ -121,9 +201,12 @@ class _CarritoPaginaState extends State<CarritoPagina> {
           mostrarAviso(context, 'No se pudo abrir la pagina de Stripe.', esError: true);
         }
         context.push('/compra/${checkout.ventaId}');
-      } else {
-        // LIBELULA no tiene sandbox: se resuelve con la pantalla de pago simulado.
+      } else if (checkout.esPagoSimulado) {
+        // QR no tiene sandbox: se resuelve con la pantalla de pago simulado.
         context.push('/pago-simulado/${checkout.ventaId}');
+      } else {
+        // EFECTIVO: ya quedo pagada al toque, directo a la confirmacion.
+        context.push('/compra/${checkout.ventaId}');
       }
     } catch (error) {
       if (!mounted) return;
@@ -210,8 +293,97 @@ class _CarritoPaginaState extends State<CarritoPagina> {
                             ),
                           )
                           .toList(),
-                      onChanged: (valor) => setState(() => _sucursalId = valor),
+                      onChanged: (valor) {
+                        setState(() => _sucursalId = valor);
+                        _cotizarEnvio();
+                      },
                     ),
+                    const SizedBox(height: 20),
+                    const EtiquetaDato('Como lo queres recibir'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _OpcionPasarela(
+                            nombre: 'Retiro en tienda',
+                            detalle: 'Lo buscas por la sucursal',
+                            elegida: _entrega == 'RETIRO_SUCURSAL',
+                            alElegir: () {
+                              setState(() => _entrega = 'RETIRO_SUCURSAL');
+                              _cotizarEnvio();
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _OpcionPasarela(
+                            nombre: 'A domicilio',
+                            detalle: 'Te lo llevamos a casa',
+                            elegida: _entrega == 'DOMICILIO',
+                            alElegir: () {
+                              setState(() => _entrega = 'DOMICILIO');
+                              _cotizarEnvio();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_entrega == 'DOMICILIO') ...[
+                      const SizedBox(height: 16),
+                      if (_direcciones.isEmpty)
+                        TarjetaPanel(
+                          alTocar: () async {
+                            await context.push('/mis-direcciones');
+                            if (mounted) _cargar();
+                          },
+                          hijo: const Row(
+                            children: [
+                              Icon(Icons.add_location_alt_outlined, color: Paleta.flame),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Todavia no tenes direcciones guardadas. Agrega una para que '
+                                  'te llevemos el pedido.',
+                                  style: TextStyle(fontSize: 13, height: 1.35),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        DropdownButtonFormField<String>(
+                          initialValue: _direccionId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Direccion de entrega'),
+                          items: _direcciones
+                              .map(
+                                (direccion) => DropdownMenuItem(
+                                  value: direccion.id,
+                                  child: Text(
+                                    '${direccion.alias} - ${direccion.direccion}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (valor) {
+                            setState(() => _direccionId = valor);
+                            _cotizarEnvio();
+                          },
+                        ),
+                      const SizedBox(height: 12),
+                      if (_cotizando)
+                        const Text(
+                          'Calculando la tarifa del envio...',
+                          style: TextStyle(color: Paleta.inkSuave, fontSize: 13),
+                        )
+                      else if (_cotizacion != null)
+                        _ResumenEnvio(cotizacion: _cotizacion!, subtotal: carrito.subtotal),
+                      if (_errorEnvio != null) ...[
+                        const SizedBox(height: 10),
+                        MensajeError(_errorEnvio!),
+                      ],
+                    ],
                     const SizedBox(height: 20),
                   ],
                   const EtiquetaDato('Forma de pago'),
@@ -222,17 +394,28 @@ class _CarritoPaginaState extends State<CarritoPagina> {
                         child: _OpcionPasarela(
                           nombre: 'Stripe',
                           detalle: 'Tarjeta de credito o debito',
-                          elegida: _pasarela == 'STRIPE',
-                          alElegir: () => setState(() => _pasarela = 'STRIPE'),
+                          elegida: _metodoPago == 'STRIPE',
+                          alElegir: () => setState(() => _metodoPago = 'STRIPE'),
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: _OpcionPasarela(
-                          nombre: 'Libelula',
+                          nombre: 'QR',
                           detalle: 'QR y banca en linea (simulado)',
-                          elegida: _pasarela == 'LIBELULA',
-                          alElegir: () => setState(() => _pasarela = 'LIBELULA'),
+                          elegida: _metodoPago == 'QR',
+                          alElegir: () => setState(() => _metodoPago = 'QR'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _OpcionPasarela(
+                          nombre: 'Efectivo',
+                          detalle: _entrega == 'DOMICILIO'
+                              ? 'Le pagas al repartidor'
+                              : 'Pagas al retirar en tienda',
+                          elegida: _metodoPago == 'EFECTIVO',
+                          alElegir: () => setState(() => _metodoPago = 'EFECTIVO'),
                         ),
                       ),
                     ],
@@ -259,7 +442,7 @@ class _CarritoPaginaState extends State<CarritoPagina> {
                             width: 18,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Paleta.blanco),
                           )
-                        : Text('PAGAR CON ${_pasarela == "STRIPE" ? "STRIPE" : "LIBELULA"}'),
+                        : Text('PAGAR CON ${_metodoPago == "STRIPE" ? "STRIPE" : _metodoPago == "QR" ? "QR" : "EFECTIVO"}'),
                   ),
                 ],
               ),
@@ -381,4 +564,54 @@ class _OpcionPasarela extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// CU20: que se cobra por el envio y por que. Muestra los parametros de la tarifa
+/// (fn_cotizar_envio en db/02_logica.sql) para que la clienta entienda el precio.
+class _ResumenEnvio extends StatelessWidget {
+  const _ResumenEnvio({required this.cotizacion, required this.subtotal});
+
+  final CotizacionEnvio cotizacion;
+  final double subtotal;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = subtotal + cotizacion.costo;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Paleta.blanco,
+        border: Border.all(color: Paleta.paperLinea),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            cotizacion.esGratis
+                ? 'Envio gratis'
+                : 'Envio: ${formatearPrecio(cotizacion.costo)}',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            cotizacion.esGratis
+                ? 'Tu compra supera los ${formatearPrecio(cotizacion.gratisDesde)}, '
+                    'asi que el delivery corre por nuestra cuenta.'
+                : '${cotizacion.distanciaKm.toStringAsFixed(1)} km desde la sucursal · '
+                    'llega en unos ${cotizacion.duracionMin} min · '
+                    '${formatearPrecio(cotizacion.tarifaBase)} de base + '
+                    '${formatearPrecio(cotizacion.precioKm)} por km',
+            style: const TextStyle(fontSize: 12, color: Paleta.inkSuave, height: 1.35),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Total sin IVA: ${formatearPrecio(total)}',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+          ),
+        ],
+      ),
+    );
+  }
 }

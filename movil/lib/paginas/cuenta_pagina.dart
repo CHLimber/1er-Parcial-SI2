@@ -125,6 +125,13 @@ class _CuentaPaginaState extends State<CuentaPagina> {
             detalle: 'Prendas apartadas en el vestidor',
             alTocar: () => context.go('/mis-reservas'),
           ),
+          if (!auth.esStaff)
+            _Acceso(
+              icono: Icons.location_on_outlined,
+              titulo: 'Mis direcciones',
+              detalle: 'CU20 · Donde te llevamos los pedidos',
+              alTocar: () => context.push('/mis-direcciones'),
+            ),
 
           if (auth.esStaff) ...[
             const SizedBox(height: 26),
@@ -142,6 +149,13 @@ class _CuentaPaginaState extends State<CuentaPagina> {
               detalle: 'CU08 · Cola de vestidores de la sucursal',
               alTocar: () => context.push('/atender-reservas'),
             ),
+            if (auth.tienePermiso(const ['envios.leer', 'envios.actualizar']))
+              _Acceso(
+                icono: Icons.local_shipping_outlined,
+                titulo: 'Envios a domicilio',
+                detalle: 'CU20 · Hoja de ruta y estado de cada pedido',
+                alTocar: () => context.push('/panel/envios'),
+              ),
             _Acceso(
               icono: Icons.dashboard_outlined,
               titulo: 'Panel de gestion',
