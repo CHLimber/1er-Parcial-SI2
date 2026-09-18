@@ -1,0 +1,142 @@
+<mxfile host="app.diagrams.net" agent="FashionStore" version="24.7.17" type="device">
+  <diagram id="cu01-registro-comunicacion" name="CU01 - Registrarse">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ═══ OBJETOS (con estereotipo UML: actor / boundary / control / entity) ═══ -->
+
+        <mxCell id="o_visitante" value="Visitante" style="shape=umlActor;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="50" y="310" width="30" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_page" value="&lt;u&gt;:RegistroPage&lt;/u&gt;&lt;br&gt;(Angular)" style="shape=umlBoundary;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="210" y="310" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_authservice" value="&lt;u&gt;:AuthService&lt;/u&gt;&lt;br&gt;(cliente HTTP)" style="shape=umlControl;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="430" y="310" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_router" value="&lt;u&gt;:AuthRouter&lt;/u&gt;&lt;br&gt;(FastAPI)" style="shape=umlControl;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="650" y="310" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_seguridad" value="&lt;u&gt;:Seguridad&lt;/u&gt;&lt;br&gt;(bcrypt)" style="shape=umlControl;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="50" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_usuario" value="&lt;u&gt;:Usuario&lt;/u&gt;" style="shape=umlEntity;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="170" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_perfil" value="&lt;u&gt;:PerfilCliente&lt;/u&gt;" style="shape=umlEntity;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="290" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_auditoria" value="&lt;u&gt;:Auditoria&lt;/u&gt;&lt;br&gt;«MomentoIntervalo»" style="shape=umlEntity;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="410" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="o_token" value="&lt;u&gt;:GeneradorToken&lt;/u&gt;&lt;br&gt;(JWT)" style="shape=umlControl;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="540" width="50" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ MENSAJES: Visitante &lt;-&gt; RegistroPage ═══ -->
+
+        <mxCell id="m1" value="1: completarFormulario(nombre, apellido, email, telefono,&#10;fechaNacimiento, password, aceptaMarketing)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.3;entryX=0;entryY=0.2;" edge="1" parent="1" source="o_visitante" target="o_page">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m24" value="2.4: [correo ya registrado] mostrarError(mensaje)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="o_page" target="o_visitante">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m3" value="3: redirigir(&quot;/tienda&quot;)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.8;entryX=1;entryY=0.8;" edge="1" parent="1" source="o_page" target="o_visitante">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ AUTO-MENSAJE: RegistroPage ═══ -->
+
+        <mxCell id="m2" value="2: enviar()" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0.2;exitY=0;entryX=0.8;entryY=0;curved=1;" edge="1" parent="1" source="o_page" target="o_page">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="270" />
+              <mxPoint x="245" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ═══ MENSAJES: RegistroPage &lt;-&gt; AuthService ═══ -->
+
+        <mxCell id="m21" value="2.1: validarFormulario()" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.3;entryX=0;entryY=0.3;" edge="1" parent="1" source="o_page" target="o_authservice">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m22" value="2.2: registrar(datosRegistro)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.7;entryX=0;entryY=0.7;" edge="1" parent="1" source="o_page" target="o_authservice">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ AUTO-MENSAJE: AuthService ═══ -->
+
+        <mxCell id="m23" value="2.3: guardarSesion(token)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0.2;exitY=0;entryX=0.8;entryY=0;curved=1;" edge="1" parent="1" source="o_authservice" target="o_authservice">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="445" y="270" />
+              <mxPoint x="465" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ═══ MENSAJES: AuthService &lt;-&gt; AuthRouter ═══ -->
+
+        <mxCell id="m221" value="2.2.1: POST /auth/registro(datosRegistro)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.3;entryX=0;entryY=0.3;" edge="1" parent="1" source="o_authservice" target="o_router">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m222" value="2.2.2: respuesta := TokenResponse(token, usuario)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.7;entryX=1;entryY=0.7;" edge="1" parent="1" source="o_router" target="o_authservice">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ AUTO-MENSAJE: AuthRouter (rollback) ═══ -->
+
+        <mxCell id="m212b" value="2.2.1.2b: [correo ya registrado] revertirTransaccion()" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0.2;exitY=1;entryX=0.8;entryY=1;curved=1;" edge="1" parent="1" source="o_router" target="o_router">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="665" y="400" />
+              <mxPoint x="685" y="400" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ═══ MENSAJES: AuthRouter -&gt; Seguridad / Usuario / PerfilCliente / Auditoria / GeneradorToken ═══ -->
+
+        <mxCell id="m2111" value="2.2.1.1: hash := hashPassword(password)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.1;entryX=0;entryY=0.5;" edge="1" parent="1" source="o_router" target="o_seguridad">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m2112" value="2.2.1.2: crear(email, hash, nombre, apellido, telefono, tipo=&quot;CLIENTE&quot;)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.3;entryX=0;entryY=0.5;" edge="1" parent="1" source="o_router" target="o_usuario">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m2112a" value="2.2.1.2a: [correo ya registrado] error := Conflicto409(&quot;Ese correo ya esta registrado&quot;)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.8;entryX=1;entryY=0.5;" edge="1" parent="1" source="o_usuario" target="o_router">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m2113" value="2.2.1.3: crear(usuarioId, fechaNacimiento, aceptaMarketing)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="o_router" target="o_perfil">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m2114" value="2.2.1.4: registrar(usuarioId, entidad=&quot;usuario&quot;, accion=&quot;CREAR&quot;)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.7;entryX=0;entryY=0.5;" edge="1" parent="1" source="o_router" target="o_auditoria">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="m2115" value="2.2.1.5: token := generarToken(usuarioId, tipo)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.9;entryX=0;entryY=0.5;" edge="1" parent="1" source="o_router" target="o_token">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
