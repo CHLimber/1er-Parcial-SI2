@@ -10,6 +10,12 @@ from app.modules.proveedores.schemas import EstadoIn, ProveedorIn, ProveedorOut
 
 router = APIRouter(prefix="/proveedores", tags=["proveedores"])
 
+puede_ver = requiere_permiso("proveedores.leer", "proveedores.crear", "proveedores.actualizar", "proveedores.eliminar")
+puede_crear = requiere_permiso("proveedores.crear")
+puede_actualizar = requiere_permiso("proveedores.actualizar")
+# baja/reactivacion via PATCH .../estado: cualquiera de las dos alcanza para prender o apagar
+puede_cambiar_estado = requiere_permiso("proveedores.actualizar", "proveedores.eliminar")
+
 SELECT_PROVEEDOR = """
 SELECT pr.id, pr.nombre, pr.nit, pr.contacto, pr.email, pr.telefono, pr.activo,
        (SELECT COUNT(*) FROM producto  p WHERE p.proveedor_id  = pr.id) AS productos,
@@ -30,7 +36,7 @@ async def listar_proveedores(
     q: str | None = Query(default=None, description="Busca por nombre, NIT o contacto"),
     activo: bool | None = Query(default=None),
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(requiere_permiso("proveedores.ver", "proveedores.gestionar")),
+    _staff: dict = Depends(puede_ver),
 ) -> list[ProveedorOut]:
     """CU11 - Gestionar Proveedores: listado con busqueda."""
     filas = await conn.fetch(
@@ -52,7 +58,7 @@ async def listar_proveedores(
 async def obtener_proveedor(
     proveedor_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(requiere_permiso("proveedores.ver", "proveedores.gestionar")),
+    _staff: dict = Depends(puede_ver),
 ) -> ProveedorOut:
     return await _obtener(conn, proveedor_id)
 
@@ -61,7 +67,7 @@ async def obtener_proveedor(
 async def crear_proveedor(
     body: ProveedorIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(requiere_permiso("proveedores.gestionar")),
+    staff: dict = Depends(puede_crear),
 ) -> ProveedorOut:
     duplicado = await conn.fetchval(
         "SELECT 1 FROM proveedor WHERE lower(nombre) = lower($1)", body.nombre
@@ -100,7 +106,7 @@ async def actualizar_proveedor(
     proveedor_id: UUID,
     body: ProveedorIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(requiere_permiso("proveedores.gestionar")),
+    staff: dict = Depends(puede_actualizar),
 ) -> ProveedorOut:
     antes = await _obtener(conn, proveedor_id)
 
@@ -145,7 +151,7 @@ async def cambiar_estado_proveedor(
     proveedor_id: UUID,
     body: EstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(requiere_permiso("proveedores.gestionar")),
+    staff: dict = Depends(puede_cambiar_estado),
 ) -> ProveedorOut:
     """Baja logica: el proveedor queda referenciado por productos y recepciones historicas,
     asi que nunca se borra fisicamente."""

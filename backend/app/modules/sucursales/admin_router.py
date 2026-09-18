@@ -17,8 +17,11 @@ from app.modules.sucursales.admin_schemas import (
 
 router = APIRouter(prefix="/admin/sucursales", tags=["sucursales-admin"])
 
-puede_ver = requiere_permiso("sucursales.ver", "sucursales.gestionar")
-puede_gestionar = requiere_permiso("sucursales.gestionar")
+puede_ver = requiere_permiso("sucursales.leer", "sucursales.crear", "sucursales.actualizar", "sucursales.eliminar")
+puede_crear = requiere_permiso("sucursales.crear")
+puede_actualizar = requiere_permiso("sucursales.actualizar")
+# baja/reactivacion via PATCH .../estado: cualquiera de las dos alcanza para prender o apagar
+puede_cambiar_estado = requiere_permiso("sucursales.actualizar", "sucursales.eliminar")
 
 SELECT_SUCURSAL = """
 SELECT s.id, s.codigo, s.nombre, s.ciudad, s.direccion, s.telefono, s.latitud, s.longitud,
@@ -83,7 +86,7 @@ async def listar_sucursales_admin(
 async def crear_sucursal(
     body: SucursalIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> SucursalAdminOut:
     _validar_horario(body)
     try:
@@ -138,7 +141,7 @@ async def actualizar_sucursal(
     sucursal_id: UUID,
     body: SucursalIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_actualizar),
 ) -> SucursalAdminOut:
     _validar_horario(body)
     antes = await _obtener(conn, sucursal_id)
@@ -189,7 +192,7 @@ async def cambiar_estado_sucursal(
     sucursal_id: UUID,
     body: EstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_cambiar_estado),
 ) -> SucursalAdminOut:
     """Baja logica. Se bloquea si queda una caja abierta o reservas en curso: cerrar la sucursal
     con stock comprometido dejaria el inventario inconsistente."""
@@ -263,7 +266,7 @@ async def cambiar_estado_caja(
     caja_id: UUID,
     body: CajaEstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_cambiar_estado),
 ) -> CajaOut:
     caja = await _obtener_caja(conn, caja_id)
     if not body.activa and caja.sesion_abierta:
@@ -301,7 +304,7 @@ async def crear_caja(
     sucursal_id: UUID,
     body: CajaIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> CajaOut:
     await _obtener(conn, sucursal_id)
     try:

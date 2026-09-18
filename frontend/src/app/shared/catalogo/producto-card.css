@@ -1,0 +1,98 @@
+:host {
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  cursor: pointer;
+  transition:
+    box-shadow 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+:host(:hover) {
+  border-color: var(--flame);
+  box-shadow: 0 12px 24px -12px rgba(46, 37, 48, 0.25);
+  transform: translateY(-3px);
+}
+
+:host(.prenda--agotada) {
+  opacity: 0.7;
+}
+
+.prenda__imagen-cont {
+  position: relative;
+  margin: -1.25rem -1.25rem 0.6rem;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: #fff;
+}
+
+.prenda__imagen {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.prenda__badge {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  background: var(--ink);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-pill);
+}
+
+.prenda__tallas {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.prenda__categoria {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.prenda__nombre {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+
+.prenda__marca {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.prenda__precio {
+  margin-top: 0.5rem;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--flame-dark);
+}
+
+.prenda__motivo {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--gold);
+}

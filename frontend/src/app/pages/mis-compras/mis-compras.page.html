@@ -1,0 +1,43 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__enlace" routerLink="/mis-reservas">Mis reservas</a>
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <h1 class="titulo">Mis compras</h1>
+
+    @if (cargando()) {
+      <p class="estado">Cargando tus compras…</p>
+    } @else if (error()) {
+      <p class="estado estado--error">{{ error() }}</p>
+    } @else if (compras().length === 0) {
+      <p class="estado">
+        Todavía no tenés compras registradas. Andá al
+        <a routerLink="/tienda">catálogo</a> para empezar.
+      </p>
+    } @else {
+      <ul class="lista">
+        @for (compra of compras(); track compra.id) {
+          <li class="compra">
+            <a class="compra__enlace" [routerLink]="['/compra', compra.id]">
+              <div class="compra__cabecera">
+                <span class="compra__numero">{{ compra.numero }}</span>
+                <span class="compra__estado" [class]="'compra__estado--' + compra.estado.toLowerCase()">
+                  {{ etiquetaEstado(compra.estado) }}
+                </span>
+              </div>
+              <p class="compra__linea">
+                {{ compra.sucursal }} · {{ etiquetaCanal(compra.canal) }} · {{ compra.fecha | date: 'short' }}
+              </p>
+              <p class="compra__total">{{ formatearPrecio(compra.total) }}</p>
+            </a>
+          </li>
+        }
+      </ul>
+    }
+  </main>
+</div>

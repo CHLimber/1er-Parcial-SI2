@@ -29,11 +29,37 @@ const _rutasDeInvitado = {'/login', '/registro'};
 /// Permisos exigidos por cada pantalla del panel, espejo de `permisoGuard` en
 /// `frontend/src/app/app.routes.ts`. Quien autoriza de verdad siempre es la API.
 const Map<String, List<String>> _permisosPorRuta = {
-  '/panel/catalogo': ['catalogo.ver', 'catalogo.gestionar'],
-  '/panel/recepciones': ['recepciones.ver', 'recepciones.registrar', 'recepciones.confirmar'],
-  '/panel/proveedores': ['proveedores.ver', 'proveedores.gestionar'],
-  '/panel/sucursales': ['sucursales.ver', 'sucursales.gestionar'],
-  '/panel/usuarios': ['usuarios.ver', 'usuarios.gestionar', 'roles.ver'],
+  '/panel/catalogo': [
+    'catalogo.leer',
+    'catalogo.crear',
+    'catalogo.actualizar',
+    'catalogo.eliminar',
+  ],
+  '/panel/recepciones': [
+    'recepciones.leer',
+    'recepciones.crear',
+    'recepciones.actualizar',
+    'recepciones.eliminar',
+  ],
+  '/panel/proveedores': [
+    'proveedores.leer',
+    'proveedores.crear',
+    'proveedores.actualizar',
+    'proveedores.eliminar',
+  ],
+  '/panel/sucursales': [
+    'sucursales.leer',
+    'sucursales.crear',
+    'sucursales.actualizar',
+    'sucursales.eliminar',
+  ],
+  '/panel/usuarios': [
+    'usuarios.leer',
+    'usuarios.crear',
+    'usuarios.actualizar',
+    'usuarios.eliminar',
+    'roles.leer',
+  ],
 };
 
 GoRouter construirRouter(AuthService auth) {

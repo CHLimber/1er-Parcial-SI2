@@ -74,10 +74,39 @@
       domicilio SI forma parte del negocio y no se puede declarar fuera de
       alcance. Sigue siendo un pendiente real.
 
-[2.5] Reportes: el permiso existe, la funcionalidad no.
-      El codigo reportes.ver esta sembrado y se asigna a ADMIN y ENCARGADO, y la
-      vista v_ventas_diarias existe en db/02_logica.sql, pero no hay endpoints
-      ni pantallas que los usen. Es el unico permiso que no habilita nada.
+[2.5] [HECHO 2026-09-18] CU15 "Consultar Reportes e Indicadores": backend + web.
+      Modulo nuevo app/modules/reportes/ (permiso unico reportes.leer, ya sembrado
+      para ADMIN y ENCARGADO): 6 endpoints, sin capa de servicio, SQL directo en el
+      router (no se toco db/02_logica.sql; v_ventas_diarias no se reusa porque no
+      expone sucursal_id para filtrar, se reescribio la misma agregacion en el
+      router). "Dinamicos" (aceptan desde/hasta/sucursal_id, ventas-diarias ademas
+      canal): /reportes/indicadores (KPIs), /reportes/ventas-diarias,
+      /reportes/ventas-por-sucursal, /reportes/top-productos. "Estaticos" (foto
+      actual, sin fecha): /reportes/stock-por-sucursal, /reportes/reservas-por-estado.
+      Mismo patron de scoping por sucursal que recepciones.py: un ENCARGADO solo ve
+      su sucursal (403 si pide otra), un ADMIN (el que tiene sucursales.actualizar)
+      ve la cadena completa y puede filtrar. Probado con curl contra Postgres real:
+      los 6 endpoints, el 403 cruzando sucursal como ENCARGADO y el 403 de un
+      CLIENTE sin el permiso.
+      OJO tipos: los campos de plata quedaron en `float` (no Decimal) en
+      app/modules/reportes/schemas.py -- Pydantic v2 serializa Decimal como string
+      en el JSON y el frontend (y Chart.js) esperan number. catalogo/schemas.py ya
+      usaba float por lo mismo; recepciones/schemas.py sigue en Decimal y por eso
+      sus montos le llegan al frontend como string (no verificado si algo lo nota).
+      Web: pages/panel-reportes/ (ruta /panel/reportes, agregada a panel.page.ts y
+      panel-shell.ts) con Chart.js (dependencia nueva, npm install chart.js) --
+      paleta de marca (--flame/--gold) para series unicas, paleta categorica
+      validada con la skill dataviz (azul/naranja/aqua, no es la paleta de marca)
+      solo para el grafico con series de verdad (ventas diarias por canal). Filtro
+      de sucursal en la UI solo se muestra si el usuario tiene sucursales.actualizar
+      (mismo criterio que el backend). Verificado: tsc --noEmit limpio, `ng build`
+      limpio, `ng serve` compila.
+      FALTA (a proposito, ver charla con el usuario):
+        - Movil: panel_reportes_pagina.dart no se hizo, CU15 queda solo en backend+web.
+        - "Consultas por voz con IA": en la pantalla web hay una seccion
+          "Consultas por voz (proximamente)" que es placeholder puro -- sin
+          endpoint, sin ANTHROPIC_API_KEY en .env, sin dependencia del SDK de
+          Claude. Es una tarea aparte, CU15 (reportes) ya esta cerrado sin ella.
 
 [2.6] Ajustes manuales de stock: idem.
       El permiso inventario.ajustar esta asignado a ADMIN, ENCARGADO y ALMACEN,
@@ -87,9 +116,14 @@
       correccion no se puede hacer desde la aplicacion.
 
 [2.7] Tablas del esquema sin ningun uso en el backend (0 referencias):
-      traspaso, devolucion, resena, favorito. Estan en db/01_schema.sql pero
-      ningun modulo las toca. Decidir si entran en el alcance o se documentan
-      como fuera de el.
+      traspaso, devolucion. Estan en db/01_schema.sql pero ningun modulo las toca.
+      Decidir si entran en el alcance o se documentan como fuera de el.
+      [CORREGIDO 2026-09-18] Esta entrada decia tambien "resena, favorito" -- no
+      existen en db/01_schema.sql (se reviso completo al implementar CU17, que
+      necesitaba saber que senales de historial habia disponibles). No hay tabla
+      de resenas ni de favoritos en el esquema actual; el dato mas parecido es
+      usuario.color_favorito_id (una preferencia de color, no una tabla de
+      favoritos de productos).
       NOTA (modelo de negocio, ver README): traspaso es el que mas justificacion
       tiene de los cuatro. Las 3 sucursales estan en 3 climas distintos y el
       seed ya reparte el stock de forma asimetrica (el tapado se acumula en
@@ -97,18 +131,152 @@
       operacion natural del negocio, no una tabla decorativa. Si se implementa
       solo una de las cuatro, que sea esta.
 
-[2.8] Realidad aumentada: el esquema y CU10 la soportan, no hay visor.
-      producto_imagen tiene uso_imagen (CATALOGO/AR_OVERLAY/AR_MODELO),
-      formato_imagen (JPG/PNG/GLB/USDZ) y las columnas anclajes + escala_base
-      (db/01_schema.sql:310). CU10 ya deja cargar imagenes con esos usos
-      (catalogo/admin_router.py:50 y el selector del panel web). Pero:
-        - ningun visor renderiza AR, ni en web ni en movil;
-        - el INSERT de CU10 (admin_router.py:553) NO guarda anclajes ni
-          escala_base, asi que esas dos columnas quedan siempre en NULL;
-        - el catalogo se sigue sirviendo con placeholders de picsum.photos.
-      El plan de trabajo (que archivos conseguir, especificacion de cada
-      formato, el JSON de anclajes, los dos niveles de visor y en que orden
-      hacerlo) esta en IMAGENES_AR.txt.
+[2.8] [HECHO 2026-09-18] CU16 "Usar Vestidor Virtual (RA)": movil, los dos
+      niveles de IMAGENES_AR.txt. Web queda afuera (CU16 se pidio solo para
+      movil).
+
+      NIVEL 2 (AR_MODELO, GLB, <<mejor cambio por hora de trabajo>>):
+        - 2 modelos gratuitos bajados de poly.pizza sin login, en
+          backend/app/media_semilla/ar/: bot-004-ar.glb (1.76 MB) y
+          san-004-ar.glb (20.8 KB). Licencia CC BY 3.0 en ambos -- atribucion
+          obligatoria: "Cowboy boots" de Poly by Google
+          (https://poly.pizza/m/9Qf1MHGePvS) y "Sandal" de jeremy
+          (https://poly.pizza/m/4_4lQugjiRa).
+        - DOS PRODUCTOS NUEVOS EN VEZ DE FORZAR LOS QUE HABIA. Al renderizar
+          los modelos para revisarlos se vio que no son lo que decian los
+          productos a los que se los habia colgado: el primero es una bota
+          texana con espuelas (no una botineta de tobillo) y el segundo una
+          sandalia deportiva de tiras planas (no una de plataforma). Colgarlos
+          ahi significaba que la clienta veria en RA algo distinto de lo que
+          compra, asi que se dieron de alta como productos propios en
+          db/03_datos_iniciales.sql: BOT-004 "Bota Texana de Cuero"
+          (Otonio-Invierno, Bs 549.90) y SAN-004 "Sandalia Deportiva de Tiras"
+          (Primavera-Verano, Bs 229.90), los dos destacados, con variantes de
+          talla 35-39, color nuevo "Turquesa" (#009688, el de las tiras del
+          modelo) e inventario repartido por el mismo criterio de clima que el
+          resto (la bota pesa en La Paz 290 vs 37 en Santa Cruz; la sandalia al
+          reves, 233 en Santa Cruz vs 34 en La Paz). BOT-001 y SAN-001 volvieron
+          a quedar sin AR.
+        - LA FOTO DE CATALOGO DE ESOS DOS ES UN RENDER DEL PROPIO GLB
+          (backend/app/media_semilla/catalogo/bota-texana-de-cuero.jpg y
+          sandalia-deportiva-de-tiras.jpg), hecho con un rasterizador propio
+          que samplea la textura del modelo. Asi la foto del catalogo y lo que
+          se ve en RA son exactamente la misma prenda, sin buscar fotos de
+          stock que volverian a no coincidir.
+        - ESCALA CORREGIDA (era un bug que rompia la demo): los dos modelos
+          venian de poly.pizza en unidades arbitrarias -- la bota media 2.58
+          "metros" de alto y la sandalia 9.65 de largo -- y Scene Viewer los
+          planta en RA con ese tamano, o sea una bota de dos pisos. Se
+          reescalaron y se apoyaron en el piso (Y=0) envolviendo las raices de
+          la escena en un nodo con matriz de escala, sin tocar la geometria:
+          ahora la bota mide 31x36x35 cm y la sandalia 13x8x26 cm, como pide
+          IMAGENES_AR.txt punto 3.
+        - MIME TYPE (otro bug que rompia la demo): StaticFiles servia los .glb
+          como `text/plain` porque Python no conoce el formato, y Scene Viewer
+          rechaza el modelo. app/main.py ahora registra `model/gltf-binary`
+          (.glb) y `model/vnd.usdz+zip` (.usdz) con `mimetypes.add_type` antes
+          de montar /media. Verificado con curl: devuelve model/gltf-binary.
+        - SIN USDZ: convertir GLB a USDZ pide Reality Converter (Mac), y se
+          desarrollo en Windows. movil/lib/paginas/producto_detalle_pagina.dart
+          (`_vestidorVirtual`) por eso solo muestra el boton "VER EN 3D" en
+          Android (`Platform.isAndroid`); en iOS se ve un aviso en vez del
+          boton. Pendiente real si se consigue una Mac o un conversor online.
+        - El boton llama a `_abrirVisor3d`, que arma un intent:// de Google
+          Scene Viewer y lo abre con url_launcher
+          (`LaunchMode.externalApplication`). Se usa `mode=ar_preferred` y NO
+          `ar_only`: con ar_only, un equipo sin ARCore no abre absolutamente
+          nada; con ar_preferred siempre se ve el modelo en 3D y el boton de
+          "ver en tu espacio" aparece solo si el equipo lo soporta.
+          AndroidManifest.xml declara `<package android:name="com.google.ar.core"/>`
+          en `<queries>` (si no, `canLaunchUrl` da false en Android 11+).
+
+      NIVEL 1 (AR_OVERLAY, PNG con transparencia, camara en vivo):
+        - 3 overlays en backend/app/media_semilla/ar/: blu-001-ar-blanco.png,
+          ves-003-ar-rosa.png, abr-001-ar-camel.png. Recortados con un script
+          propio (Pillow + scipy.ndimage.label: separa el fondo por color Y
+          por estar conectado al borde de la imagen, asi no se come zonas
+          internas de la prenda del mismo color que el fondo -- ver el
+          historial de esta sesion si hace falta regenerarlos, el script no
+          quedo en el repo por ser una herramienta de una sola vez).
+        - anclajes (JSONB) y escala_base (NUMERIC) medidos a ojo sobre cada
+          PNG con una grilla de referencia, como sugiere IMAGENES_AR.txt
+          punto 4.1. Cargados en el seed (db/03_datos_iniciales.sql, bloque
+          "CU16 Usar Vestidor Virtual (RA)").
+        - [5.1 CERRADO] admin_router.py `_crear_fila_imagen` ahora si guarda
+          anclajes/escala_base (antes quedaban siempre NULL); admin_schemas.py
+          (`ImagenIn`/`ImagenOut`) y catalogo/schemas.py (`ImagenArOut`) los
+          exponen. Probado end-to-end con curl contra Postgres real: POST
+          .../imagenes con anclajes+escala_base, GET detalle admin y GET
+          detalle publico devuelven ambos campos completos; fila de prueba
+          borrada despues. `subir_imagen` (multipart) NO recibio los mismos
+          campos -- solo hace falta si el panel de CU10 llega a subir un PNG
+          de overlay a mano; por ahora todo entra por el seed SQL.
+        - GET /catalogo/productos/{slug} suma el campo `ar` (lista de
+          `ImagenArOut`: uso, formato, url, color, anclajes, escala_base) via
+          un JOIN nuevo sobre producto_imagen con uso IN (AR_OVERLAY,
+          AR_MODELO). Es la segunda lectura de una columna jsonb del backend
+          (la primera fue auditoria/CU19) -- mismo patron: asyncpg no tiene
+          codec jsonb (app/core/db.py), se lee como texto y se parsea con
+          json.loads a mano (`_parsear_anclajes`, repetido en router.py y
+          admin_router.py a proposito, cada modulo mantiene lo suyo).
+        - movil/lib/paginas/vestidor_virtual_pagina.dart: camera + ML Kit
+          Pose Detection (`google_mlkit_pose_detection`, agregado a
+          pubspec.yaml junto con `camera`). Arma una transformacion de
+          similitud (rotar+escalar+trasladar) que lleva hombro_izq/hombro_der
+          del PNG exactamente sobre los hombros detectados -- por eso NO usa
+          escala_base para nada (alcanza con los dos anclajes + la
+          correspondencia de puntos; escala_base queda igual disponible por
+          si mas adelante se quiere comparar contra el ancho de hombros real
+          de la clienta, p.ej. para sugerir talla). cintura tampoco se usa
+          todavia (reservado para un ajuste no-uniforme futuro).
+        - PERMISOS: CAMERA agregado a AndroidManifest.xml (+ uses-feature
+          camera/autofocus no requeridos) y NSCameraUsageDescription a
+          ios/Runner/Info.plist.
+        - FALTA PROBARLO CON UNA PERSONA DELANTE (no se pudo en la sesion que
+          lo escribio). Si la prenda se ve cruzada de lado, NO hace falta
+          tocar codigo: la barra del visor tiene un boton "invertir lados"
+          (icono de flip) que intercambia que hombro detectado va a que
+          anclaje del PNG. Se agrego justamente porque si la camara frontal
+          entrega el buffer ya espejado depende del equipo.
+
+      COMO PROBARLO (material disponible hoy):
+        - MODELOS 3D, sin telefono: abrir en cualquier navegador
+          http://localhost:8081/media/ar/previsualizar.html -- una pagina de
+          verificacion (no es parte del producto) que muestra los dos GLB con
+          <model-viewer>. Sirve para confirmar de un vistazo que cargan, que
+          se ven bien y que estan a escala.
+        - MODELOS 3D en el emulador: el AVD Pixel_10a es imagen con Play Store
+          (google_apis_playstore, x86_64), asi que se puede instalar "Google
+          Play Services para RA" desde la Play Store del propio emulador y
+          Scene Viewer funciona contra la escena virtual de la camara trasera.
+          Sin esa app instalada el intent no resuelve y cae al
+          browser_fallback_url (descarga el .glb), que es justamente lo que
+          `mode=ar_preferred` evita en un equipo real.
+        - OVERLAY 2D en el emulador: la camara frontal del AVD estaba en
+          `emulated` (una escena sintetica donde no hay ninguna persona, asi
+          que la deteccion de pose nunca encuentra hombros). Se cambio a
+          `webcam0` en ~/.android/avd/Pixel_10a.avd/config.ini para que use la
+          webcam de la maquina y se pueda probar parandose delante de la
+          laptop. Queda el respaldo config.ini.bak-antes-cu16 para revertirlo.
+        - Prendas con overlay: blusa de lino, vestido de punto, tapado de lana.
+          Prendas con modelo 3D: Bota Texana de Cuero, Sandalia Deportiva de
+          Tiras (las dos destacadas, aparecen primeras en la tienda).
+
+      VERIFICADO EN ESTA ENTREGA:
+        - `docker compose down -v && up --build` (obligatorio por el cambio en
+          03_datos_iniciales.sql) sin errores en el init de Postgres.
+        - curl contra el backend real: los 3 productos con overlay devuelven
+          sus anclajes y escala_base; los 2 nuevos devuelven su AR_MODELO;
+          BOT-001/SAN-001 devuelven `ar: []`; un producto sin AR tambien.
+          Los 5 archivos se sirven por /media/ar (200) y los .glb con
+          Content-Type model/gltf-binary.
+        - El catalogo pasa de 40 a 42 productos, los 2 nuevos con foto, stock
+          en las 3 sucursales y variantes de talla/color.
+        - CU10 end-to-end: POST .../imagenes con anclajes+escala_base los
+          guarda y los devuelve (fila de prueba borrada despues).
+        - movil: `flutter build apk --debug` OK (prueba que camera y
+          google_mlkit_pose_detection compilan de verdad contra Android),
+          `flutter analyze` sin issues, `flutter test` 3/3.
 
 [2.9] [HECHO 2026-09-13] Catalogo de demostracion: ya son 40 productos en 9
       categorias (Faldas/Sandalias/Zapatos nuevas), 6 marcas, 9 destacados
@@ -291,6 +459,115 @@
         y no son estampados (BOT-001, FAL-001, BLU-002 -- PAN-002, ABR-001,
         SAN-001, ZAP-003 y ACC-002 ya quedaron resueltos arriba).
 
+[2.10] [HECHO 2026-09-18] CU17 "Recibir Recomendaciones de IA": backend + web.
+      Aclaracion del usuario que quedo registrada: "IA" aca NO es un modelo (Claude, Gemini, etc)
+      activo, es un algoritmo sobre el historial del cliente. Modulo nuevo
+      app/modules/recomendaciones/ (GET /recomendaciones, cualquier CLIENTE autenticado, 403 para
+      STAFF), sin permiso de CU13 de por medio porque no es pantalla de gestion. Algoritmo, todo
+      en SQL crudo en el router, dos pasadas:
+        1. "Personalizadas": categorias donde el cliente compro (peso 2) o reservo (peso 1) mas
+           (top 3), completadas con productos activos de esas categorias que todavia no toco.
+           motivo = "Porque te gusta <categoria>".
+        2. "Generales" (relleno si 1 no alcanza el limite pedido, o directamente si el cliente no
+           tiene historial): destacados primero, despues los mas vendidos de toda la cadena.
+           motivo = "Destacado en FashionStore" / "Tendencia en FashionStore".
+      Nunca se recomienda un producto que el cliente ya compro o reservo (se excluye por id en
+      las dos pasadas). Probado con curl contra Postgres real: cliente@fashionstore.bo (con una
+      compra en Accesorios) recibe solo Accesorios con motivo de historial; cliente2 (sin
+      historial) recibe puro fallback de destacados; admin pidiendo el endpoint da 403.
+      Reusa el mismo shape de ProductoOut que /catalogo/productos + un campo `motivo`; no se
+      importa el schema de catalogo (cada modulo mantiene el suyo, ver CLAUDE.md), se duplico a
+      proposito en app/modules/recomendaciones/schemas.py.
+      Web: la tarjeta de prenda de tienda.page se extrajo a
+      frontend/src/app/shared/catalogo/producto-card.ts (selector `li[app-producto-card]`, para
+      no envolverla en un <li> aparte) porque ahora tiene dos consumidores: el catalogo de
+      siempre y la seccion nueva "Recomendado para vos" en tienda.page.html (arriba del catalogo,
+      solo para clientes, oculta si no hay recomendaciones). Verificado: tsc --noEmit limpio,
+      `ng build` limpio.
+      FALTA (a proposito, mismo criterio que CU15): movil no se toco, CU17 queda solo en
+      backend+web.
+      NOTA: [2.7] (mas arriba en este mismo archivo) decia que existia una tabla `favorito` sin
+      usar -- no es cierto, no existe en db/01_schema.sql (corregido ahi mismo). El historial que
+      usa CU17 sale de venta_detalle/venta y reserva_detalle/reserva, no de favoritos.
+
+[2.11] [HECHO 2026-09-18, FALTA PROBAR EN VIVO] CU18 "Asistir al Cliente via Chatbot": backend +
+      web. A diferencia de CU17, esta CU si llama a un modelo de IA de verdad (API de Claude,
+      Anthropic) -- aclaracion explicita del usuario al pedirla.
+      Backend: app/modules/asistente/router.py, POST /asistente/chat, solo CLIENTE (403 para
+      STAFF, mismo patron _exigir_cliente que recomendaciones/carrito). Decisiones conversadas
+      con el usuario:
+        - Modelo: claude-haiku-4-5 (barato, configurable por ANTHROPIC_MODEL en .env).
+        - Grounding: tool use, NO todo el catalogo en el prompt. Una herramienta
+          "buscar_catalogo" (strict, JSON schema) que Claude llama con filtros (categoria_slug,
+          q, talla_codigo, color_nombre, precio_maximo, limite) contra Postgres en vivo -- nunca
+          inventa productos. El system prompt le pide expresamente hacer 1-2 preguntas para
+          acotar ANTES de llamar a la herramienta si el pedido es muy general (para no gastar de
+          mas ni traer resultados demasiado amplios), y restringe la charla a temas de
+          FashionStore (rechaza y redirige cualquier tema no relacionado, instruccion explicita
+          de no seguir pedidos de cambiar esas reglas).
+        - Contexto de personalizacion: un parrafo corto con las categorias favoritas del cliente
+          (mismo query que CU17: compra=peso 2, reserva=peso 1) inyectado en el system prompt.
+        - Sin persistencia: el frontend reenvia la conversacion completa en cada POST (lista
+          mensajes[]), el backend no guarda nada, no hay tabla de chat en el esquema.
+        - Sin streaming: respuestas cortas, no valia la complejidad de SSE para esta entrega.
+        - Loop manual (no el tool_runner beta del SDK): un unico tipo de herramienta, maximo 4
+          iteraciones (MAX_ITERACIONES_HERRAMIENTA), sin dependencia beta.
+      El endpoint devuelve `respuesta` (texto) + `productos_sugeridos` (mismo shape que
+      catalogo.schemas.ProductoOut, duplicado en asistente/schemas.py como el resto de los
+      modulos) tomados de la ultima llamada exitosa a buscar_catalogo en ese turno.
+      Config nueva: ANTHROPIC_API_KEY / ANTHROPIC_MODEL en backend/.env(.example),
+      requirements.txt suma anthropic==1.6.0. Sin la clave, /asistente/chat responde 503 en vez
+      de romper el arranque del backend (probado). El 403 para STAFF tambien esta probado.
+      LO QUE FALTA PROBAR: una conversacion real contra la API de Claude (necesita
+      ANTHROPIC_API_KEY real en backend/.env, que gasta saldo de la cuenta del usuario -- no se
+      hizo sin su autorizacion explicita). Falta confirmar en vivo: que el loop de la herramienta
+      funcione de punta a punta, que el modelo efectivamente pregunte antes de buscar cuando el
+      pedido es vago, y que rechace temas fuera de la tienda.
+      Web: pages/asistente/ (ruta /asistente, link nuevo en la cabecera de tienda.page junto a
+      "Mis compras"), burbujas de chat con Bs formateados, reusa <li app-producto-card> (el mismo
+      componente de CU17) para mostrar las prendas sugeridas debajo de la respuesta del
+      asistente. Verificado: tsc --noEmit limpio, `ng build` limpio.
+      FALTA (a proposito, mismo criterio que CU15/CU17): movil no se toco.
+
+[2.12] [HECHO 2026-09-18] CU19 "Consultar Bitacora de Auditoria": backend + web.
+      Solo lectura sobre la tabla `auditoria` que ya existia en el esquema (db/01_schema.sql:639)
+      y que CU10-CU13 y el login vienen poblando desde antes via app/core/auditoria.py -- esta CU
+      no agrega escritura nueva, solo la pantalla para consultarla. Modulo nuevo
+      app/modules/auditoria/ con permiso unico `auditoria.leer`, sembrado SOLO para ADMIN (a
+      diferencia de reportes.leer, que tambien tiene ENCARGADO): la bitacora es del sistema
+      completo -- usuarios, roles, catalogo, sucursales, proveedores, recepciones -- y la tabla
+      auditoria no tiene sucursal_id para acotar por sucursal, asi que no hay forma de darsela a
+      un ENCARGADO sin que vea movimientos de otras sucursales. Agregado tambien a
+      db/reparaciones/permisos_cu13.sql (paso 2, el INSERT de codigos nuevos) para que Railway lo
+      reciba corriendo ese script, igual que el resto de la matriz de permisos.
+      Dos endpoints, sin capa de servicio, SQL directo en el router (mismo patron que reportes):
+      `GET /auditoria` (filtros usuario_id, entidad, entidad_id, accion, desde/hasta, paginado
+      con pagina/tamanio_pagina, devuelve total + items) y `GET /auditoria/entidades` (valores
+      distintos de `entidad` ya registrados, para el filtro del panel -- no se hardcodea la lista
+      porque `entidad` es VARCHAR libre, no un ENUM). `accion` si se valido con pattern fijo
+      (CREAR/ACTUALIZAR/ELIMINAR/LOGIN, el ENUM accion_auditoria del schema) porque un valor
+      invalido no puede existir nunca, mismo criterio que el `canal` de reportes.
+      OJO asyncpg: no hay codec de jsonb configurado en app/core/db.py, asi que datos_antes/
+      datos_despues llegan de la consulta como texto JSON, no como dict -- se parsean a mano con
+      json.loads en auditoria/router.py (`_parsear_json`). Es la primera vez que el backend LEE
+      una columna jsonb (antes solo se escribia via ::jsonb en auditoria.py), asi que si otro
+      modulo necesita leer una columna jsonb en el futuro va a pisar el mismo problema.
+      Probado con curl contra Postgres real (docker compose down -v && up --build, necesario
+      porque se toco 03_datos_iniciales.sql): login de ADMIN aparece solo con accion LOGIN;
+      crear un proveedor de prueba genera una fila entidad=proveedor con datos_despues ya parseado
+      como objeto JSON (no string); filtro por entidad funciona; accion=BORRAR (invalida) da 422;
+      ENCARGADO (encargada.lapaz@fashionstore.bo) y CLIENTE dan 403.
+      Web: pages/panel-auditoria/ (ruta /panel/auditoria, entrada nueva en panel.page.ts y
+      panel-shell.ts, ambas detras de auth.tienePermiso('auditoria.leer')). Tabla con filtros
+      (entidad, accion, ID de entidad, rango de fechas), paginacion Anterior/Siguiente, y una fila
+      expandible por evento que muestra datos_antes/datos_despues con JsonPipe cuando existen (los
+      eventos LOGIN no tienen, asi que esos no muestran el boton "Ver detalle"). Verificado:
+      `npx tsc --noEmit` limpio, `ng build` limpio (los 3 warnings de presupuesto CSS que aparecen
+      son de paginas preexistentes, no de esta).
+      FALTA (a proposito, mismo criterio que CU15/CU17/CU18): movil no se toco. No se pudo probar
+      la pantalla en un navegador real en esta sesion (sin herramienta de captura/automatizacion
+      de navegador disponible) -- si algo se ve mal visualmente, avisar para ajustarlo.
+
 -------------------------------------------------------------------------------
  3. DEUDA TECNICA
 -------------------------------------------------------------------------------
@@ -354,7 +631,14 @@
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)
 ===============================================================================
 
-- CU01 a CU13 implementados en backend, web y movil.
+- CU01 a CU14 implementados en backend, web y movil. CU14 (Consultar Historial
+  de Reservas y Compras) reusa GET /reservas y GET /ventas, que ya devolvian
+  todo el historial del cliente; la mitad "reservas" ya estaba en
+  mis-reservas.page.ts (web) y mis_reservas_pagina.dart (movil) desde CU04. La
+  mitad "compras" ya existia en movil (mis_compras_pagina.dart) pero faltaba en
+  la web: se agrego frontend/src/app/pages/mis-compras, con ruta /mis-compras y
+  enlace cruzado con /mis-reservas; el detalle reusa /compra/:ventaId, que ya
+  existia para el seguimiento post-checkout.
 - Movil verificado contra el Docker local y contra Railway, en el emulador
   Pixel_10a, con APK debug y release: login, catalogo, detalle, cuenta de
   cliente vs staff, panel de gestion y CU13 con datos reales.

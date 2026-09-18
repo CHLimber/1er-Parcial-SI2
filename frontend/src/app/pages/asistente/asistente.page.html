@@ -1,0 +1,56 @@
+<div class="pagina">
+  <header class="cabecera">
+    <a class="cabecera__volver" routerLink="/tienda">← Volver a la tienda</a>
+    <span class="cabecera__titulo">Asistente FashionStore</span>
+  </header>
+
+  <main class="chat">
+    <div class="chat__mensajes" #contenedor>
+      <div class="burbuja burbuja--assistant">
+        <p class="burbuja__texto">
+          ¡Hola! Contame qué estás buscando (categoría, color, talla, para qué ocasión) y te ayudo
+          a encontrarlo en el catálogo.
+        </p>
+      </div>
+
+      @for (mensaje of mensajes(); track $index) {
+        <div
+          class="burbuja"
+          [class.burbuja--user]="mensaje.rol === 'user'"
+          [class.burbuja--assistant]="mensaje.rol === 'assistant'"
+        >
+          <p class="burbuja__texto">{{ mensaje.texto }}</p>
+          @if (mensaje.productos && mensaje.productos.length > 0) {
+            <ul class="burbuja__productos">
+              @for (producto of mensaje.productos; track producto.id) {
+                <li app-producto-card [producto]="producto"></li>
+              }
+            </ul>
+          }
+        </div>
+      }
+
+      @if (enviando()) {
+        <div class="burbuja burbuja--assistant burbuja--cargando">
+          <p class="burbuja__texto">Escribiendo…</p>
+        </div>
+      }
+    </div>
+
+    @if (error()) {
+      <p class="chat__error">{{ error() }}</p>
+    }
+
+    <form class="chat__form" (ngSubmit)="enviar()">
+      <input
+        type="text"
+        name="mensaje"
+        [(ngModel)]="borrador"
+        placeholder="Ej: busco un vestido para una fiesta, talla M"
+        [disabled]="enviando()"
+        autocomplete="off"
+      />
+      <button type="submit" [disabled]="enviando() || !borrador.trim()">Enviar</button>
+    </form>
+  </main>
+</div>

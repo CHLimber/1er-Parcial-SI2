@@ -36,7 +36,11 @@ export class PanelSucursalesPage implements OnInit {
   protected readonly errorCaja = signal<string | null>(null);
   protected readonly guardandoCaja = signal(false);
 
-  protected readonly puedeGestionar = this.auth.tienePermiso('sucursales.gestionar');
+  protected readonly puedeGestionar = this.auth.tienePermiso(
+    'sucursales.crear',
+    'sucursales.actualizar',
+    'sucursales.eliminar',
+  );
 
   protected readonly form = this.fb.nonNullable.group({
     codigo: ['', [Validators.required, Validators.maxLength(20)]],

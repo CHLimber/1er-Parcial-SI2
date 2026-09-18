@@ -1,10 +1,12 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
+import { AuthService } from '../../core/auth/auth.service';
 import { CarritoService } from '../../core/carrito/carrito.service';
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { GaleriaImagenOut, ProductoDetalleOut, VarianteOut } from '../../core/catalogo/catalogo.models';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
+import { interpretarError } from '../../shared/errores';
 
 @Component({
   selector: 'app-producto-detalle-page',
@@ -19,6 +21,7 @@ export class ProductoDetallePage implements OnInit {
   private readonly catalogo = inject(CatalogoService);
   private readonly reservaCarrito = inject(ReservaCarritoService);
   private readonly carritoService = inject(CarritoService);
+  private readonly auth = inject(AuthService);
 
   protected readonly producto = signal<ProductoDetalleOut | null>(null);
   protected readonly cargando = signal(true);
@@ -173,14 +176,19 @@ export class ProductoDetallePage implements OnInit {
     const variante = this.varianteSeleccionada();
     if (!variante) return;
 
+    if (!this.auth.estaAutenticado()) {
+      this.router.navigateByUrl('/login');
+      return;
+    }
+
     this.errorCarrito.set(null);
     this.carritoService.agregarItem({ variante_id: variante.id, cantidad: 1 }).subscribe({
       next: () => {
         this.agregadoAlCarrito.set(true);
         setTimeout(() => this.agregadoAlCarrito.set(false), 2500);
       },
-      error: () => {
-        this.errorCarrito.set('No se pudo agregar la prenda al carrito. Puede que ya no tenga stock.');
+      error: (error) => {
+        this.errorCarrito.set(interpretarError(error, 'No se pudo agregar la prenda al carrito.'));
       },
     });
   }

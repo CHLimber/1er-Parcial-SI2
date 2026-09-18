@@ -1,0 +1,163 @@
+<app-panel-shell
+  titulo="Reportes"
+  bajada="CU15 — indicadores dinámicos (con filtro de fecha y sucursal) y estáticos (foto actual de stock y reservas)."
+>
+  <form class="barra" [formGroup]="filtro" (ngSubmit)="aplicarFiltro()">
+    <div class="campo">
+      <label for="f-desde">Desde</label>
+      <input id="f-desde" type="date" formControlName="desde" />
+    </div>
+    <div class="campo">
+      <label for="f-hasta">Hasta</label>
+      <input id="f-hasta" type="date" formControlName="hasta" />
+    </div>
+    @if (puedeElegirSucursal) {
+      <div class="campo">
+        <label for="f-sucursal">Sucursal</label>
+        <select id="f-sucursal" formControlName="sucursal_id">
+          <option value="">Todas</option>
+          @for (s of sucursales(); track s.id) {
+            <option [value]="s.id">{{ s.nombre }}</option>
+          }
+        </select>
+      </div>
+    }
+    <div class="barra__espacio"></div>
+    <button type="submit" class="boton">Actualizar</button>
+  </form>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <section class="panel">
+    <h2 class="panel__titulo">Resumen del período</h2>
+    @if (cargandoIndicadores()) {
+      <p class="estado">Cargando…</p>
+    } @else if (indicadores(); as ind) {
+      <div class="kpis">
+        <div class="kpi">
+          <span class="kpi__etiqueta">Ventas</span>
+          <span class="kpi__valor">Bs {{ ind.ventas_monto | number: '1.0-2' }}</span>
+          <span class="kpi__detalle">
+            {{ ind.ventas_cantidad }} ventas · ticket promedio Bs {{ ind.ticket_promedio | number: '1.0-2' }}
+          </span>
+        </div>
+        <div class="kpi">
+          <span class="kpi__etiqueta">Reservas del período</span>
+          <span class="kpi__valor">{{ ind.reservas_creadas }}</span>
+          <span class="kpi__detalle">
+            {{ ind.reservas_convertidas }} convertidas · {{ ind.tasa_conversion_reservas }}% de conversión
+          </span>
+        </div>
+        <div class="kpi" [class.kpi--alerta]="ind.variantes_agotadas > 0">
+          <span class="kpi__etiqueta">Variantes agotadas</span>
+          <span class="kpi__valor">{{ ind.variantes_agotadas }}</span>
+          <span class="kpi__detalle">Foto actual de inventario</span>
+        </div>
+        <div class="kpi" [class.kpi--alerta]="ind.variantes_stock_bajo > 0">
+          <span class="kpi__etiqueta">Stock bajo</span>
+          <span class="kpi__valor">{{ ind.variantes_stock_bajo }}</span>
+          <span class="kpi__detalle">Por debajo del mínimo definido</span>
+        </div>
+      </div>
+    }
+  </section>
+
+  <section class="panel">
+    <div class="panel__cabecera">
+      <h2 class="panel__titulo">Ventas diarias</h2>
+      <select [formControl]="filtro.controls.canal" (change)="aplicarFiltro()">
+        <option value="">Todos los canales</option>
+        <option value="WEB">Web</option>
+        <option value="MOVIL">Móvil</option>
+        <option value="POS">Caja (POS)</option>
+      </select>
+    </div>
+    <div class="grafico">
+      <canvas #canvasVentasDiarias></canvas>
+    </div>
+    @if (sinVentasDiarias()) {
+      <p class="estado">Sin ventas en el período y sucursal seleccionados.</p>
+    }
+  </section>
+
+  <section class="panel">
+    <h2 class="panel__titulo">Ventas por sucursal</h2>
+    <div class="grafico">
+      <canvas #canvasVentasSucursal></canvas>
+    </div>
+    @if (sinVentasSucursal()) {
+      <p class="estado">Sin ventas en el período seleccionado.</p>
+    }
+  </section>
+
+  <section class="panel">
+    <h2 class="panel__titulo">Top 10 productos más vendidos</h2>
+    <div class="grafico grafico--alto">
+      <canvas #canvasTopProductos></canvas>
+    </div>
+    @if (sinTopProductos()) {
+      <p class="estado">Sin ventas en el período seleccionado.</p>
+    }
+  </section>
+
+  <section class="panel">
+    <h2 class="panel__titulo">Stock disponible por sucursal</h2>
+    <p class="secundario">Foto actual del inventario, no depende del rango de fechas.</p>
+    <div class="grafico">
+      <canvas #canvasStock></canvas>
+    </div>
+    @if (sinStock()) {
+      <p class="estado">No hay inventario para mostrar.</p>
+    } @else {
+      <div class="tabla-envoltorio">
+        <table class="tabla">
+          <thead>
+            <tr>
+              <th>Sucursal</th>
+              <th class="tabla__numero">Físico</th>
+              <th class="tabla__numero">Reservado</th>
+              <th class="tabla__numero">Disponible</th>
+              <th class="tabla__numero">Agotadas</th>
+              <th class="tabla__numero">Stock bajo</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (fila of stock(); track fila.sucursal_id) {
+              <tr>
+                <td>{{ fila.sucursal }}</td>
+                <td class="tabla__numero">{{ fila.total_fisico }}</td>
+                <td class="tabla__numero">{{ fila.total_reservado }}</td>
+                <td class="tabla__numero">{{ fila.total_disponible }}</td>
+                <td class="tabla__numero">{{ fila.variantes_agotadas }}</td>
+                <td class="tabla__numero">{{ fila.variantes_stock_bajo }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
+  <section class="panel">
+    <h2 class="panel__titulo">Reservas por estado</h2>
+    <p class="secundario">Foto actual de la cola de reservas, no depende del rango de fechas.</p>
+    <div class="grafico">
+      <canvas #canvasReservas></canvas>
+    </div>
+    @if (sinReservas()) {
+      <p class="estado">No hay reservas para mostrar.</p>
+    }
+  </section>
+
+  <section class="panel panel--proximamente">
+    <h2 class="panel__titulo">Consultas por voz (próximamente)</h2>
+    <p class="aviso">
+      Acá va a vivir un asistente que arme estos mismos reportes a partir de un comando de voz,
+      usando la API de Claude. Por ahora es solo un espacio reservado: los reportes dinámicos y
+      estáticos de arriba ya cubren CU15.
+    </p>
+    <button type="button" class="boton boton--secundario" disabled>Hacer una consulta por voz</button>
+  </section>
+</app-panel-shell>

@@ -16,9 +16,33 @@ import { UsuariosAdminService } from '../../core/usuarios/usuarios-admin.service
 import { interpretarError } from '../../shared/errores';
 import { PanelShell } from '../../shared/panel/panel-shell';
 
-interface GrupoPermisos {
+type AccionCrud = 'leer' | 'crear' | 'actualizar' | 'eliminar';
+
+const ACCIONES: { accion: AccionCrud; etiqueta: string }[] = [
+  { accion: 'leer', etiqueta: 'Leer' },
+  { accion: 'crear', etiqueta: 'Crear' },
+  { accion: 'actualizar', etiqueta: 'Actualizar' },
+  { accion: 'eliminar', etiqueta: 'Eliminar' },
+];
+
+// Orden de columnas de la matriz; un modulo que no traiga el backend simplemente no se muestra.
+const ORDEN_MODULOS = [
+  'usuarios',
+  'roles',
+  'catalogo',
+  'proveedores',
+  'sucursales',
+  'inventario',
+  'recepciones',
+  'reservas',
+  'caja',
+  'ventas',
+  'reportes',
+];
+
+interface FilaMatriz {
   modulo: string;
-  permisos: PermisoOut[];
+  celdas: (PermisoOut | null)[];
 }
 
 /** CU13 - Gestionar Usuarios y Roles. */
@@ -38,9 +62,22 @@ export class PanelUsuariosPage implements OnInit {
   protected readonly cargos = CARGOS;
   protected solapa: 'usuarios' | 'roles' = 'usuarios';
 
-  protected readonly puedeGestionarUsuarios = this.auth.tienePermiso('usuarios.gestionar');
-  protected readonly puedeGestionarRoles = this.auth.tienePermiso('roles.gestionar');
-  protected readonly puedeVerRoles = this.auth.tienePermiso('roles.ver', 'roles.gestionar');
+  protected readonly puedeGestionarUsuarios = this.auth.tienePermiso(
+    'usuarios.crear',
+    'usuarios.actualizar',
+    'usuarios.eliminar',
+  );
+  protected readonly puedeGestionarRoles = this.auth.tienePermiso(
+    'roles.crear',
+    'roles.actualizar',
+    'roles.eliminar',
+  );
+  protected readonly puedeVerRoles = this.auth.tienePermiso(
+    'roles.leer',
+    'roles.crear',
+    'roles.actualizar',
+    'roles.eliminar',
+  );
 
   // --- usuarios ---
   protected readonly cargando = signal(true);
@@ -90,14 +127,26 @@ export class PanelUsuariosPage implements OnInit {
     descripcion: [''],
   });
 
-  protected readonly grupos = computed<GrupoPermisos[]>(() => {
-    const porModulo = new Map<string, PermisoOut[]>();
-    for (const permiso of this.permisos()) {
-      const lista = porModulo.get(permiso.modulo) ?? [];
-      lista.push(permiso);
-      porModulo.set(permiso.modulo, lista);
-    }
-    return [...porModulo.entries()].map(([modulo, permisos]) => ({ modulo, permisos }));
+  /** Filas de la matriz: los modulos que trajo el backend, en el orden de ORDEN_MODULOS. */
+  protected readonly modulos = computed<string[]>(() => {
+    const presentes = new Set(this.permisos().map((p) => p.modulo));
+    const conocidos = ORDEN_MODULOS.filter((m) => presentes.has(m));
+    const desconocidos = [...presentes].filter((m) => !ORDEN_MODULOS.includes(m)).sort();
+    return [...conocidos, ...desconocidos];
+  });
+
+  /** Columnas de la matriz: Leer / Crear / Actualizar / Eliminar. */
+  protected readonly acciones = ACCIONES;
+
+  /** Filas de la matriz: una por modulo, con la celda (permiso o null) de cada accion CRUD. */
+  protected readonly filasMatriz = computed<FilaMatriz[]>(() => {
+    const permisos = this.permisos();
+    return this.modulos().map((modulo) => ({
+      modulo,
+      celdas: ACCIONES.map(
+        ({ accion }) => permisos.find((p) => p.codigo === `${modulo}.${accion}`) ?? null,
+      ),
+    }));
   });
 
   ngOnInit(): void {
@@ -426,6 +475,10 @@ export class PanelUsuariosPage implements OnInit {
 
   protected nombreRol(rolId: number): string {
     return this.roles().find((rol) => rol.id === rolId)?.nombre ?? '—';
+  }
+
+  protected nombreModulo(modulo: string): string {
+    return modulo.charAt(0).toUpperCase() + modulo.slice(1);
   }
 
   protected fechaCorta(valor: string | null): string {

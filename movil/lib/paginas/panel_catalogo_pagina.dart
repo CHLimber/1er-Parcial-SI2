@@ -177,7 +177,11 @@ class _PestanaPrendasState extends State<_PestanaPrendas> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['catalogo.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'catalogo.crear',
+      'catalogo.actualizar',
+      'catalogo.eliminar',
+    ]);
 
     return Scaffold(
       backgroundColor: Paleta.paper,
@@ -837,7 +841,11 @@ class _DetalleProductoPaginaState extends State<DetalleProductoPagina> {
   @override
   Widget build(BuildContext context) {
     final producto = _producto;
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['catalogo.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'catalogo.crear',
+      'catalogo.actualizar',
+      'catalogo.eliminar',
+    ]);
 
     return Scaffold(
       appBar: AppBar(
@@ -1262,7 +1270,11 @@ class _PestanaCategoriasState extends State<_PestanaCategorias> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['catalogo.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'catalogo.crear',
+      'catalogo.actualizar',
+      'catalogo.eliminar',
+    ]);
 
     return Scaffold(
       backgroundColor: Paleta.paper,

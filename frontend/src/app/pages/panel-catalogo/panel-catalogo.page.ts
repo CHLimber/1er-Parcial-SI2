@@ -31,7 +31,11 @@ export class PanelCatalogoPage implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly auth = inject(AuthService);
 
-  protected readonly puedeGestionar = this.auth.tienePermiso('catalogo.gestionar');
+  protected readonly puedeGestionar = this.auth.tienePermiso(
+    'catalogo.crear',
+    'catalogo.actualizar',
+    'catalogo.eliminar',
+  );
 
   protected solapa: 'prendas' | 'clasificacion' = 'prendas';
   protected readonly vista = signal<Vista>('lista');

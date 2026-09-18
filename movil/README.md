@@ -1,6 +1,6 @@
 # FashionStore movil (Flutter)
 
-App Android/iOS que cubre los mismos casos de uso que la web (CU01 a CU13) contra la misma
+App Android/iOS que cubre los mismos casos de uso que la web (CU01 a CU14) contra la misma
 API de FastAPI. No tiene logica de negocio propia: la fuente de verdad sigue siendo la base
 de datos (`db/01_schema.sql`, `db/02_logica.sql`) y el backend.
 

@@ -1,0 +1,18 @@
+<div class="prenda__imagen-cont">
+  @if (producto().imagen_url) {
+    <img class="prenda__imagen" [src]="producto().imagen_url" [alt]="producto().nombre" loading="lazy" />
+  }
+  @if (producto().agotado) {
+    <span class="prenda__badge">Agotado</span>
+  }
+</div>
+<span class="prenda__categoria">{{ producto().categoria }}</span>
+<h3 class="prenda__nombre">{{ producto().nombre }}</h3>
+<span class="prenda__marca">{{ producto().marca ?? 'FashionStore' }}</span>
+@if (producto().tallas.length > 0) {
+  <span class="prenda__tallas">Tallas: {{ producto().tallas.join(', ') }}</span>
+}
+<span class="prenda__precio">Bs {{ producto().precio_base.toFixed(2) }}</span>
+@if (motivo()) {
+  <span class="prenda__motivo">{{ motivo() }}</span>
+}

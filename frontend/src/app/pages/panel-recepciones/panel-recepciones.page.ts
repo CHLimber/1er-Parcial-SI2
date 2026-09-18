@@ -34,9 +34,16 @@ export class PanelRecepcionesPage implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly auth = inject(AuthService);
 
-  protected readonly puedeRegistrar = this.auth.tienePermiso('recepciones.registrar');
-  protected readonly puedeConfirmar = this.auth.tienePermiso('recepciones.confirmar');
-  protected readonly eligeSucursal = this.auth.tienePermiso('sucursales.gestionar');
+  protected readonly puedeRegistrar = this.auth.tienePermiso(
+    'recepciones.crear',
+    'recepciones.actualizar',
+    'recepciones.eliminar',
+  );
+  protected readonly puedeConfirmar = this.auth.tienePermiso(
+    'recepciones.actualizar',
+    'recepciones.eliminar',
+  );
+  protected readonly eligeSucursal = this.auth.tienePermiso('sucursales.actualizar');
 
   protected readonly cargando = signal(true);
   protected readonly recepciones = signal<RecepcionOut[]>([]);

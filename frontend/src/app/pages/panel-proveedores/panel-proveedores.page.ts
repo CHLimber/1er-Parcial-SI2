@@ -32,7 +32,11 @@ export class PanelProveedoresPage implements OnInit {
   protected busqueda = '';
   protected filtroEstado: '' | 'true' | 'false' = '';
 
-  protected readonly puedeGestionar = this.auth.tienePermiso('proveedores.gestionar');
+  protected readonly puedeGestionar = this.auth.tienePermiso(
+    'proveedores.crear',
+    'proveedores.actualizar',
+    'proveedores.eliminar',
+  );
 
   protected readonly form = this.fb.nonNullable.group({
     nombre: ['', [Validators.required, Validators.minLength(2), Validators.maxLength(150)]],

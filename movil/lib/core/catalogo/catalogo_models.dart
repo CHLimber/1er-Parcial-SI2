@@ -136,6 +136,68 @@ class GaleriaImagenOut {
       );
 }
 
+/// Un anclaje normalizado (0-1) sobre el PNG de un overlay AR. Ver
+/// `IMAGENES_AR.txt` punto 4 para el formato completo.
+class AnclajePunto {
+  AnclajePunto({required this.x, required this.y});
+
+  final double x;
+  final double y;
+
+  factory AnclajePunto.desdeJson(Map<String, dynamic> j) =>
+      AnclajePunto(x: aDouble(j['x']), y: aDouble(j['y']));
+}
+
+/// CU16: asset de realidad aumentada de una prenda. Espejo de `ImagenArOut`
+/// en `backend/app/modules/catalogo/schemas.py`.
+class ImagenArOut {
+  ImagenArOut({
+    required this.uso,
+    required this.formato,
+    required this.url,
+    required this.color,
+    required this.codigoHex,
+    required this.hombroIzq,
+    required this.hombroDer,
+    required this.cintura,
+    required this.escalaBase,
+  });
+
+  final String uso;
+  final String? formato;
+  final String url;
+  final String? color;
+  final String? codigoHex;
+  final AnclajePunto? hombroIzq;
+  final AnclajePunto? hombroDer;
+  final AnclajePunto? cintura;
+  final double? escalaBase;
+
+  bool get esOverlay => uso == 'AR_OVERLAY';
+  bool get esModelo3d => uso == 'AR_MODELO';
+  bool get tieneAnclajes => hombroIzq != null && hombroDer != null && cintura != null;
+
+  factory ImagenArOut.desdeJson(Map<String, dynamic> j) {
+    final anclajes = j['anclajes'] as Map<String, dynamic>?;
+    AnclajePunto? punto(String clave) {
+      final valor = anclajes?[clave] as Map<String, dynamic>?;
+      return valor == null ? null : AnclajePunto.desdeJson(valor);
+    }
+
+    return ImagenArOut(
+      uso: j['uso'] as String,
+      formato: j['formato'] as String?,
+      url: resolverUrlMedia(j['url'] as String)!,
+      color: j['color'] as String?,
+      codigoHex: j['codigo_hex'] as String?,
+      hombroIzq: punto('hombro_izq'),
+      hombroDer: punto('hombro_der'),
+      cintura: punto('cintura'),
+      escalaBase: j['escala_base'] == null ? null : aDouble(j['escala_base']),
+    );
+  }
+}
+
 class ProductoDetalleOut extends ProductoOut {
   ProductoDetalleOut({
     required super.id,
@@ -155,11 +217,29 @@ class ProductoDetalleOut extends ProductoOut {
     required this.material,
     required this.variantes,
     required this.galeria,
+    required this.ar,
   });
 
   final String? material;
   final List<VarianteOut> variantes;
   final List<GaleriaImagenOut> galeria;
+  final List<ImagenArOut> ar;
+
+  /// CU16: el asset de nivel 2 (modelo 3D) de esta prenda, si existe.
+  ImagenArOut? get modelo3d {
+    for (final item in ar) {
+      if (item.esModelo3d) return item;
+    }
+    return null;
+  }
+
+  /// CU16: el overlay de nivel 1 (2D, anclado a hombros) de esta prenda, si existe.
+  ImagenArOut? get overlay {
+    for (final item in ar) {
+      if (item.esOverlay && item.tieneAnclajes) return item;
+    }
+    return null;
+  }
 
   factory ProductoDetalleOut.desdeJson(Map<String, dynamic> j) {
     final base = ProductoOut.desdeJson(j);
@@ -181,6 +261,7 @@ class ProductoDetalleOut extends ProductoOut {
       material: j['material'] as String?,
       variantes: comoLista(j['variantes']).map(VarianteOut.desdeJson).toList(),
       galeria: comoLista(j['galeria']).map(GaleriaImagenOut.desdeJson).toList(),
+      ar: comoLista(j['ar']).map(ImagenArOut.desdeJson).toList(),
     );
   }
 }

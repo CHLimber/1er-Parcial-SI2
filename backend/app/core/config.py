@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""
 
+    # CU18 - asistente de chat (app/modules/asistente/). Sin ANTHROPIC_API_KEY el endpoint
+    # devuelve 503 en vez de fallar todo el arranque del backend.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-haiku-4-5"
+
     # CU10 - subida de imagenes de catalogo (app/core/media.py). media_dir es relativo al
     # WORKDIR del contenedor (/app), montado como volumen en docker-compose para persistir
     # entre rebuilds; en Railway hace falta un Volume propio en la misma ruta.

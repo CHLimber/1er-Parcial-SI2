@@ -72,38 +72,23 @@
   color: var(--ink-soft);
 }
 
-.matriz {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: 0.85rem;
+.matriz-permisos {
   margin-top: 0.75rem;
 }
 
-.matriz__grupo {
-  border: 1px solid var(--paper-line);
-  padding: 0.7rem 0.8rem;
-  margin: 0;
+.matriz-permisos th:first-child {
+  text-align: left;
 }
 
-.matriz__modulo {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--flame-dark);
-  padding: 0 0.3rem;
+.matriz-permisos__celda {
+  text-align: center;
 }
 
-.matriz__permiso {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-  font-size: 0.85rem;
+.matriz-permisos__casilla {
+  display: inline-flex;
   cursor: pointer;
 }
 
-.matriz__permiso span {
-  display: flex;
-  flex-direction: column;
+.matriz-permisos__sin-uso {
+  color: var(--ink-soft);
 }

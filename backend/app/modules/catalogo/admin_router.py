@@ -9,8 +9,10 @@ Regla del modelo (ver CLAUDE.md): `producto` es la prenda descriptiva y `product
 recepcion (CU09) o por ajuste, siempre via fn_mover_inventario.
 """
 
+import json
 import re
 import unicodedata
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -44,12 +46,22 @@ from app.modules.catalogo.admin_schemas import (
 
 router = APIRouter(prefix="/admin/catalogo", tags=["catalogo-admin"])
 
-puede_ver = requiere_permiso("catalogo.ver", "catalogo.gestionar")
-puede_gestionar = requiere_permiso("catalogo.gestionar")
+puede_ver = requiere_permiso("catalogo.leer", "catalogo.crear", "catalogo.actualizar", "catalogo.eliminar")
+puede_crear = requiere_permiso("catalogo.crear")
+puede_actualizar = requiere_permiso("catalogo.actualizar")
+puede_eliminar = requiere_permiso("catalogo.eliminar")
+# baja/reactivacion via PATCH .../estado: cualquiera de las dos alcanza para prender o apagar
+puede_cambiar_estado = requiere_permiso("catalogo.actualizar", "catalogo.eliminar")
 
 GENEROS = ["HOMBRE", "MUJER", "UNISEX", "NINO", "NINA"]
 USOS_IMAGEN = {"CATALOGO", "AR_OVERLAY", "AR_MODELO"}
 FORMATOS_IMAGEN = {"JPG", "PNG", "GLB", "USDZ"}
+
+
+def _parsear_anclajes(valor: str | None) -> dict[str, Any] | None:
+    """producto_imagen.anclajes es jsonb; asyncpg no tiene codec configurado (ver db.py),
+    asi que llega como texto y se parsea a mano, igual que auditoria."""
+    return json.loads(valor) if valor is not None else None
 
 
 def _slugificar(texto: str) -> str:
@@ -136,14 +148,17 @@ async def _variantes(conn: asyncpg.Connection, producto_id: UUID) -> list[Varian
 async def _imagenes(conn: asyncpg.Connection, producto_id: UUID) -> list[ImagenOut]:
     filas = await conn.fetch(
         """
-        SELECT id, url, uso, formato, color_id, es_principal, orden
+        SELECT id, url, uso, formato, color_id, es_principal, orden, anclajes, escala_base
         FROM producto_imagen
         WHERE producto_id = $1
         ORDER BY es_principal DESC, orden, id
         """,
         producto_id,
     )
-    return [ImagenOut(**dict(fila)) for fila in filas]
+    return [
+        ImagenOut(**{**dict(fila), "anclajes": _parsear_anclajes(fila["anclajes"])})
+        for fila in filas
+    ]
 
 
 def _validar_genero(genero: str | None) -> None:
@@ -234,7 +249,7 @@ async def obtener_producto_admin(
 async def crear_producto(
     body: ProductoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> ProductoAdminDetalleOut:
     _validar_genero(body.genero)
     try:
@@ -286,7 +301,7 @@ async def actualizar_producto(
     producto_id: UUID,
     body: ProductoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_actualizar),
 ) -> ProductoAdminDetalleOut:
     _validar_genero(body.genero)
     antes = await _obtener_producto(conn, producto_id)
@@ -344,7 +359,7 @@ async def cambiar_estado_producto(
     producto_id: UUID,
     body: EstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_cambiar_estado),
 ) -> ProductoAdminDetalleOut:
     """Baja logica: la prenda desaparece de la vitrina pero sigue existiendo en el historial de
     ventas y en el kardex. Se bloquea si hay stock comprometido por reservas en curso."""
@@ -394,7 +409,7 @@ async def crear_variante(
     producto_id: UUID,
     body: VarianteIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> VarianteAdminOut:
     await _obtener_producto(conn, producto_id)
     _validar_precios(body)
@@ -442,7 +457,7 @@ async def actualizar_variante(
     variante_id: UUID,
     body: VarianteIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_actualizar),
 ) -> VarianteAdminOut:
     antes = await _obtener_variante(conn, variante_id)
     _validar_precios(body)
@@ -491,7 +506,7 @@ async def cambiar_estado_variante(
     variante_id: UUID,
     body: EstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_cambiar_estado),
 ) -> VarianteAdminOut:
     antes = await _obtener_variante(conn, variante_id)
 
@@ -542,9 +557,10 @@ async def _crear_fila_imagen(
             )
         fila = await conn.fetchrow(
             """
-            INSERT INTO producto_imagen (producto_id, color_id, uso, url, formato, es_principal, orden)
-            VALUES ($1, $2, $3::uso_imagen, $4, $5::formato_imagen, $6, $7)
-            RETURNING id, url, uso, formato, color_id, es_principal, orden
+            INSERT INTO producto_imagen
+                (producto_id, color_id, uso, url, formato, es_principal, orden, anclajes, escala_base)
+            VALUES ($1, $2, $3::uso_imagen, $4, $5::formato_imagen, $6, $7, $8::jsonb, $9)
+            RETURNING id, url, uso, formato, color_id, es_principal, orden, anclajes, escala_base
             """,
             producto_id,
             body.color_id,
@@ -553,6 +569,8 @@ async def _crear_fila_imagen(
             body.formato,
             body.es_principal,
             body.orden,
+            json.dumps(body.anclajes) if body.anclajes is not None else None,
+            body.escala_base,
         )
         await registrar_auditoria(
             conn,
@@ -562,7 +580,7 @@ async def _crear_fila_imagen(
             accion="CREAR",
             datos_despues={"producto_id": str(producto_id), **body.model_dump(mode="json")},
         )
-    return ImagenOut(**dict(fila))
+    return ImagenOut(**{**dict(fila), "anclajes": _parsear_anclajes(fila["anclajes"])})
 
 
 @router.post(
@@ -572,7 +590,7 @@ async def agregar_imagen(
     producto_id: UUID,
     body: ImagenIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> ImagenOut:
     """Alta de imagen a partir de una URL ya publica (hosting externo tipo Cloudinary/Imgur, o
     el link a un archivo ya subido con /imagenes/subir)."""
@@ -595,7 +613,7 @@ async def subir_imagen(
     es_principal: bool = Form(False),
     orden: int = Form(0),
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> ImagenOut:
     """Como agregar_imagen, pero recibe el archivo (multipart/form-data) en vez de una URL: lo
     guarda en disco (app/core/media.py, servido desde /media) y arma la URL publica antes de
@@ -615,7 +633,7 @@ async def subir_imagen(
 async def eliminar_imagen(
     imagen_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_eliminar),
 ) -> None:
     fila = await conn.fetchrow(
         "SELECT id, producto_id, url, uso FROM producto_imagen WHERE id = $1", imagen_id
@@ -669,7 +687,7 @@ async def listar_categorias(
 async def crear_categoria(
     body: CategoriaIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> CategoriaAdminOut:
     async with conn.transaction():
         slug = await _slug_unico(conn, "categoria", body.nombre)
@@ -706,7 +724,7 @@ async def actualizar_categoria(
     categoria_id: UUID,
     body: CategoriaIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_actualizar),
 ) -> CategoriaAdminOut:
     antes = await _obtener_categoria(conn, categoria_id)
     if body.categoria_padre_id == categoria_id:
@@ -754,7 +772,7 @@ async def cambiar_estado_categoria(
     categoria_id: UUID,
     body: CategoriaEstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_cambiar_estado),
 ) -> CategoriaAdminOut:
     antes = await _obtener_categoria(conn, categoria_id)
 
@@ -786,7 +804,7 @@ async def cambiar_estado_categoria(
 async def crear_marca(
     body: MarcaIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar),
+    staff: dict = Depends(puede_crear),
 ) -> MarcaAdminOut:
     try:
         async with conn.transaction():

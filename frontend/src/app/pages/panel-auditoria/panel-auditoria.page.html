@@ -1,0 +1,131 @@
+<app-panel-shell
+  titulo="Auditoría"
+  bajada="CU19 — bitácora de altas, bajas, modificaciones e inicios de sesión del sistema. Solo lectura."
+>
+  <form class="barra" [formGroup]="filtro" (ngSubmit)="aplicarFiltro()">
+    <div class="campo">
+      <label for="f-entidad">Entidad</label>
+      <select id="f-entidad" formControlName="entidad">
+        <option value="">Todas</option>
+        @for (e of entidades(); track e) {
+          <option [value]="e">{{ e }}</option>
+        }
+      </select>
+    </div>
+    <div class="campo">
+      <label for="f-accion">Acción</label>
+      <select id="f-accion" formControlName="accion">
+        <option value="">Todas</option>
+        <option value="CREAR">Creación</option>
+        <option value="ACTUALIZAR">Modificación</option>
+        <option value="ELIMINAR">Baja</option>
+        <option value="LOGIN">Inicio de sesión</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="f-entidad-id">ID de entidad</label>
+      <input id="f-entidad-id" type="text" formControlName="entidad_id" placeholder="uuid o código" />
+    </div>
+    <div class="campo">
+      <label for="f-desde">Desde</label>
+      <input id="f-desde" type="date" formControlName="desde" />
+    </div>
+    <div class="campo">
+      <label for="f-hasta">Hasta</label>
+      <input id="f-hasta" type="date" formControlName="hasta" />
+    </div>
+    <div class="barra__espacio"></div>
+    <button type="submit" class="boton">Filtrar</button>
+  </form>
+
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
+
+  <section class="panel">
+    @if (cargando()) {
+      <p class="estado">Cargando…</p>
+    } @else if (items().length === 0) {
+      <p class="estado">No hay eventos de auditoría con estos filtros.</p>
+    } @else {
+      <div class="tabla-envoltorio">
+        <table class="tabla">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Usuario</th>
+              <th>Entidad</th>
+              <th>ID</th>
+              <th>Acción</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (fila of items(); track fila.id) {
+              <tr>
+                <td class="mono">{{ fila.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                <td>
+                  @if (fila.usuario_nombre) {
+                    {{ fila.usuario_nombre }}
+                    <div class="secundario">{{ fila.usuario_email }}</div>
+                  } @else {
+                    <span class="secundario">Sistema</span>
+                  }
+                </td>
+                <td>{{ fila.entidad }}</td>
+                <td class="mono">{{ fila.entidad_id }}</td>
+                <td>
+                  <span class="badge" [class.badge--ok]="fila.accion === 'CREAR'" [class.badge--alerta]="fila.accion === 'ELIMINAR'">
+                    {{ etiquetasAccion[fila.accion] }}
+                  </span>
+                </td>
+                <td class="tabla__acciones">
+                  @if (fila.datos_antes || fila.datos_despues) {
+                    <button type="button" class="boton boton--secundario boton--chico" (click)="alternarDetalle(fila.id)">
+                      {{ filaExpandida() === fila.id ? 'Ocultar' : 'Ver detalle' }}
+                    </button>
+                  }
+                </td>
+              </tr>
+              @if (filaExpandida() === fila.id) {
+                <tr>
+                  <td colspan="6">
+                    <div class="detalle-auditoria">
+                      @if (fila.datos_antes) {
+                        <div>
+                          <p class="campo__etiqueta">Antes</p>
+                          <pre class="mono">{{ fila.datos_antes | json }}</pre>
+                        </div>
+                      }
+                      @if (fila.datos_despues) {
+                        <div>
+                          <p class="campo__etiqueta">Después</p>
+                          <pre class="mono">{{ fila.datos_despues | json }}</pre>
+                        </div>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="paginacion">
+        <button type="button" class="boton boton--secundario boton--chico" [disabled]="pagina() <= 1" (click)="irAPagina(pagina() - 1)">
+          Anterior
+        </button>
+        <span class="secundario">Página {{ pagina() }} de {{ totalPaginas }} · {{ total() }} eventos</span>
+        <button
+          type="button"
+          class="boton boton--secundario boton--chico"
+          [disabled]="pagina() >= totalPaginas"
+          (click)="irAPagina(pagina() + 1)"
+        >
+          Siguiente
+        </button>
+      </div>
+    }
+  </section>
+</app-panel-shell>

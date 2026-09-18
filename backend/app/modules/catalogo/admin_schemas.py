@@ -37,6 +37,10 @@ class ImagenIn(BaseModel):
     color_id: int | None = None
     es_principal: bool = False
     orden: int = 0
+    # CU16 (AR_OVERLAY): anclajes normalizados 0-1 (hombro_izq/hombro_der/cintura) + ancho de
+    # hombros real en cm a talla M. NULL para CATALOGO/AR_MODELO -- ver IMAGENES_AR.txt punto 4.
+    anclajes: dict | None = None
+    escala_base: Decimal | None = Field(default=None, ge=0, max_digits=6, decimal_places=3)
 
 
 class EstadoIn(BaseModel):
@@ -67,6 +71,8 @@ class ImagenOut(BaseModel):
     color_id: int | None
     es_principal: bool
     orden: int
+    anclajes: dict | None
+    escala_base: Decimal | None
 
 
 class VarianteAdminOut(BaseModel):

@@ -256,7 +256,11 @@ class _PanelSucursalesPaginaState extends State<PanelSucursalesPagina> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['sucursales.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'sucursales.crear',
+      'sucursales.actualizar',
+      'sucursales.eliminar',
+    ]);
 
     return Scaffold(
       appBar: AppBar(

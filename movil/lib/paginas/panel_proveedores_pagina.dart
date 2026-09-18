@@ -198,7 +198,11 @@ class _PanelProveedoresPaginaState extends State<PanelProveedoresPagina> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['proveedores.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'proveedores.crear',
+      'proveedores.actualizar',
+      'proveedores.eliminar',
+    ]);
 
     return Scaffold(
       appBar: AppBar(

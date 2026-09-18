@@ -20,8 +20,18 @@ class PanelUsuariosPagina extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
-    final puedeVerRoles = auth.tienePermiso(['roles.ver', 'roles.gestionar']);
-    final puedeVerUsuarios = auth.tienePermiso(['usuarios.ver', 'usuarios.gestionar']);
+    final puedeVerRoles = auth.tienePermiso([
+      'roles.leer',
+      'roles.crear',
+      'roles.actualizar',
+      'roles.eliminar',
+    ]);
+    final puedeVerUsuarios = auth.tienePermiso([
+      'usuarios.leer',
+      'usuarios.crear',
+      'usuarios.actualizar',
+      'usuarios.eliminar',
+    ]);
 
     final pestanas = <Tab>[
       if (puedeVerUsuarios) const Tab(text: 'USUARIOS'),
@@ -506,7 +516,11 @@ class _PestanaUsuariosState extends State<_PestanaUsuarios> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['usuarios.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'usuarios.crear',
+      'usuarios.actualizar',
+      'usuarios.eliminar',
+    ]);
 
     return Scaffold(
       backgroundColor: Paleta.paper,
@@ -905,7 +919,11 @@ class _PestanaRolesState extends State<_PestanaRoles> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeGestionar = context.watch<AuthService>().tienePermiso(['roles.gestionar']);
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'roles.crear',
+      'roles.actualizar',
+      'roles.eliminar',
+    ]);
     final codigosPorId = {for (final permiso in _permisos) permiso.id: permiso.codigo};
 
     return Scaffold(

@@ -26,9 +26,12 @@ from app.modules.recepciones.schemas import (
 
 router = APIRouter(prefix="/recepciones", tags=["recepciones"])
 
-puede_ver = requiere_permiso("recepciones.ver", "recepciones.registrar", "recepciones.confirmar")
-puede_registrar = requiere_permiso("recepciones.registrar")
-puede_confirmar = requiere_permiso("recepciones.confirmar")
+puede_ver = requiere_permiso(
+    "recepciones.leer", "recepciones.crear", "recepciones.actualizar", "recepciones.eliminar"
+)
+puede_crear = requiere_permiso("recepciones.crear")
+puede_actualizar = requiere_permiso("recepciones.actualizar")
+puede_eliminar = requiere_permiso("recepciones.eliminar")
 
 SELECT_RECEPCION = """
 SELECT r.id, r.numero, r.fecha, r.estado, r.total,
@@ -47,8 +50,8 @@ LEFT JOIN usuario u     ON u.id = r.usuario_id
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
-    """Un ADMIN (el que puede gestionar sucursales) ve todas; el resto solo la suya."""
-    if "sucursales.gestionar" in staff["permisos"]:
+    """Un ADMIN (el que puede editar sucursales) ve todas; el resto solo la suya."""
+    if "sucursales.actualizar" in staff["permisos"]:
         return None
     if staff["sucursal_id"] is None:
         raise HTTPException(
@@ -229,7 +232,7 @@ async def movimientos_de_recepcion(
 async def crear_recepcion(
     body: RecepcionIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_registrar),
+    staff: dict = Depends(puede_crear),
 ) -> RecepcionDetalleOut:
     limite = _sucursal_visible(staff)
     sucursal_id = body.sucursal_id or limite or staff["sucursal_id"]
@@ -295,7 +298,7 @@ async def agregar_linea(
     recepcion_id: UUID,
     body: DetalleIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_registrar),
+    staff: dict = Depends(puede_crear),
 ) -> RecepcionDetalleOut:
     """Si la variante ya esta en el borrador se suma la cantidad en lugar de duplicar la linea:
     es lo que espera quien va contando bultos."""
@@ -345,7 +348,7 @@ async def editar_linea(
     detalle_id: UUID,
     body: DetalleIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_registrar),
+    staff: dict = Depends(puede_actualizar),
 ) -> RecepcionDetalleOut:
     await _exigir_borrador(conn, recepcion_id, staff)
 
@@ -373,7 +376,7 @@ async def quitar_linea(
     recepcion_id: UUID,
     detalle_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_registrar),
+    staff: dict = Depends(puede_eliminar),
 ) -> RecepcionDetalleOut:
     await _exigir_borrador(conn, recepcion_id, staff)
 
@@ -397,7 +400,7 @@ async def quitar_linea(
 async def confirmar_recepcion(
     recepcion_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_confirmar),
+    staff: dict = Depends(puede_actualizar),
 ) -> RecepcionDetalleOut:
     """Punto sin retorno: el UPDATE del estado dispara tg_confirmar_recepcion, que da entrada al
     stock de cada linea y deja el asiento en el kardex. Por eso se valida antes que haya lineas."""
@@ -441,7 +444,7 @@ async def confirmar_recepcion(
 async def anular_recepcion(
     recepcion_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_confirmar),
+    staff: dict = Depends(puede_eliminar),
 ) -> RecepcionDetalleOut:
     """Solo se anula un borrador. Una recepcion confirmada ya movio el stock y el kardex es
     append-only: para revertirla hay que registrar un ajuste, no borrar el asiento."""

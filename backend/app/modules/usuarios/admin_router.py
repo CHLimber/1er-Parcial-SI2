@@ -31,10 +31,18 @@ from app.modules.usuarios.admin_schemas import (
 
 router = APIRouter(prefix="/admin", tags=["usuarios-admin"])
 
-puede_ver_usuarios = requiere_permiso("usuarios.ver", "usuarios.gestionar")
-puede_gestionar_usuarios = requiere_permiso("usuarios.gestionar")
-puede_ver_roles = requiere_permiso("roles.ver", "roles.gestionar")
-puede_gestionar_roles = requiere_permiso("roles.gestionar")
+puede_ver_usuarios = requiere_permiso(
+    "usuarios.leer", "usuarios.crear", "usuarios.actualizar", "usuarios.eliminar"
+)
+puede_crear_usuarios = requiere_permiso("usuarios.crear")
+puede_actualizar_usuarios = requiere_permiso("usuarios.actualizar")
+# baja/reactivacion via PATCH .../estado: cualquiera de las dos alcanza para prender o apagar
+puede_cambiar_estado_usuario = requiere_permiso("usuarios.actualizar", "usuarios.eliminar")
+
+puede_ver_roles = requiere_permiso("roles.leer", "roles.crear", "roles.actualizar", "roles.eliminar")
+puede_crear_roles = requiere_permiso("roles.crear")
+puede_actualizar_roles = requiere_permiso("roles.actualizar")
+puede_eliminar_roles = requiere_permiso("roles.eliminar")
 
 CARGOS = {"ENCARGADO", "CAJERO", "VENDEDOR", "ALMACEN"}
 
@@ -143,7 +151,7 @@ async def obtener_usuario(
 async def crear_staff(
     body: StaffIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_usuarios),
+    staff: dict = Depends(puede_crear_usuarios),
 ) -> UsuarioAdminOut:
     """Alta de personal. Crea el usuario STAFF y su fila en empleado en la misma transaccion:
     un STAFF sin sucursal no podria operar caja ni atender reservas."""
@@ -205,7 +213,7 @@ async def actualizar_staff(
     usuario_id: UUID,
     body: StaffUpdate,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_usuarios),
+    staff: dict = Depends(puede_actualizar_usuarios),
 ) -> UsuarioAdminOut:
     antes = await _obtener_usuario(conn, usuario_id)
     if antes.tipo != "STAFF":
@@ -268,7 +276,7 @@ async def actualizar_cliente(
     usuario_id: UUID,
     body: ClienteUpdate,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_usuarios),
+    staff: dict = Depends(puede_actualizar_usuarios),
 ) -> UsuarioAdminOut:
     """Correccion de datos de contacto de un cliente. No toca rol ni tipo: la constraint
     ck_usuario_rol prohibe que un CLIENTE tenga rol operativo."""
@@ -308,7 +316,7 @@ async def cambiar_estado_usuario(
     usuario_id: UUID,
     body: EstadoIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_usuarios),
+    staff: dict = Depends(puede_cambiar_estado_usuario),
 ) -> UsuarioAdminOut:
     """Baja logica. El usuario queda referenciado por ventas, reservas y kardex, asi que nunca
     se borra: se desactiva y el login lo rechaza."""
@@ -349,7 +357,7 @@ async def restablecer_password(
     usuario_id: UUID,
     body: PasswordIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_usuarios),
+    staff: dict = Depends(puede_actualizar_usuarios),
 ) -> None:
     await _obtener_usuario(conn, usuario_id)
     async with conn.transaction():
@@ -413,7 +421,7 @@ async def listar_roles(
 async def crear_rol(
     body: RolIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_roles),
+    staff: dict = Depends(puede_crear_roles),
 ) -> RolOut:
     try:
         async with conn.transaction():
@@ -440,7 +448,7 @@ async def actualizar_rol(
     rol_id: int,
     body: RolIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_roles),
+    staff: dict = Depends(puede_actualizar_roles),
 ) -> RolOut:
     antes = await _obtener_rol(conn, rol_id)
     if antes.es_sistema and body.nombre.upper() != antes.nombre:
@@ -476,7 +484,7 @@ async def asignar_permisos(
     rol_id: int,
     body: PermisosIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_roles),
+    staff: dict = Depends(puede_actualizar_roles),
 ) -> RolOut:
     """Reemplaza la matriz de permisos del rol. Se impide dejar al rol ADMIN sin la llave de
     usuarios/roles: seria imposible volver a entrar a gestionar permisos."""
@@ -484,13 +492,13 @@ async def asignar_permisos(
 
     if antes.nombre == "ADMIN":
         llaves = await conn.fetch(
-            "SELECT id FROM permiso WHERE codigo IN ('usuarios.gestionar','roles.gestionar')"
+            "SELECT id FROM permiso WHERE codigo IN ('usuarios.actualizar','roles.actualizar')"
         )
         faltantes = [fila["id"] for fila in llaves if fila["id"] not in body.permisos]
         if faltantes:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="El rol ADMIN debe conservar los permisos usuarios.gestionar y roles.gestionar",
+                detail="El rol ADMIN debe conservar los permisos usuarios.actualizar y roles.actualizar",
             )
 
     try:
@@ -521,7 +529,7 @@ async def asignar_permisos(
 async def eliminar_rol(
     rol_id: int,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_gestionar_roles),
+    staff: dict = Depends(puede_eliminar_roles),
 ) -> None:
     rol = await _obtener_rol(conn, rol_id)
     if rol.es_sistema:

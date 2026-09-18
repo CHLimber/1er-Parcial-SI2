@@ -1,3 +1,4 @@
+import mimetypes
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -8,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.db import connect_pool, disconnect_pool
+from app.modules.asistente.router import router as asistente_router
+from app.modules.auditoria.router import router as auditoria_router
 from app.modules.caja.router import router as caja_router
 from app.modules.carrito.router import router as carrito_router
 from app.modules.catalogo.admin_router import router as catalogo_admin_router
@@ -15,6 +18,8 @@ from app.modules.catalogo.router import router as catalogo_router
 from app.modules.pagos.router import router as pagos_router
 from app.modules.proveedores.router import router as proveedores_router
 from app.modules.recepciones.router import router as recepciones_router
+from app.modules.recomendaciones.router import router as recomendaciones_router
+from app.modules.reportes.router import router as reportes_router
 from app.modules.reservas.router import router as reservas_router
 from app.modules.sucursales.admin_router import router as sucursales_admin_router
 from app.modules.sucursales.router import router as sucursales_router
@@ -52,6 +57,12 @@ _media_semilla = Path(__file__).resolve().parent / "media_semilla"
 if _media_semilla.exists():
     shutil.copytree(_media_semilla, settings.media_dir, dirs_exist_ok=True)
 
+# CU16: Python no conoce los formatos de realidad aumentada, asi que StaticFiles los serviria
+# como text/plain y Google Scene Viewer / AR Quick Look rechazan el modelo. Hay que declararlos
+# antes de montar /media.
+mimetypes.add_type("model/gltf-binary", ".glb")
+mimetypes.add_type("model/vnd.usdz+zip", ".usdz")
+
 app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
 
 app.include_router(usuarios_router)
@@ -67,6 +78,10 @@ app.include_router(recepciones_router)
 app.include_router(catalogo_admin_router)
 app.include_router(sucursales_admin_router)
 app.include_router(usuarios_admin_router)
+app.include_router(reportes_router)
+app.include_router(recomendaciones_router)
+app.include_router(asistente_router)
+app.include_router(auditoria_router)
 
 
 @app.get("/health")

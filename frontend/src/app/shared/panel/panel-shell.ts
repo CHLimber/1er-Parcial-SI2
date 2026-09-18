@@ -32,27 +32,57 @@ export class PanelShell {
     {
       ruta: '/panel/catalogo',
       etiqueta: 'Catálogo',
-      visible: () => this.auth.tienePermiso('catalogo.gestionar'),
+      visible: () =>
+        this.auth.tienePermiso('catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
     },
     {
       ruta: '/panel/recepciones',
       etiqueta: 'Recepciones',
-      visible: () => this.auth.tienePermiso('recepciones.ver', 'recepciones.registrar'),
+      visible: () => this.auth.tienePermiso('recepciones.leer', 'recepciones.crear'),
     },
     {
       ruta: '/panel/proveedores',
       etiqueta: 'Proveedores',
-      visible: () => this.auth.tienePermiso('proveedores.ver', 'proveedores.gestionar'),
+      visible: () =>
+        this.auth.tienePermiso(
+          'proveedores.leer',
+          'proveedores.crear',
+          'proveedores.actualizar',
+          'proveedores.eliminar',
+        ),
     },
     {
       ruta: '/panel/sucursales',
       etiqueta: 'Sucursales',
-      visible: () => this.auth.tienePermiso('sucursales.ver', 'sucursales.gestionar'),
+      visible: () =>
+        this.auth.tienePermiso(
+          'sucursales.leer',
+          'sucursales.crear',
+          'sucursales.actualizar',
+          'sucursales.eliminar',
+        ),
     },
     {
       ruta: '/panel/usuarios',
       etiqueta: 'Usuarios y roles',
-      visible: () => this.auth.tienePermiso('usuarios.ver', 'usuarios.gestionar', 'roles.ver'),
+      visible: () =>
+        this.auth.tienePermiso(
+          'usuarios.leer',
+          'usuarios.crear',
+          'usuarios.actualizar',
+          'usuarios.eliminar',
+          'roles.leer',
+        ),
+    },
+    {
+      ruta: '/panel/reportes',
+      etiqueta: 'Reportes',
+      visible: () => this.auth.tienePermiso('reportes.leer'),
+    },
+    {
+      ruta: '/panel/auditoria',
+      etiqueta: 'Auditoría',
+      visible: () => this.auth.tienePermiso('auditoria.leer'),
     },
     { ruta: '/caja', etiqueta: 'Caja', visible: () => this.auth.usuario()?.rol === 'CAJERO' },
     {

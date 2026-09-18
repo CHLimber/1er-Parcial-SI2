@@ -175,7 +175,11 @@ class _PanelRecepcionesPaginaState extends State<PanelRecepcionesPagina> {
 
   @override
   Widget build(BuildContext context) {
-    final puedeRegistrar = context.watch<AuthService>().tienePermiso(['recepciones.registrar']);
+    final puedeRegistrar = context.watch<AuthService>().tienePermiso([
+      'recepciones.crear',
+      'recepciones.actualizar',
+      'recepciones.eliminar',
+    ]);
 
     return Scaffold(
       appBar: AppBar(
@@ -434,8 +438,12 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
   Widget build(BuildContext context) {
     final recepcion = _recepcion;
     final auth = context.watch<AuthService>();
-    final puedeRegistrar = auth.tienePermiso(['recepciones.registrar']);
-    final puedeConfirmar = auth.tienePermiso(['recepciones.confirmar']);
+    final puedeRegistrar = auth.tienePermiso([
+      'recepciones.crear',
+      'recepciones.actualizar',
+      'recepciones.eliminar',
+    ]);
+    final puedeConfirmar = auth.tienePermiso(['recepciones.actualizar', 'recepciones.eliminar']);
     final esBorrador = recepcion?.esBorrador ?? false;
 
     return Scaffold(

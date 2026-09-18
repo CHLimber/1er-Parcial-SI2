@@ -55,6 +55,9 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- CU16: camara en vivo para el overlay 2D del vestidor virtual (nivel 1). -->
+	<key>NSCameraUsageDescription</key>
+	<string>FashionStore usa la camara para el vestidor virtual: mostrarte la prenda superpuesta en vivo.</string>
 	<!-- url_launcher abre el checkout de Stripe en Safari (CU06). -->
 	<key>LSApplicationQueriesSchemes</key>
 	<array>

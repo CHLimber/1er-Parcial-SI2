@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- La app vive de la API de FashionStore: sin INTERNET no funciona ni en release. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- CU16: camara en vivo para el overlay 2D del vestidor virtual (nivel 1). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
 
     <application
         android:label="FashionStore"
@@ -49,6 +53,13 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
+        </intent>
+        <!-- CU16 nivel 2: Google Scene Viewer (AR_MODELO) se abre por url_launcher con un
+             intent://. Sin esto, canLaunchUrl() da false en Android 11+ (package visibility). -->
+        <package android:name="com.google.ar.core"/>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="intent"/>
         </intent>
     </queries>
 </manifest>

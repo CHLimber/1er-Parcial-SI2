@@ -77,7 +77,20 @@ class GaleriaImagenOut(BaseModel):
     url: str
 
 
+class ImagenArOut(BaseModel):
+    """CU16: assets de realidad aumentada de una prenda (overlay 2D o modelo 3D)."""
+
+    uso: str
+    formato: str | None
+    url: str
+    color: str | None
+    codigo_hex: str | None
+    anclajes: dict | None
+    escala_base: float | None
+
+
 class ProductoDetalleOut(ProductoOut):
     material: str | None
     variantes: list[VarianteOut]
     galeria: list[GaleriaImagenOut]
+    ar: list[ImagenArOut] = []

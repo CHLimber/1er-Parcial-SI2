@@ -355,28 +355,43 @@
             endpoint responde 403 aunque la pantalla se vea.
           </p>
 
-          <div class="matriz">
-            @for (grupo of grupos(); track grupo.modulo) {
-              <fieldset class="matriz__grupo">
-                <legend class="matriz__modulo">{{ grupo.modulo }}</legend>
-                @for (permiso of grupo.permisos; track permiso.id) {
-                  <label class="matriz__permiso">
-                    <input
-                      type="checkbox"
-                      [checked]="estaMarcado(permiso.id)"
-                      [disabled]="!puedeGestionarRoles"
-                      (change)="alternarPermiso(permiso.id)"
-                    />
-                    <span>
-                      <span class="mono">{{ permiso.codigo }}</span>
-                      @if (permiso.descripcion) {
-                        <span class="secundario">{{ permiso.descripcion }}</span>
-                      }
-                    </span>
-                  </label>
+          <div class="tabla-envoltorio">
+            <table class="tabla matriz-permisos">
+              <thead>
+                <tr>
+                  <th>Módulo \ Acción</th>
+                  @for (accion of acciones; track accion.accion) {
+                    <th>{{ accion.etiqueta }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of filasMatriz(); track fila.modulo) {
+                  <tr>
+                    <th scope="row">{{ nombreModulo(fila.modulo) }}</th>
+                    @for (celda of fila.celdas; track $index) {
+                      <td class="matriz-permisos__celda">
+                        @if (celda) {
+                          <label
+                            class="matriz-permisos__casilla"
+                            [title]="celda.descripcion ?? celda.codigo"
+                          >
+                            <input
+                              type="checkbox"
+                              [checked]="estaMarcado(celda.id)"
+                              [disabled]="!puedeGestionarRoles"
+                              (change)="alternarPermiso(celda.id)"
+                            />
+                          </label>
+                        } @else {
+                          <span class="matriz-permisos__sin-uso" aria-hidden="true">—</span>
+                        }
+                      </td>
+                    }
+                  </tr>
                 }
-              </fieldset>
-            }
+              </tbody>
+            </table>
           </div>
 
           @if (errorRol()) {

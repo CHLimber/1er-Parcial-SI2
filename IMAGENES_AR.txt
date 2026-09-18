@@ -9,17 +9,22 @@
  catalogo que se juntan en CATALOGO_DEMO.txt punto 2. Conviene hacer primero
  aquella lista; aca no se busca ni una sola imagen nueva, solo se recortan.
 
- ESTADO HOY:
+ ESTADO HOY (actualizado 2026-09-18, CU16 hecho en movil):
    - El esquema YA preve AR: uso_imagen (CATALOGO/AR_OVERLAY/AR_MODELO),
      formato_imagen (JPG/PNG/GLB/USDZ) y las columnas anclajes + escala_base
      en producto_imagen (db/01_schema.sql:310).
    - CU10 YA permite cargar imagenes con esos usos
      (backend/app/modules/catalogo/admin_router.py:50 y el selector en
-     frontend/src/app/pages/panel-catalogo/panel-catalogo.page.html:469).
-   - NO existe ningun visor AR: nadie renderiza esas imagenes, ni en web ni
-     en movil.
-   - CU10 NO guarda anclajes ni escala_base (ver punto 5.1).
-   - El backend NO sirve archivos estaticos: toda imagen va por URL absoluta.
+     frontend/src/app/pages/panel-catalogo/panel-catalogo.page.html:469), y
+     desde CU16 tambien guarda anclajes/escala_base (ver punto 5.1).
+   - MOVIL YA tiene los dos visores AR (producto_detalle_pagina.dart +
+     vestidor_virtual_pagina.dart, ver punto 5.2). WEB sigue sin visor.
+   - GET /catalogo/productos/{slug} devuelve el campo `ar` con los assets
+     de la prenda (uso, formato, url, anclajes, escala_base).
+   - El backend SI sirve archivos estaticos desde /media (StaticFiles,
+     app/main.py) -- esta nota quedo desactualizada; toda imagen (catalogo o
+     AR) sigue yendo por URL absoluta igual, pero muchas ya son del propio
+     backend en vez de un host externo.
 ===============================================================================
 
 -------------------------------------------------------------------------------
@@ -58,9 +63,22 @@
 
  ..... MINIMO PARA DEFENDER (3) ..............................................
 
- [ ] 1.1  BLU-001  Blusa de Lino Manga Corta     -> recortar su foto
- [ ] 1.2  VES-003  Vestido de Punto Manga Larga  -> recortar su foto
- [ ] 1.3  ABR-001  Tapado de Lana Largo          -> recortar su foto
+ [x] 1.1  BLU-001  Blusa de Lino Manga Corta     -> recortada (blu-001-ar-blanco.png)
+ [x] 1.2  VES-003  Vestido de Punto Manga Larga  -> recortada (ves-003-ar-rosa.png)
+ [x] 1.3  ABR-001  Tapado de Lana Largo          -> recortada (abr-001-ar-camel.png)
+          [HECHO 2026-09-18] Recorte automatico (no remove.bg): las fotos de
+          catalogo ya son flat-lay sobre fondo plano, asi que alcanzo un
+          script propio (Pillow + scipy.ndimage.label) que separa el fondo
+          por color Y por estar conectado al borde -- eso evita comerse
+          zonas internas de la prenda del mismo color que el fondo (la
+          blusa es casi blanca sobre gris claro). Sin halos visibles.
+          Archivos en backend/app/media_semilla/ar/, servidos por el
+          backend en /media/ar/. anclajes + escala_base medidos a ojo con
+          una grilla de referencia (punto 4.1) y cargados en el seed.
+          Pesos: se cuantizaron a 256 colores con FASTOCTREE (conserva el
+          canal alfa) porque el del vestido pesaba 2.4 MB y tardaba en
+          cargar antes de aparecer el overlay -> quedaron en 77 KB, 155 KB
+          y 563 KB, sin diferencia visible ni halos.
 
           Una de cada categoria de torso y de las dos temporadas (PV, OI, OI).
           OJO: se cambio el vestido floral (VES-001) por el de punto a
@@ -82,9 +100,11 @@
  Estampados y bordes irregulares: el recorte deja halos y la superposicion
  se ve falsa. Que queden solo como foto de catalogo.
 
- [ ] 1.7  Verificar que el fondo sea transparencia REAL (canal alfa) y no un
+ [x] 1.7  Verificar que el fondo sea transparencia REAL (canal alfa) y no un
           rectangulo blanco. Abrir cada PNG sobre un fondo de color para
           confirmarlo. Es el error mas comun y solo se nota al probarlo.
+          [HECHO 2026-09-18] Verificado componiendo los 3 PNG sobre un fondo
+          verde solido: alfa real, sin halos ni rectangulo blanco.
 
 -------------------------------------------------------------------------------
  2. MODELOS 3D - GLB + USDZ (2 prendas)
@@ -102,22 +122,50 @@
  Cruz. Si en la defensa preguntan por que solo dos modelos, esa es la
  respuesta, y es mejor que "no nos dio el tiempo".
 
- [ ] 2.1  BOT-001  Botineta de Cuero con Taco      (Otonio-Invierno)
-          Buscar: "ankle boot" o "high heel boot"
-          En Sketchfab con filtro DOWNLOADABLE + CC, o en poly.pizza
+ [x] 2.1  BOT-004  Bota Texana de Cuero            (Otonio-Invierno)
+          [HECHO 2026-09-18] "Cowboy boots" de Poly by Google, poly.pizza,
+          CC BY 3.0 (https://poly.pizza/m/9Qf1MHGePvS). bot-004-ar.glb,
+          1.76 MB, cuero marron con bordado dorado y espuelas.
 
- [ ] 2.2  SAN-001  Sandalia de Plataforma          (Primavera-Verano)
-          Buscar: "platform sandal" o "women sandal"
-          Mismos sitios.
+ [x] 2.2  SAN-004  Sandalia Deportiva de Tiras     (Primavera-Verano)
+          [HECHO 2026-09-18] "Sandal" de jeremy, poly.pizza, CC BY 3.0
+          (https://poly.pizza/m/4_4lQugjiRa). san-004-ar.glb, 20.8 KB,
+          tiras turquesa y suela plana negra.
 
- [ ] 2.3  Anotar la licencia de cada modelo (autor + tipo de CC). Los modelos
-          3D si suelen exigir atribucion, al reves que las fotos de Unsplash.
+          OJO, CAMBIO DE PLAN respecto de lo que decia este punto: los dos
+          modelos que se consiguieron NO eran la botineta (BOT-001) ni la
+          sandalia de plataforma (SAN-001) que este documento pedia, y no
+          aparecio ninguno fiel a esos dos con licencia libre y descarga
+          directa (se probaron ~15 terminos: platform sandal, wedge,
+          espadrille, gladiator, ankle boot, high heel boot...). En vez de
+          colgar el modelo de un producto que no representa --la clienta
+          veria en RA algo distinto de lo que compra-- se dieron de alta DOS
+          PRODUCTOS NUEVOS que si son lo que muestra el modelo (BOT-004 y
+          SAN-004, ver PENDIENTES.txt 2.8). BOT-001 y SAN-001 quedaron sin AR.
+          La foto de catalogo de los dos productos nuevos es un render del
+          propio GLB, asi que foto y RA coinciden exactamente.
+
+ [x] 2.3  Licencia CC BY 3.0 en ambos, autores anotados arriba. Atribucion
+          obligatoria (a diferencia de las fotos de Unsplash del catalogo).
+          Esta anotada en el seed y en la pagina de previsualizacion.
+
+ [x] 2.5  (punto nuevo) ESCALA: los dos modelos venian en unidades
+          arbitrarias, no en metros -- la bota media 2.58 de alto y la
+          sandalia 9.65 de largo, o sea que Scene Viewer las habria plantado
+          en RA con ese tamano. Se reescalaron y apoyaron en el piso (Y=0)
+          envolviendo la escena en un nodo con matriz de escala, sin tocar la
+          geometria: bota 31x36x35 cm, sandalia 13x8x26 cm. SI SE AGREGA OTRO
+          MODELO, VERIFICAR ESTO PRIMERO: es invisible hasta que se abre en
+          RA y arruina la demo.
 
  [ ] 2.4  Convertir los 2 GLB a USDZ (para iOS).
-          Reality Converter (Mac) o un conversor web.
-          NO se modela aparte: es el mismo modelo convertido.
+          NO HECHO: Reality Converter es Mac-only y el desarrollo fue en
+          Windows. Mientras tanto, movil/producto_detalle_pagina.dart solo
+          muestra el boton de AR 3D en Android (Platform.isAndroid); en iOS
+          se ve un aviso en vez del boton. Retomar si se consigue una Mac o
+          un conversor GLB->USDZ online confiable.
 
- TOTAL DE ARCHIVOS 3D: 2 GLB + 2 USDZ = 4.
+ TOTAL DE ARCHIVOS 3D: 2 GLB (hecho) + 2 USDZ (pendiente, ver 2.4) = 4.
 
 -------------------------------------------------------------------------------
  3. ESPECIFICACION TECNICA
@@ -130,6 +178,11 @@
  AR_MODELO   GLB      modelo 3D Android/web max 5 MB, escala en METROS
                                             origen apoyado en el piso, +Y arriba
  AR_MODELO   USDZ     el mismo para iOS     conversion del GLB
+
+ Y EL SERVIDOR TIENE QUE MANDAR EL MIME TYPE CORRECTO: Python no conoce estos
+ formatos y StaticFiles servia los .glb como text/plain, con lo que Scene
+ Viewer los rechaza. app/main.py los registra con mimetypes.add_type
+ (model/gltf-binary y model/vnd.usdz+zip) antes de montar /media.
 
  (La especificacion de las fotos CATALOGO esta en CATALOGO_DEMO.txt punto 1.)
 
@@ -169,45 +222,51 @@
  escala_base y sale el factor. Sin eso la prenda queda del tamano equivocado
  segun que tan lejos este la clienta de la camara.
 
- [ ] 4.1  Medir los 3 anclajes sobre cada PNG del punto 1 (se puede a ojo en
+ [x] 4.1  Medir los 3 anclajes sobre cada PNG del punto 1 (se puede a ojo en
           cualquier editor que muestre coordenadas) y anotar su escala_base.
           Solo hace falta si se programa el visor de nivel 1.
+          [HECHO 2026-09-18] Medido a ojo con una grilla de referencia
+          superpuesta a cada PNG (10% por celda) y cargado en el seed.
 
 -------------------------------------------------------------------------------
  5. HUECOS DE CODIGO A CERRAR
 -------------------------------------------------------------------------------
 
-[5.1] CU10 no guarda anclajes ni escala_base.
-      DONDE  : backend/app/modules/catalogo/admin_router.py:553
-      SINTOMA: el INSERT mete producto_id, color_id, uso, url, formato,
-               es_principal y orden, y nada mas. Las dos columnas del AR
-               quedan siempre en NULL.
-      ARREGLO: agregar anclajes y escala_base al INSERT, al schema Pydantic
-               de admin_schemas.py y al formulario del panel web
-               (panel-catalogo.page.html) y del movil
-               (panel_catalogo_pagina.dart).
-      NECESARIO SI: se programa el visor de nivel 1 (overlay 2D).
-               Para el nivel 2 (3D) NO hace falta.
+[5.1] [HECHO 2026-09-18] CU10 no guardaba anclajes ni escala_base.
+      DONDE  : backend/app/modules/catalogo/admin_router.py
+               (`_crear_fila_imagen`, INSERT) y `_imagenes` (SELECT admin).
+      ARREGLO: anclajes/escala_base sumados al INSERT/SELECT, a
+               admin_schemas.py (ImagenIn/ImagenOut) y expuestos en publico
+               por catalogo/schemas.py (ImagenArOut) + catalogo/router.py.
+               Probado con curl end-to-end contra Postgres real.
+      QUEDA AFUERA (no bloquea CU16 movil, que carga todo por el seed):
+      el formulario del panel WEB (panel-catalogo.page.html) y del panel
+      MOVIL (panel_catalogo_pagina.dart) todavia no tienen los campos de
+      anclajes/escala_base -- si se quiere cargar un overlay a mano desde
+      el panel en vez de por SQL, hay que agregarlos ahi (y a `subir_imagen`
+      en el backend, que tampoco los recibe todavia via multipart).
 
-[5.2] No existe ningun visor AR.
+[5.2] [HECHO 2026-09-18, movil] No existia ningun visor AR.
 
-      NIVEL 2 - 3D real (AR_MODELO). Casi sin codigo propio. El componente
-      <model-viewer> de Google es UNA etiqueta HTML:
+      NIVEL 2 - 3D real (AR_MODELO). Implementado en
+      movil/lib/paginas/producto_detalle_pagina.dart (`_abrirVisor3d`):
+      arma un intent:// de Google Scene Viewer y lo abre con url_launcher
+      (`LaunchMode.externalApplication`). Solo Android por ahora (ver 2.4,
+      falta el USDZ para Quick Look/iOS).
 
-        <model-viewer src="bot-001-ar.glb"
-                      ios-src="bot-001-ar.usdz"
-                      ar ar-modes="scene-viewer quick-look webxr"
-                      camera-controls></model-viewer>
+      NIVEL 1 - overlay 2D (AR_OVERLAY). Implementado en
+      movil/lib/paginas/vestidor_virtual_pagina.dart: camera +
+      google_mlkit_pose_detection (agregados a pubspec.yaml). En vez de usar
+      escala_base para calibrar en cm, arma una transformacion de similitud
+      que lleva hombro_izq/hombro_der del PNG exactamente sobre los hombros
+      detectados -- mas simple y no necesita saber la distancia real a la
+      camara. FALTA PROBAR EN UN DISPOSITIVO REAL (no se pudo en la sesion
+      que lo escribio): lo primero a revisar es si la camara frontal entrega
+      el buffer ya espejado o no, ver el comentario en `_PrendaPintor.paint`.
 
-      En Android abre Scene Viewer, en iOS abre AR Quick Look: los dos vienen
-      en el sistema operativo. Desde Flutter se lanza el mismo visor con
-      url_launcher, QUE YA ESTA en las dependencias del proyecto.
-
-      NIVEL 1 - overlay 2D (AR_OVERLAY). Camara en vivo con el PNG encima,
-      anclado a los hombros.
-        Web   : MediaPipe Pose Landmarker desde CDN.
-        Movil : camera + google_mlkit_pose_detection.
-      Es trabajo propio. Acotado, pero es lo mas caro de toda la lista.
+      WEB: no se hizo (CU16 se pidio solo para movil). Si se retoma, el plan
+      original seguia en pie: MediaPipe Pose Landmarker desde CDN para el
+      nivel 1, y <model-viewer> (una etiqueta HTML) para el nivel 2.
 
 -------------------------------------------------------------------------------
  6. QUE PROMETER EN LA DEFENSA (y que no)
@@ -229,20 +288,25 @@
 
  Hacer PRIMERO CATALOGO_DEMO.txt: sin esas fotos no hay de donde recortar.
 
- [ ] 7.1  Punto 1.1 a 1.3: los 3 overlays minimos. Diez minutos.
-          NO generar los overlays con IA: para recortar sirve remove.bg, que
-          conserva la prenda tal cual. Una prenda regenerada por IA deja de
-          coincidir con la foto del catalogo y con los anclajes medidos.
- [ ] 7.2  Punto 2: los 2 modelos 3D y sus USDZ.
- [ ] 7.3  Punto 5.2 NIVEL 2: el <model-viewer> en la ficha de producto.
-          ES EL MEJOR CAMBIO POR HORA DE TRABAJO DE TODA LA LISTA: se ve
-          espectacular en la defensa y es una etiqueta HTML.
- [ ] 7.4  Cargar en el seed los overlays y los modelos como filas de
-          producto_imagen con uso AR_OVERLAY / AR_MODELO.
-          Recordar: docker compose down -v antes de up --build.
- [ ] 7.5  Punto 1.4 a 1.6: los 3 overlays restantes. Solo si ya se decidio
-          programar el visor de nivel 1; si no, no aportan nada visible.
- [ ] 7.6  Puntos 4.1 + 5.1 + 5.2 NIVEL 1: el overlay 2D completo.
-          LO MAS CARO. Hacerlo solo si sobra tiempo despues de 7.3.
+ [x] 7.1  Punto 1.1 a 1.3: los 3 overlays minimos.
+          [HECHO 2026-09-18] No se uso remove.bg (no hacia falta cuenta ni
+          IA): las fotos de catalogo ya son flat-lay sobre fondo plano, asi
+          que un script propio con deteccion de fondo conectado al borde
+          conservo la prenda tal cual, igual que pedia este punto.
+ [x] 7.2  Punto 2: los 2 modelos 3D. SIN sus USDZ (ver 2.4, pendiente).
+ [x] 7.3  Punto 5.2 NIVEL 2: el visor 3D en movil (Scene Viewer via
+          url_launcher; no se hizo <model-viewer> porque movil es Flutter,
+          no web -- CU16 se pidio solo para movil).
+ [x] 7.4  Cargado en el seed (db/03_datos_iniciales.sql) los 3 overlays y
+          los 2 modelos como filas de producto_imagen. Probado con
+          docker compose down -v && up --build contra Postgres real.
+ [ ] 7.5  Punto 1.4 a 1.6: los 3 overlays restantes. NO hecho todavia --
+          se decidio programar el nivel 1, asi que estos 3 SI sumarian
+          (seis prendas se ve como una funcion real, no una demo de una
+          sola prenda). Buen proximo paso si sobra tiempo antes del 20/09.
+ [x] 7.6  Puntos 4.1 + 5.1 + 5.2 NIVEL 1: el overlay 2D completo en movil.
+          Hecho, pero sin probar en un dispositivo real (ver punto 5.2 y
+          PENDIENTES.txt 2.8) -- es lo primero a validar antes de la
+          defensa del 22/09.
 
 ===============================================================================

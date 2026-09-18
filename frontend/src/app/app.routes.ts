@@ -42,8 +42,19 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'mis-compras',
+    loadComponent: () =>
+      import('./pages/mis-compras/mis-compras.page').then((m) => m.MisComprasPage),
+    canActivate: [authGuard],
+  },
+  {
     path: 'carrito',
     loadComponent: () => import('./pages/carrito/carrito.page').then((m) => m.CarritoPage),
+    canActivate: [authGuard],
+  },
+  {
+    path: 'asistente',
+    loadComponent: () => import('./pages/asistente/asistente.page').then((m) => m.AsistentePage),
     canActivate: [authGuard],
   },
   {
@@ -82,7 +93,9 @@ export const routes: Routes = [
         path: 'catalogo',
         loadComponent: () =>
           import('./pages/panel-catalogo/panel-catalogo.page').then((m) => m.PanelCatalogoPage),
-        canActivate: [permisoGuard('catalogo.ver', 'catalogo.gestionar')],
+        canActivate: [
+          permisoGuard('catalogo.leer', 'catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
+        ],
       },
       {
         path: 'recepciones',
@@ -91,7 +104,12 @@ export const routes: Routes = [
             (m) => m.PanelRecepcionesPage,
           ),
         canActivate: [
-          permisoGuard('recepciones.ver', 'recepciones.registrar', 'recepciones.confirmar'),
+          permisoGuard(
+            'recepciones.leer',
+            'recepciones.crear',
+            'recepciones.actualizar',
+            'recepciones.eliminar',
+          ),
         ],
       },
       {
@@ -100,19 +118,53 @@ export const routes: Routes = [
           import('./pages/panel-proveedores/panel-proveedores.page').then(
             (m) => m.PanelProveedoresPage,
           ),
-        canActivate: [permisoGuard('proveedores.ver', 'proveedores.gestionar')],
+        canActivate: [
+          permisoGuard(
+            'proveedores.leer',
+            'proveedores.crear',
+            'proveedores.actualizar',
+            'proveedores.eliminar',
+          ),
+        ],
       },
       {
         path: 'sucursales',
         loadComponent: () =>
           import('./pages/panel-sucursales/panel-sucursales.page').then((m) => m.PanelSucursalesPage),
-        canActivate: [permisoGuard('sucursales.ver', 'sucursales.gestionar')],
+        canActivate: [
+          permisoGuard(
+            'sucursales.leer',
+            'sucursales.crear',
+            'sucursales.actualizar',
+            'sucursales.eliminar',
+          ),
+        ],
       },
       {
         path: 'usuarios',
         loadComponent: () =>
           import('./pages/panel-usuarios/panel-usuarios.page').then((m) => m.PanelUsuariosPage),
-        canActivate: [permisoGuard('usuarios.ver', 'usuarios.gestionar', 'roles.ver')],
+        canActivate: [
+          permisoGuard(
+            'usuarios.leer',
+            'usuarios.crear',
+            'usuarios.actualizar',
+            'usuarios.eliminar',
+            'roles.leer',
+          ),
+        ],
+      },
+      {
+        path: 'reportes',
+        loadComponent: () =>
+          import('./pages/panel-reportes/panel-reportes.page').then((m) => m.PanelReportesPage),
+        canActivate: [permisoGuard('reportes.leer')],
+      },
+      {
+        path: 'auditoria',
+        loadComponent: () =>
+          import('./pages/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),
+        canActivate: [permisoGuard('auditoria.leer')],
       },
     ],
   },

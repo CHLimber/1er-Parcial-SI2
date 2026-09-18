@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CU16 · Verificar modelos AR</title>
+  <!--
+    Herramienta de VERIFICACION, no es parte del producto: sirve para confirmar en
+    cualquier navegador que los .glb de CU16 cargan, se ven bien y estan a escala real,
+    sin depender de tener un telefono con ARCore a mano.
+
+    Abrir en: http://localhost:8081/media/ar/previsualizar.html
+    (desde el celular en la misma red, cambiar localhost por la IP de la maquina)
+  -->
+  <script type="module"
+          src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+  <style>
+    :root { --ink:#1a1a1a; --paper:#f7f5f2; --flame:#d4572a; }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:24px; background:var(--paper); color:var(--ink);
+           font-family: "Work Sans", system-ui, sans-serif; }
+    h1 { font-size:20px; margin:0 0 4px; }
+    p.sub { margin:0 0 24px; color:#666; font-size:14px; }
+    .grilla { display:grid; gap:20px; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); }
+    .ficha { background:#fff; border:1px solid #e3ded8; border-radius:12px; overflow:hidden; }
+    model-viewer { width:100%; height:380px; background:#faf9f7; }
+    .pie { padding:12px 14px; border-top:1px solid #eee9e3; }
+    .pie b { display:block; font-size:15px; }
+    .pie span { font-size:12.5px; color:#666; font-family: ui-monospace, monospace; }
+    .lic { font-size:11.5px; color:#888; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <h1>CU16 · Modelos de realidad aumentada</h1>
+  <p class="sub">
+    Arrastra para girar. El boton de RA aparece solo en un telefono compatible.
+    Los dos modelos estan reescalados a metros y apoyados en el piso.
+  </p>
+
+  <div class="grilla">
+    <div class="ficha">
+      <model-viewer src="bot-004-ar.glb" alt="Bota Texana de Cuero"
+                    camera-controls auto-rotate ar ar-modes="scene-viewer quick-look webxr"
+                    shadow-intensity="1" exposure="1.1"></model-viewer>
+      <div class="pie">
+        <b>BOT-004 · Bota Texana de Cuero</b>
+        <span>31 x 36 x 35 cm</span>
+        <div class="lic">"Cowboy boots" de Poly by Google · CC BY 3.0 · via poly.pizza</div>
+      </div>
+    </div>
+
+    <div class="ficha">
+      <model-viewer src="san-004-ar.glb" alt="Sandalia Deportiva de Tiras"
+                    camera-controls auto-rotate ar ar-modes="scene-viewer quick-look webxr"
+                    shadow-intensity="1" exposure="1.1"></model-viewer>
+      <div class="pie">
+        <b>SAN-004 · Sandalia Deportiva de Tiras</b>
+        <span>13 x 8 x 26 cm</span>
+        <div class="lic">"Sandal" de jeremy · CC BY 3.0 · via poly.pizza</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

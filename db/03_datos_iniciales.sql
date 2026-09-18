@@ -24,61 +24,86 @@ INSERT INTO rol (nombre, descripcion, es_sistema) VALUES
 -- ---------------------------------------------------------------------
 -- PERMISOS Y ASIGNACION A ROLES (CU13)
 -- El backend autoriza por codigo de permiso, no por nombre de rol:
--- ver requiere_permiso() en app/core/deps.py.
+-- ver requiere_permiso() en app/core/deps.py. El codigo de permiso es
+-- siempre "<modulo>.<accion>" con accion en {leer, crear, actualizar,
+-- eliminar} (CRUD estricto); un modulo solo tiene las acciones que
+-- realmente aplican (p.ej. "reportes" no tiene crear/actualizar/eliminar
+-- porque un reporte no se edita). El campo "modulo" es literalmente el
+-- prefijo del codigo: es la columna que arma la matriz de permisos del
+-- panel de Roles (CU13) -> ver panel-usuarios.page.ts.
 -- ---------------------------------------------------------------------
 
 INSERT INTO permiso (codigo, modulo, descripcion) VALUES
-    ('usuarios.ver',           'usuarios',    'Consultar el padron de usuarios'),
-    ('usuarios.gestionar',     'usuarios',    'Crear, editar y dar de baja usuarios'),
-    ('roles.ver',              'usuarios',    'Consultar roles y sus permisos'),
-    ('roles.gestionar',        'usuarios',    'Crear roles y reasignar sus permisos'),
-    ('catalogo.ver',           'catalogo',    'Consultar el catalogo completo, incluido lo inactivo'),
-    ('catalogo.gestionar',     'catalogo',    'Alta, baja y modificacion de prendas y variantes'),
-    ('proveedores.ver',        'compras',     'Consultar proveedores'),
-    ('proveedores.gestionar',  'compras',     'Alta, baja y modificacion de proveedores'),
-    ('sucursales.ver',         'organizacion','Consultar sucursales y cajas'),
-    ('sucursales.gestionar',   'organizacion','Alta, baja y modificacion de sucursales y cajas'),
-    ('inventario.ver',         'inventario',  'Consultar existencias y kardex'),
-    ('inventario.ajustar',     'inventario',  'Registrar ajustes manuales de stock'),
-    ('recepciones.ver',        'inventario',  'Consultar recepciones de mercaderia'),
-    ('recepciones.registrar',  'inventario',  'Cargar recepciones en borrador'),
-    ('recepciones.confirmar',  'inventario',  'Confirmar o anular una recepcion'),
-    ('reservas.atender',       'reservas',    'Atender la cola de reservas de la sucursal'),
-    ('caja.operar',            'ventas',      'Abrir y cerrar sesiones de caja'),
-    ('ventas.pos',             'ventas',      'Registrar ventas presenciales'),
-    ('reportes.ver',           'reportes',    'Consultar los tableros de gestion');
+    ('usuarios.leer',         'usuarios',    'Consultar el padron de usuarios'),
+    ('usuarios.crear',        'usuarios',    'Dar de alta personal'),
+    ('usuarios.actualizar',   'usuarios',    'Editar datos, rol, contrasenia o reactivar usuarios'),
+    ('usuarios.eliminar',     'usuarios',    'Dar de baja usuarios'),
+    ('roles.leer',            'roles',       'Consultar roles y sus permisos'),
+    ('roles.crear',           'roles',       'Crear roles'),
+    ('roles.actualizar',      'roles',       'Editar roles y reasignar sus permisos'),
+    ('roles.eliminar',        'roles',       'Eliminar roles que no son del sistema'),
+    ('catalogo.leer',         'catalogo',    'Consultar el catalogo completo, incluido lo inactivo'),
+    ('catalogo.crear',        'catalogo',    'Alta de prendas, variantes, imagenes, categorias y marcas'),
+    ('catalogo.actualizar',   'catalogo',    'Modificacion de prendas, variantes y categorias'),
+    ('catalogo.eliminar',     'catalogo',    'Baja de prendas, variantes, categorias e imagenes'),
+    ('proveedores.leer',      'proveedores', 'Consultar proveedores'),
+    ('proveedores.crear',     'proveedores', 'Dar de alta proveedores'),
+    ('proveedores.actualizar','proveedores', 'Editar o reactivar proveedores'),
+    ('proveedores.eliminar',  'proveedores', 'Dar de baja proveedores'),
+    ('sucursales.leer',       'sucursales',  'Consultar sucursales y cajas'),
+    ('sucursales.crear',      'sucursales',  'Dar de alta sucursales y cajas'),
+    ('sucursales.actualizar', 'sucursales',  'Editar o reactivar sucursales y cajas'),
+    ('sucursales.eliminar',   'sucursales',  'Dar de baja sucursales y cajas'),
+    ('inventario.leer',       'inventario',  'Consultar existencias y kardex'),
+    ('inventario.actualizar', 'inventario',  'Registrar ajustes manuales de stock'),
+    ('recepciones.leer',      'recepciones', 'Consultar recepciones de mercaderia'),
+    ('recepciones.crear',     'recepciones', 'Crear una recepcion y cargar lineas al borrador'),
+    ('recepciones.actualizar','recepciones', 'Editar lineas del borrador y confirmar la recepcion'),
+    ('recepciones.eliminar',  'recepciones', 'Quitar lineas del borrador y anular una recepcion'),
+    ('reservas.leer',         'reservas',    'Consultar la cola de reservas de la sucursal'),
+    ('reservas.actualizar',   'reservas',    'Atender (cambiar de estado) una reserva'),
+    ('caja.leer',             'caja',        'Consultar el estado de las cajas'),
+    ('caja.crear',            'caja',        'Abrir una sesion de caja'),
+    ('caja.actualizar',       'caja',        'Cerrar una sesion de caja'),
+    ('ventas.leer',           'ventas',      'Consultar ventas'),
+    ('ventas.crear',          'ventas',      'Registrar ventas presenciales'),
+    ('reportes.leer',         'reportes',    'Consultar los tableros de gestion'),
+    ('auditoria.leer',        'auditoria',   'Consultar la bitacora de auditoria del sistema');
 
 -- ADMIN: todo
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'ADMIN'), p.id FROM permiso p;
 
 -- ENCARGADO: manda en su sucursal (inventario, recepciones, reservas, reportes)
+-- auditoria.leer NO entra aca: la bitacora es del sistema completo (usuarios, roles,
+-- catalogo, sucursales...), no tiene sucursal_id para acotar, queda solo para ADMIN.
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
   FROM permiso p
- WHERE p.codigo IN ('usuarios.ver','catalogo.ver','proveedores.ver','sucursales.ver',
-                    'inventario.ver','inventario.ajustar','recepciones.ver',
-                    'recepciones.registrar','recepciones.confirmar','reservas.atender',
-                    'reportes.ver');
+ WHERE p.codigo IN ('usuarios.leer','catalogo.leer','proveedores.leer','sucursales.leer',
+                    'inventario.leer','inventario.actualizar',
+                    'recepciones.leer','recepciones.crear','recepciones.actualizar','recepciones.eliminar',
+                    'reservas.leer','reservas.actualizar',
+                    'reportes.leer');
 
 -- ALMACEN: solo el flujo de entrada de mercaderia
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'ALMACEN'), p.id
   FROM permiso p
- WHERE p.codigo IN ('catalogo.ver','proveedores.ver','inventario.ver','inventario.ajustar',
-                    'recepciones.ver','recepciones.registrar','recepciones.confirmar');
+ WHERE p.codigo IN ('catalogo.leer','proveedores.leer','inventario.leer','inventario.actualizar',
+                    'recepciones.leer','recepciones.crear','recepciones.actualizar','recepciones.eliminar');
 
 -- CAJERO: caja y punto de venta
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'CAJERO'), p.id
   FROM permiso p
- WHERE p.codigo IN ('catalogo.ver','inventario.ver','caja.operar','ventas.pos');
+ WHERE p.codigo IN ('catalogo.leer','inventario.leer','caja.leer','caja.crear','caja.actualizar','ventas.crear');
 
 -- VENDEDOR: piso de venta y vestidores
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
   FROM permiso p
- WHERE p.codigo IN ('catalogo.ver','inventario.ver','reservas.atender');
+ WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar');
 
 INSERT INTO sucursal (codigo, nombre, ciudad, direccion, hora_apertura, hora_cierre, cantidad_vestidores) VALUES
     ('SC-01', 'FashionStore Equipetrol', 'SANTA_CRUZ', 'Av. San Martin #100',      '09:00', '20:00', 3),
@@ -2051,6 +2076,146 @@ INSERT INTO producto_variante (producto_id, talla_id, color_id, sku) VALUES
 -- El inventario de estas variantes nuevas lo llena la seccion INVENTARIO de
 -- mas abajo: su INSERT ya recorre TODO producto_variante sin filtrar, asi
 -- que las incluye solo con que existan antes de que corra.
+
+-- ---------------------------------------------------------------------
+-- CU16 "Usar Vestidor Virtual (RA)"
+--
+-- Todo lo de CU16 vive en este unico bloque, y esta ACA ABAJO a proposito:
+-- el color nuevo tiene que insertarse DESPUES de los dos INSERT INTO color de
+-- mas arriba. Mas adelante en este mismo archivo hay variantes cargadas con
+-- color_id NUMERICO hardcodeado (..., 13, 'BLU-001-L-C13'), asi que meter un
+-- color en medio de aquellas listas corre todos los ids siguientes y le cambia
+-- el color a varios productos sin que nada falle. Agregarlo al final no corre
+-- nada. Si mañana hace falta otro color, va aca, no alla arriba.
+--
+-- Igual va antes del INSERT INTO inventario de abajo, que reparte stock por
+-- clima para TODA variante que exista a esa altura -- asi las prendas nuevas
+-- entran solas en ese reparto.
+--
+-- Plan completo del caso de uso en IMAGENES_AR.txt.
+-- ---------------------------------------------------------------------
+
+INSERT INTO color (nombre, codigo_hex) VALUES ('Turquesa', '#009688');
+
+-- ..... Dos prendas que existen PORQUE tenemos su modelo 3D .....
+--
+-- Los dos modelos AR gratuitos que se consiguieron (CC BY 3.0, poly.pizza) no
+-- coinciden con ninguna prenda que ya estuviera en el catalogo: son una bota
+-- texana con espuelas y una sandalia deportiva de tiras planas, no la botineta
+-- ni la sandalia de plataforma que habia. En vez de forzar el modelo sobre un
+-- producto que no representa (la clienta veria en RA algo distinto de lo que
+-- compra), se dan de alta como productos propios.
+--
+-- La foto de catalogo de estos dos es un RENDER DEL MISMO GLB, asi que la foto
+-- y lo que se ve en realidad aumentada son exactamente la misma prenda.
+
+INSERT INTO producto (categoria_id, marca_id, proveedor_id, coleccion_id, temporada_id,
+                       codigo, nombre, slug, descripcion, material, genero, precio_base, destacado)
+VALUES (
+    (SELECT id FROM categoria WHERE slug = 'botas'),
+    (SELECT id FROM marca WHERE nombre = 'Cordillera Urban'),
+    (SELECT id FROM proveedor WHERE nombre = 'Urban Import Bolivia'),
+    (SELECT id FROM coleccion WHERE nombre = 'Coleccion Altiplano 2026'),
+    (SELECT id FROM temporada WHERE nombre = 'Otonio-Invierno 2026'),
+    'BOT-004', 'Bota Texana de Cuero', 'bota-texana-de-cuero',
+    'Bota texana de caña media en cuero, con bordado artesanal y taco bajo. '
+    'Se puede ver en 3D y probar en tu espacio con realidad aumentada.',
+    'Cuero vacuno', 'MUJER', 549.90, TRUE
+);
+
+INSERT INTO producto (categoria_id, marca_id, proveedor_id, coleccion_id, temporada_id,
+                       codigo, nombre, slug, descripcion, material, genero, precio_base, destacado)
+VALUES (
+    (SELECT id FROM categoria WHERE slug = 'sandalias'),
+    (SELECT id FROM marca WHERE nombre = 'Aurora Bolivia'),
+    (SELECT id FROM proveedor WHERE nombre = 'Urban Import Bolivia'),
+    (SELECT id FROM coleccion WHERE nombre = 'Coleccion Llanura 2026'),
+    (SELECT id FROM temporada WHERE nombre = 'Primavera-Verano 2026'),
+    'SAN-004', 'Sandalia Deportiva de Tiras', 'sandalia-deportiva-de-tiras',
+    'Sandalia deportiva de tiras ajustables y suela plana, comoda para caminar todo el dia. '
+    'Se puede ver en 3D y probar en tu espacio con realidad aumentada.',
+    'Textil y goma', 'MUJER', 229.90, TRUE
+);
+
+INSERT INTO producto_variante (producto_id, talla_id, color_id, sku)
+SELECT (SELECT id FROM producto WHERE slug = 'bota-texana-de-cuero'), t.id, c.id,
+       'BOT-004-' || t.codigo || '-' || left(c.nombre, 3)
+FROM talla t CROSS JOIN color c
+WHERE t.tipo = 'CALZADO' AND t.codigo IN ('35', '36', '37', '38', '39')
+  AND c.nombre IN ('Camel', 'Negro', 'Vino');
+
+INSERT INTO producto_variante (producto_id, talla_id, color_id, sku)
+SELECT (SELECT id FROM producto WHERE slug = 'sandalia-deportiva-de-tiras'), t.id, c.id,
+       'SAN-004-' || t.codigo || '-' || left(c.nombre, 3)
+FROM talla t CROSS JOIN color c
+WHERE t.tipo = 'CALZADO' AND t.codigo IN ('35', '36', '37', '38', '39')
+  AND c.nombre IN ('Turquesa', 'Negro');
+
+-- Foto de catalogo de las dos prendas nuevas. Va explicita y no por el INSERT
+-- generico de mas arriba, porque aquel ya corrio cuando estas prendas todavia
+-- no existian.
+INSERT INTO producto_imagen (producto_id, color_id, uso, url, formato, es_principal, orden)
+SELECT p.id, c.id, 'CATALOGO',
+       'http://localhost:8081/media/catalogo/' || p.slug || '.jpg', 'JPG', TRUE, 0
+FROM producto p
+JOIN (VALUES
+    ('bota-texana-de-cuero', 'Camel'),
+    ('sandalia-deportiva-de-tiras', 'Turquesa')
+) AS m(slug, color_nombre) ON m.slug = p.slug
+LEFT JOIN color c ON c.nombre = m.color_nombre;
+
+-- ..... Assets de realidad aumentada .....
+--
+-- color_id NULL a proposito: son overlays y modelos generales de la prenda, no
+-- de una variante de color puntual.
+--
+-- NIVEL 1 (AR_OVERLAY, PNG con transparencia real, recortados con deteccion de
+-- fondo conectado al borde para no comerse zonas internas del mismo color que
+-- el fondo). Los anclajes son coordenadas normalizadas 0-1 sobre el PNG
+-- (formato en IMAGENES_AR.txt punto 4); escala_base es el ancho hombro a
+-- hombro en cm a talla M, medido a ojo sobre la imagen igual que sugiere ese
+-- mismo documento. El visor movil hoy usa solo los dos hombros: con esos dos
+-- puntos la prenda ya escala sola segun que tan lejos este la clienta.
+--
+-- NIVEL 2 (AR_MODELO, GLB) de las dos prendas nuevas de arriba. Licencia
+-- CC BY 3.0, atribucion obligatoria:
+--   - "Cowboy boots" de Poly by Google -- https://poly.pizza/m/9Qf1MHGePvS
+--   - "Sandal" de jeremy               -- https://poly.pizza/m/4_4lQugjiRa
+-- Los dos GLB se REESCALARON a metros y se apoyaron en el piso (Y=0) como pide
+-- IMAGENES_AR.txt punto 3: venian en unidades arbitrarias (la bota media 2.58
+-- "metros" y la sandalia 9.65 de largo), y Scene Viewer los planta en RA con
+-- ese tamano. Ahora: bota 31x36x35 cm, sandalia 13x8x26 cm.
+-- Sin USDZ (la conversion pide Reality Converter, solo Mac): en movil el boton
+-- de AR queda disponible unicamente en Android hasta conseguir esa conversion.
+
+INSERT INTO producto_imagen (producto_id, color_id, uso, url, formato, es_principal, orden, anclajes, escala_base)
+VALUES
+(
+    (SELECT id FROM producto WHERE slug = 'blusa-de-lino-manga-corta'), NULL, 'AR_OVERLAY',
+    'http://localhost:8081/media/ar/blu-001-ar-blanco.png', 'PNG', FALSE, 0,
+    '{"tipo": "TORSO", "hombro_izq": {"x": 0.20, "y": 0.27}, "hombro_der": {"x": 0.73, "y": 0.27}, "cintura": {"x": 0.50, "y": 0.65}}'::jsonb,
+    38.0
+),
+(
+    (SELECT id FROM producto WHERE slug = 'vestido-de-punto-manga-larga'), NULL, 'AR_OVERLAY',
+    'http://localhost:8081/media/ar/ves-003-ar-rosa.png', 'PNG', FALSE, 0,
+    '{"tipo": "TORSO", "hombro_izq": {"x": 0.27, "y": 0.16}, "hombro_der": {"x": 0.70, "y": 0.16}, "cintura": {"x": 0.49, "y": 0.56}}'::jsonb,
+    36.0
+),
+(
+    (SELECT id FROM producto WHERE slug = 'tapado-de-lana-largo'), NULL, 'AR_OVERLAY',
+    'http://localhost:8081/media/ar/abr-001-ar-camel.png', 'PNG', FALSE, 0,
+    '{"tipo": "TORSO", "hombro_izq": {"x": 0.29, "y": 0.13}, "hombro_der": {"x": 0.68, "y": 0.13}, "cintura": {"x": 0.50, "y": 0.40}}'::jsonb,
+    42.0
+),
+(
+    (SELECT id FROM producto WHERE slug = 'bota-texana-de-cuero'), NULL, 'AR_MODELO',
+    'http://localhost:8081/media/ar/bot-004-ar.glb', 'GLB', FALSE, 0, NULL, NULL
+),
+(
+    (SELECT id FROM producto WHERE slug = 'sandalia-deportiva-de-tiras'), NULL, 'AR_MODELO',
+    'http://localhost:8081/media/ar/san-004-ar.glb', 'GLB', FALSE, 0, NULL, NULL
+);
 
 -- ---------------------------------------------------------------------
 -- INVENTARIO: cada variante en cada sucursal, repartido SEGUN EL CLIMA

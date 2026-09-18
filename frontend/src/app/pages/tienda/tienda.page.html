@@ -11,6 +11,8 @@
           }
         </a>
         <a class="cabecera__reserva" routerLink="/mis-reservas">Mis reservas</a>
+        <a class="cabecera__reserva" routerLink="/mis-compras">Mis compras</a>
+        <a class="cabecera__reserva" routerLink="/asistente">Asistente</a>
         <a class="cabecera__reserva" routerLink="/carrito">
           Carrito
           @if (itemsEnCarrito() > 0) {
@@ -34,6 +36,17 @@
   <main class="contenido">
     <h1 class="saludo">Hola, {{ usuario()?.nombre }}</h1>
     <p class="saludo__linea">Explorá el catálogo y consultá qué sucursal tiene stock de cada prenda.</p>
+
+    @if (!esStaff() && recomendaciones().length > 0) {
+      <section class="catalogo">
+        <h2 class="catalogo__titulo">Recomendado para vos</h2>
+        <ul class="grilla">
+          @for (producto of recomendaciones(); track producto.id) {
+            <li app-producto-card [producto]="producto" [motivo]="producto.motivo"></li>
+          }
+        </ul>
+      </section>
+    }
 
     <section class="catalogo">
       <h2 class="catalogo__titulo">Catálogo</h2>
@@ -103,23 +116,7 @@
       } @else {
         <ul class="grilla">
           @for (producto of productos(); track producto.id) {
-            <li class="prenda" [class.prenda--agotada]="producto.agotado" (click)="verProducto(producto)">
-              <div class="prenda__imagen-cont">
-                @if (producto.imagen_url) {
-                  <img class="prenda__imagen" [src]="producto.imagen_url" [alt]="producto.nombre" loading="lazy" />
-                }
-                @if (producto.agotado) {
-                  <span class="prenda__badge">Agotado</span>
-                }
-              </div>
-              <span class="prenda__categoria">{{ producto.categoria }}</span>
-              <h3 class="prenda__nombre">{{ producto.nombre }}</h3>
-              <span class="prenda__marca">{{ producto.marca ?? 'FashionStore' }}</span>
-              @if (producto.tallas.length > 0) {
-                <span class="prenda__tallas">Tallas: {{ producto.tallas.join(', ') }}</span>
-              }
-              <span class="prenda__precio">{{ formatearPrecio(producto.precio_base) }}</span>
-            </li>
+            <li app-producto-card [producto]="producto"></li>
           }
         </ul>
       }

@@ -6,12 +6,15 @@ import { AuthService } from '../../core/auth/auth.service';
 import { CarritoService } from '../../core/carrito/carrito.service';
 import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { FiltrosOut, ProductoOut } from '../../core/catalogo/catalogo.models';
+import { ProductoRecomendadoOut } from '../../core/recomendaciones/recomendaciones.models';
+import { RecomendacionesService } from '../../core/recomendaciones/recomendaciones.service';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
+import { ProductoCard } from '../../shared/catalogo/producto-card';
 
 @Component({
   selector: 'app-tienda-page',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, ProductoCard, RouterLink],
   templateUrl: './tienda.page.html',
   styleUrl: './tienda.page.css',
 })
@@ -21,6 +24,7 @@ export class TiendaPage implements OnInit {
   private readonly router = inject(Router);
   private readonly reservaCarrito = inject(ReservaCarritoService);
   private readonly carritoService = inject(CarritoService);
+  private readonly recomendacionesServicio = inject(RecomendacionesService);
 
   protected readonly usuario = this.auth.usuario;
   protected readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
@@ -30,6 +34,9 @@ export class TiendaPage implements OnInit {
   protected readonly productos = signal<ProductoOut[]>([]);
   protected readonly cargandoCatalogo = signal(true);
   protected readonly errorCatalogo = signal<string | null>(null);
+
+  /** CU17: solo tiene sentido para clientes, se llena en silencio (no es critico para la pagina). */
+  protected readonly recomendaciones = signal<ProductoRecomendadoOut[]>([]);
 
   protected readonly filtros = signal<FiltrosOut | null>(null);
 
@@ -51,6 +58,10 @@ export class TiendaPage implements OnInit {
     this.buscar();
     if (!this.esStaff()) {
       this.carritoService.refrescar();
+      this.recomendacionesServicio.obtener(8).subscribe({
+        next: (productos) => this.recomendaciones.set(productos),
+        error: () => this.recomendaciones.set([]),
+      });
     }
   }
 
@@ -87,16 +98,8 @@ export class TiendaPage implements OnInit {
     this.buscar();
   }
 
-  protected verProducto(producto: ProductoOut): void {
-    this.router.navigate(['/producto', producto.slug]);
-  }
-
   protected cerrarSesion(): void {
     this.auth.cerrarSesion();
     this.router.navigateByUrl('/login');
-  }
-
-  protected formatearPrecio(precio: number): string {
-    return `Bs ${precio.toFixed(2)}`;
   }
 }

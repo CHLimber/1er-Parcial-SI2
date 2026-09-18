@@ -22,12 +22,20 @@
   font-size: 1.4rem;
 }
 
+.cabecera__acciones {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.cabecera__enlace,
 .cabecera__volver {
   font-size: 0.85rem;
   color: var(--white);
   text-decoration: none;
 }
 
+.cabecera__enlace:hover,
 .cabecera__volver:hover {
   color: var(--flame);
 }

@@ -1,3 +1,6 @@
+import json
+from typing import Any
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -8,12 +11,19 @@ from app.modules.catalogo.schemas import (
     DisponibilidadSucursalOut,
     FiltrosOut,
     GaleriaImagenOut,
+    ImagenArOut,
     ProductoDetalleOut,
     ProductoOut,
     TallaOut,
     TemporadaOut,
     VarianteOut,
 )
+
+
+def _parsear_anclajes(valor: str | None) -> dict[str, Any] | None:
+    """producto_imagen.anclajes es jsonb; asyncpg no tiene codec configurado (ver db.py),
+    asi que llega como texto y se parsea a mano, igual que auditoria."""
+    return json.loads(valor) if valor is not None else None
 
 router = APIRouter(prefix="/catalogo", tags=["catalogo"])
 
@@ -209,6 +219,30 @@ async def obtener_producto(
     )
     galeria_out = [GaleriaImagenOut(**dict(fila)) for fila in galeria]
 
+    ar = await conn.fetch(
+        """
+        SELECT pi.uso, pi.formato, pi.url, c.nombre AS color, c.codigo_hex,
+               pi.anclajes, pi.escala_base
+        FROM producto_imagen pi
+        LEFT JOIN color c ON c.id = pi.color_id
+        WHERE pi.producto_id = $1 AND pi.uso IN ('AR_OVERLAY', 'AR_MODELO')
+        ORDER BY pi.uso, pi.orden
+        """,
+        producto["id"],
+    )
+    ar_out = [
+        ImagenArOut(
+            uso=fila["uso"],
+            formato=fila["formato"],
+            url=fila["url"],
+            color=fila["color"],
+            codigo_hex=fila["codigo_hex"],
+            anclajes=_parsear_anclajes(fila["anclajes"]),
+            escala_base=float(fila["escala_base"]) if fila["escala_base"] is not None else None,
+        )
+        for fila in ar
+    ]
+
     return ProductoDetalleOut(
         id=producto["id"],
         codigo=producto["codigo"],
@@ -227,4 +261,5 @@ async def obtener_producto(
         agotado=total_disponible <= 0,
         variantes=variantes_out,
         galeria=galeria_out,
+        ar=ar_out,
     )
