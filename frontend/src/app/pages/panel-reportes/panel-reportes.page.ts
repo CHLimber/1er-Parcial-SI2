@@ -20,9 +20,12 @@ import {
   CajaOcupacionOut,
   CanalVenta,
   ClienteRankingOut,
+  ColumnaOut,
+  ConsultaIaOut,
   EnvioEstadoOut,
   FiltroReportes,
   IndicadoresOut,
+  MensajeReporteIn,
   ModoEntrega,
   ProductoRankingOut,
   ProductoSinMovimientoOut,
@@ -34,6 +37,12 @@ import {
   VentaPorSucursalOut,
 } from '../../core/reportes/reportes.models';
 import { ReportesService } from '../../core/reportes/reportes.service';
+import {
+  exportarGraficasPdf,
+  exportarTablaExcel,
+  exportarTablaPdf,
+  type ColumnaExportable,
+} from '../../shared/reportes/exportar-reportes';
 import { SucursalOut } from '../../core/sucursales/sucursales.models';
 import { SucursalesService } from '../../core/sucursales/sucursales.service';
 import { interpretarError } from '../../shared/errores';
@@ -96,6 +105,97 @@ const ETIQUETAS_TIPO_DINAMICO: Record<TipoDinamico, string> = {
   ventasPorSucursal: 'Ventas por sucursal',
   topProductos: 'Top 10 productos más vendidos',
 };
+
+// Columnas para exportar (PDF/Excel) cada tipo de "Reporte Estaticos"/"Reporte Dinamicos": mismas
+// columnas que ya se ven en la tabla de cada @switch del template, solo que declaradas una vez
+// para no repetir el mapeo en cada boton de exportar.
+const COLUMNAS_ESTATICO: Record<TipoEstatico, ColumnaExportable[]> = {
+  stock: [
+    { clave: 'sucursal', etiqueta: 'Sucursal' },
+    { clave: 'total_fisico', etiqueta: 'Físico' },
+    { clave: 'total_reservado', etiqueta: 'Reservado' },
+    { clave: 'total_disponible', etiqueta: 'Disponible' },
+    { clave: 'variantes_agotadas', etiqueta: 'Agotadas' },
+    { clave: 'variantes_stock_bajo', etiqueta: 'Stock bajo' },
+  ],
+  reservas: [
+    { clave: 'estado', etiqueta: 'Estado' },
+    { clave: 'cantidad', etiqueta: 'Cantidad' },
+  ],
+  envios: [
+    { clave: 'estado', etiqueta: 'Estado' },
+    { clave: 'cantidad', etiqueta: 'Cantidad' },
+  ],
+  ocupacion: [
+    { clave: 'sucursal', etiqueta: 'Sucursal' },
+    { clave: 'total_cajas', etiqueta: 'Cajas totales' },
+    { clave: 'cajas_abiertas', etiqueta: 'Abiertas' },
+  ],
+  clientes: [
+    { clave: 'cliente', etiqueta: 'Cliente' },
+    { clave: 'email', etiqueta: 'Email' },
+    { clave: 'cantidad_compras', etiqueta: 'Compras' },
+    { clave: 'monto_total', etiqueta: 'Monto total (Bs)' },
+  ],
+  sinMovimiento: [
+    { clave: 'producto', etiqueta: 'Producto' },
+    { clave: 'talla', etiqueta: 'Talla' },
+    { clave: 'color', etiqueta: 'Color' },
+    { clave: 'sucursal', etiqueta: 'Sucursal' },
+    { clave: 'cantidad_fisica', etiqueta: 'Stock físico' },
+  ],
+  recepciones: [
+    { clave: 'proveedor', etiqueta: 'Proveedor' },
+    { clave: 'cantidad', etiqueta: 'Recepciones' },
+    { clave: 'monto_total', etiqueta: 'Monto total (Bs)' },
+  ],
+};
+
+const COLUMNAS_DINAMICO: Record<Exclude<TipoDinamico, 'indicadores'>, ColumnaExportable[]> = {
+  ventasDiarias: [
+    { clave: 'dia', etiqueta: 'Día' },
+    { clave: 'sucursal', etiqueta: 'Sucursal' },
+    { clave: 'canal', etiqueta: 'Canal' },
+    { clave: 'cantidad_ventas', etiqueta: 'Ventas' },
+    { clave: 'monto_total', etiqueta: 'Monto total (Bs)' },
+    { clave: 'ticket_promedio', etiqueta: 'Ticket promedio (Bs)' },
+  ],
+  ventasPorSucursal: [
+    { clave: 'sucursal', etiqueta: 'Sucursal' },
+    { clave: 'cantidad_ventas', etiqueta: 'Ventas' },
+    { clave: 'monto_total', etiqueta: 'Monto total (Bs)' },
+    { clave: 'ticket_promedio', etiqueta: 'Ticket promedio (Bs)' },
+  ],
+  topProductos: [
+    { clave: 'producto', etiqueta: 'Producto' },
+    { clave: 'unidades_vendidas', etiqueta: 'Unidades vendidas' },
+    { clave: 'monto_vendido', etiqueta: 'Monto vendido (Bs)' },
+  ],
+};
+
+// Web Speech API: sin tipos propios en el lib.dom.d.ts de TypeScript, se declara lo minimo que
+// se usa. Solo Chrome/Edge lo implementan (con prefijo webkit); en Firefox/Safari sin soporte
+// SpeechRecognitionCtor queda undefined y el boton de voz ni se muestra (ver iaSoportaVoz).
+interface ResultadoVoz {
+  results: { [indice: number]: { [alt: number]: { transcript: string } } };
+}
+interface ReconocedorVoz {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((ev: ResultadoVoz) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+function obtenerConstructorVoz(): (new () => ReconocedorVoz) | null {
+  const global = window as unknown as Record<string, unknown>;
+  return (global['SpeechRecognition'] ?? global['webkitSpeechRecognition'] ?? null) as
+    | (new () => ReconocedorVoz)
+    | null;
+}
 
 function hoyIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -256,6 +356,24 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
   protected readonly dinVentasPorSucursal = signal<VentaPorSucursalOut[]>([]);
   protected readonly dinTopProductos = signal<ProductoRankingOut[]>([]);
 
+  // --- Reporte con IA: chat de texto/voz sobre los mismos 11 reportes (POST /reportes/consulta-ia) ---
+
+  protected readonly iaSoportaVoz = signal(obtenerConstructorVoz() !== null);
+  protected readonly iaEscuchando = signal(false);
+  protected readonly iaCargando = signal(false);
+  protected readonly iaError = signal<string | null>(null);
+  protected readonly iaMensajes = signal<MensajeReporteIn[]>([]);
+  protected readonly iaTitulo = signal<string | null>(null);
+  protected readonly iaColumnas = signal<ColumnaOut[]>([]);
+  protected readonly iaTabla = signal<Record<string, unknown>[]>([]);
+  // FormGroup (no un FormControl suelto): sin [formGroup] en el <form>, Angular no tiene ninguna
+  // directiva que intercepte el evento "submit" y (ngSubmit) nunca se dispara -- el boton
+  // "Consultar" (o Enter en el campo) terminaba haciendo un submit nativo del navegador, que
+  // recarga la pagina. Mismo patron que `filtro`/`filtroEstatico`/`filtroDinamico` de mas arriba.
+  protected readonly iaForm = this.fb.nonNullable.group({ texto: '' });
+
+  private reconocedorVoz: ReconocedorVoz | null = null;
+
   ngOnInit(): void {
     this.sucursalesServicio.listarSucursales().subscribe({
       next: (sucursales) => this.sucursales.set(sucursales),
@@ -288,6 +406,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
     this.chartReservas?.destroy();
     this.chartEnvios?.destroy();
     this.chartOcupacionCajas?.destroy();
+    this.reconocedorVoz?.stop();
   }
 
   protected cambiarVista(vista: VistaReportes): void {
@@ -745,5 +864,202 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
         });
         break;
     }
+  }
+
+  // =========================================================================
+  //  REPORTE CON IA: chat de texto/voz -- la Web Speech API transcribe en el navegador y el
+  //  texto resultante se manda igual que un mensaje escrito, sin backend propio para la voz.
+  // =========================================================================
+
+  protected alternarEscucha(): void {
+    if (this.iaEscuchando()) {
+      this.reconocedorVoz?.stop();
+      return;
+    }
+    const Constructor = obtenerConstructorVoz();
+    if (!Constructor) return;
+
+    const reconocedor = new Constructor();
+    reconocedor.lang = 'es-BO';
+    reconocedor.interimResults = false;
+    reconocedor.continuous = false;
+    reconocedor.onresult = (ev) => {
+      const texto = ev.results[0]?.[0]?.transcript ?? '';
+      if (texto) {
+        this.iaForm.controls.texto.setValue(texto);
+        this.enviarConsultaIa();
+      }
+    };
+    reconocedor.onerror = () => this.iaEscuchando.set(false);
+    reconocedor.onend = () => this.iaEscuchando.set(false);
+
+    this.reconocedorVoz = reconocedor;
+    this.iaEscuchando.set(true);
+    reconocedor.start();
+  }
+
+  protected enviarConsultaIa(): void {
+    const texto = this.iaForm.controls.texto.value.trim();
+    if (!texto || this.iaCargando()) return;
+
+    const historial = [...this.iaMensajes(), { rol: 'user' as const, texto }];
+    this.iaMensajes.set(historial);
+    this.iaForm.controls.texto.setValue('');
+    this.iaError.set(null);
+    this.iaCargando.set(true);
+
+    this.servicio.consultaIa(historial).subscribe({
+      next: (resp: ConsultaIaOut) => {
+        this.iaMensajes.update((m) => [...m, { rol: 'assistant', texto: resp.respuesta }]);
+        this.iaTitulo.set(resp.titulo);
+        this.iaColumnas.set(resp.columnas);
+        this.iaTabla.set(resp.tabla);
+        this.iaCargando.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.iaError.set(interpretarError(e, 'No se pudo procesar la consulta.'));
+        this.iaCargando.set(false);
+      },
+    });
+  }
+
+  protected reiniciarIa(): void {
+    this.iaMensajes.set([]);
+    this.iaTitulo.set(null);
+    this.iaColumnas.set([]);
+    this.iaTabla.set([]);
+    this.iaError.set(null);
+    this.iaForm.controls.texto.setValue('');
+  }
+
+  // =========================================================================
+  //  EXPORTAR: PDF/Excel corren en el navegador (ver shared/reportes/exportar-reportes.ts) con
+  //  los datos que ya estan en los signals de la vista activa. "Graficas" solo tiene PDF (vuelca
+  //  los canvas como imagen), a pedido explicito del usuario.
+  // =========================================================================
+
+  protected exportarGraficasComoPdf(): void {
+    const ind = this.indicadores();
+    const kpis = ind
+      ? [
+          { etiqueta: 'Ventas', valor: `Bs ${ind.ventas_monto.toFixed(2)} (${ind.ventas_cantidad} ventas)` },
+          { etiqueta: 'Ticket promedio', valor: `Bs ${ind.ticket_promedio.toFixed(2)}` },
+          {
+            etiqueta: 'Reservas del período',
+            valor: `${ind.reservas_creadas} creadas, ${ind.reservas_convertidas} convertidas (${ind.tasa_conversion_reservas}%)`,
+          },
+          { etiqueta: 'Variantes agotadas', valor: `${ind.variantes_agotadas}` },
+          { etiqueta: 'Stock bajo', valor: `${ind.variantes_stock_bajo}` },
+        ]
+      : [];
+
+    const secciones = [
+      { titulo: 'Ventas diarias', imagen: this.chartVentasDiarias?.toBase64Image() },
+      { titulo: 'Ventas por sucursal', imagen: this.chartVentasSucursal?.toBase64Image() },
+      { titulo: 'Top productos más vendidos', imagen: this.chartTopProductos?.toBase64Image() },
+      { titulo: 'Stock disponible por sucursal', imagen: this.chartStock?.toBase64Image() },
+      { titulo: 'Reservas por estado', imagen: this.chartReservas?.toBase64Image() },
+      { titulo: 'Envíos por estado', imagen: this.chartEnvios?.toBase64Image() },
+      { titulo: 'Ocupación de cajas', imagen: this.chartOcupacionCajas?.toBase64Image() },
+    ];
+
+    exportarGraficasPdf('Reportes — Gráficas', kpis, secciones, 'reportes-graficas');
+  }
+
+  private filasEstatico(tipo: TipoEstatico): Record<string, unknown>[] {
+    // Las *Out son interfaces concretas (sin index signature); jspdf-autotable/xlsx solo
+    // necesitan leer por clave, asi que el cast es seguro -- ver ColumnaExportable en
+    // exportar-reportes.ts, que ya define que claves se leen de cada fila.
+    switch (tipo) {
+      case 'stock':
+        return this.estStock() as unknown as Record<string, unknown>[];
+      case 'reservas':
+        return this.estReservas().map((f) => ({ ...f, estado: ETIQUETAS_ESTADO_RESERVA[f.estado] ?? f.estado }));
+      case 'envios':
+        return this.estEnvios().map((f) => ({ ...f, estado: ETIQUETAS_ESTADO_ENVIO[f.estado] ?? f.estado }));
+      case 'ocupacion':
+        return this.estOcupacionCajas() as unknown as Record<string, unknown>[];
+      case 'clientes':
+        return this.estTopClientes() as unknown as Record<string, unknown>[];
+      case 'sinMovimiento':
+        return this.estSinMovimiento() as unknown as Record<string, unknown>[];
+      case 'recepciones':
+        return this.estRecepcionesPendientes() as unknown as Record<string, unknown>[];
+    }
+  }
+
+  protected exportarEstaticoPdf(): void {
+    const tipo = this.estaticoTipoActivo();
+    if (!tipo) return;
+    exportarTablaPdf(ETIQUETAS_TIPO_ESTATICO[tipo], COLUMNAS_ESTATICO[tipo], this.filasEstatico(tipo), `reporte-${tipo}`);
+  }
+
+  protected exportarEstaticoExcel(): void {
+    const tipo = this.estaticoTipoActivo();
+    if (!tipo) return;
+    exportarTablaExcel(ETIQUETAS_TIPO_ESTATICO[tipo], COLUMNAS_ESTATICO[tipo], this.filasEstatico(tipo), `reporte-${tipo}`);
+  }
+
+  private columnasDinamicoActivo(): ColumnaExportable[] {
+    const tipo = this.dinTipoActivo();
+    if (!tipo) return [];
+    if (tipo === 'indicadores') return [{ clave: 'metrica', etiqueta: 'Métrica' }, { clave: 'valor', etiqueta: 'Valor' }];
+    return COLUMNAS_DINAMICO[tipo];
+  }
+
+  private filasDinamicoActivo(): Record<string, unknown>[] {
+    const tipo = this.dinTipoActivo();
+    if (tipo === 'indicadores') {
+      const ind = this.dinIndicadores();
+      if (!ind) return [];
+      return [
+        { metrica: `Ventas (${ind.desde} a ${ind.hasta})`, valor: ind.ventas_cantidad },
+        { metrica: 'Monto vendido (Bs)', valor: ind.ventas_monto.toFixed(2) },
+        { metrica: 'Ticket promedio (Bs)', valor: ind.ticket_promedio.toFixed(2) },
+        { metrica: 'Reservas creadas', valor: ind.reservas_creadas },
+        { metrica: 'Reservas convertidas', valor: ind.reservas_convertidas },
+        { metrica: 'Tasa de conversión (%)', valor: ind.tasa_conversion_reservas },
+        { metrica: 'Variantes con stock bajo', valor: ind.variantes_stock_bajo },
+        { metrica: 'Variantes agotadas', valor: ind.variantes_agotadas },
+      ];
+    }
+    if (tipo === 'ventasDiarias') return this.dinVentasDiarias() as unknown as Record<string, unknown>[];
+    if (tipo === 'ventasPorSucursal') return this.dinVentasPorSucursal() as unknown as Record<string, unknown>[];
+    if (tipo === 'topProductos') return this.dinTopProductos() as unknown as Record<string, unknown>[];
+    return [];
+  }
+
+  protected exportarDinamicoPdf(): void {
+    const tipo = this.dinTipoActivo();
+    if (!tipo) return;
+    exportarTablaPdf(
+      ETIQUETAS_TIPO_DINAMICO[tipo],
+      this.columnasDinamicoActivo(),
+      this.filasDinamicoActivo(),
+      `reporte-${tipo}`,
+    );
+  }
+
+  protected exportarDinamicoExcel(): void {
+    const tipo = this.dinTipoActivo();
+    if (!tipo) return;
+    exportarTablaExcel(
+      ETIQUETAS_TIPO_DINAMICO[tipo],
+      this.columnasDinamicoActivo(),
+      this.filasDinamicoActivo(),
+      `reporte-${tipo}`,
+    );
+  }
+
+  protected exportarIaPdf(): void {
+    const titulo = this.iaTitulo();
+    if (!titulo) return;
+    exportarTablaPdf(titulo, this.iaColumnas(), this.iaTabla(), 'reporte-ia');
+  }
+
+  protected exportarIaExcel(): void {
+    const titulo = this.iaTitulo();
+    if (!titulo) return;
+    exportarTablaExcel(titulo, this.iaColumnas(), this.iaTabla(), 'reporte-ia');
   }
 }

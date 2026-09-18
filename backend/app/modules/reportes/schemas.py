@@ -1,7 +1,8 @@
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class IndicadoresOut(BaseModel):
@@ -97,3 +98,31 @@ class RecepcionPendienteProveedorOut(BaseModel):
 class VendedorOut(BaseModel):
     id: UUID
     nombre: str
+
+
+class MensajeReporteIn(BaseModel):
+    """Igual que asistente.schemas.MensajeIn (CU18), duplicado a proposito: ningun modulo
+    importa schemas de otro, ver CLAUDE.md."""
+
+    rol: Literal["user", "assistant"]
+    texto: str = Field(min_length=1, max_length=2000)
+
+
+class ConsultaIaIn(BaseModel):
+    # Sin persistencia, igual que CU18: el frontend reenvia la conversacion completa.
+    mensajes: list[MensajeReporteIn] = Field(min_length=1, max_length=20)
+
+
+class ColumnaOut(BaseModel):
+    clave: str
+    etiqueta: str
+
+
+class ConsultaIaOut(BaseModel):
+    respuesta: str
+    titulo: str | None = None
+    columnas: list[ColumnaOut] = Field(default_factory=list)
+    # Filas crudas de la ultima herramienta llamada (para tabla + export en el frontend). Los
+    # valores de plata ya vienen convertidos a float (ver _normalizar en router.py) para no caer
+    # en el mismo problema que Decimal: Pydantic v2 lo serializa como string en el JSON.
+    tabla: list[dict] = Field(default_factory=list)

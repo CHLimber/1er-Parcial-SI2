@@ -19,7 +19,11 @@
           [class.burbuja--user]="mensaje.rol === 'user'"
           [class.burbuja--assistant]="mensaje.rol === 'assistant'"
         >
-          <p class="burbuja__texto">{{ mensaje.texto }}</p>
+          @if (mensaje.rol === 'assistant') {
+            <div class="burbuja__texto burbuja__markdown" [innerHTML]="mensaje.texto | markdown"></div>
+          } @else {
+            <p class="burbuja__texto">{{ mensaje.texto }}</p>
+          }
           @if (mensaje.productos && mensaje.productos.length > 0) {
             <ul class="burbuja__productos">
               @for (producto of mensaje.productos; track producto.id) {

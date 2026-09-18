@@ -52,7 +52,8 @@ buscar_catalogo. No llames a la herramienta con una busqueda demasiado amplia: c
 especifica la consulta, mejores los resultados.
 - Cuando ya tengas suficiente informacion, llama a buscar_catalogo con los filtros que juntaste.
 - Los precios estan en bolivianos (Bs). Respondes en espanol, tono cercano y breve (2-4 \
-oraciones, sin markdown pesado).
+oraciones). El chat renderiza markdown: podes usar **negritas** y listas cortas si ayudan a la \
+claridad, pero sin abusar (nada de tablas ni encabezados).
 """
 
 HERRAMIENTA_BUSCAR_CATALOGO = {
@@ -62,38 +63,38 @@ HERRAMIENTA_BUSCAR_CATALOGO = {
         "dados. Llamala recien cuando ya tengas categoria, talla, color, texto de busqueda o "
         "presupuesto suficientes para acotar -- no la llames con una consulta demasiado general."
     ),
-    "strict": True,
+    # Sin "strict" y con propiedades simplemente opcionales (sin "required" ni union types con
+    # null, patron de OpenAI): la API de Claude rechaza ese patron con 400. Mismo bug que goteo
+    # en reportes/router.py (CU15, "Reporte con IA"), ver HERRAMIENTAS_REPORTES ahi. El clamp de
+    # "limite" ya vive en _ejecutar_busqueda, no hace falta minimum/maximum en el schema.
     "input_schema": {
         "type": "object",
         "properties": {
             "categoria_slug": {
-                "type": ["string", "null"],
-                "description": "Slug exacto de categoria (ej. 'vestidos', 'zapatos'). Null si no aplica.",
+                "type": "string",
+                "description": "Slug exacto de categoria (ej. 'vestidos', 'zapatos'). Omitilo si no aplica.",
             },
             "q": {
-                "type": ["string", "null"],
-                "description": "Texto libre para buscar en el nombre de la prenda (ej. 'floral'). Null si no aplica.",
+                "type": "string",
+                "description": "Texto libre para buscar en el nombre de la prenda (ej. 'floral'). Omitilo si no aplica.",
             },
             "talla_codigo": {
-                "type": ["string", "null"],
-                "description": "Codigo de talla (ej. 'M', '38'). Null si no aplica.",
+                "type": "string",
+                "description": "Codigo de talla (ej. 'M', '38'). Omitilo si no aplica.",
             },
             "color_nombre": {
-                "type": ["string", "null"],
-                "description": "Nombre de color (ej. 'Negro'). Null si no aplica.",
+                "type": "string",
+                "description": "Nombre de color (ej. 'Negro'). Omitilo si no aplica.",
             },
             "precio_maximo": {
-                "type": ["number", "null"],
-                "description": "Precio maximo en bolivianos. Null si no aplica.",
+                "type": "number",
+                "description": "Precio maximo en bolivianos. Omitilo si no aplica.",
             },
             "limite": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": 8,
-                "description": "Cuantos resultados traer como mucho (sugerido: 4-6).",
+                "description": "Cuantos resultados traer como mucho (entre 1 y 8, sugerido 4-6). Omitilo para el valor por omision.",
             },
         },
-        "required": ["categoria_slug", "q", "talla_codigo", "color_nombre", "precio_maximo", "limite"],
         "additionalProperties": False,
     },
 }

@@ -105,3 +105,20 @@ export interface RecepcionPendienteProveedorOut {
   cantidad: number;
   monto_total: number;
 }
+
+export interface MensajeReporteIn {
+  rol: 'user' | 'assistant';
+  texto: string;
+}
+
+export interface ColumnaOut {
+  clave: string;
+  etiqueta: string;
+}
+
+export interface ConsultaIaOut {
+  respuesta: string;
+  titulo: string | null;
+  columnas: ColumnaOut[];
+  tabla: Record<string, unknown>[];
+}

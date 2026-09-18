@@ -6,9 +6,11 @@ import { environment } from '../../../environments/environment';
 import {
   CajaOcupacionOut,
   ClienteRankingOut,
+  ConsultaIaOut,
   EnvioEstadoOut,
   FiltroReportes,
   IndicadoresOut,
+  MensajeReporteIn,
   ProductoRankingOut,
   ProductoSinMovimientoOut,
   RecepcionPendienteProveedorOut,
@@ -105,5 +107,9 @@ export class ReportesService {
     let params = new HttpParams();
     if (sucursalId) params = params.set('sucursal_id', sucursalId);
     return this.http.get<VendedorOut[]>(`${this.base}/vendedores`, { params });
+  }
+
+  consultaIa(mensajes: MensajeReporteIn[]): Observable<ConsultaIaOut> {
+    return this.http.post<ConsultaIaOut>(`${this.base}/consulta-ia`, { mensajes });
   }
 }

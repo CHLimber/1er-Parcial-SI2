@@ -65,6 +65,9 @@
         </div>
       }
       <div class="barra__espacio"></div>
+      <button type="button" class="boton boton--secundario" (click)="exportarGraficasComoPdf()">
+        Exportar PDF
+      </button>
       <button type="submit" class="boton">Actualizar</button>
     </form>
 
@@ -340,7 +343,19 @@
       <p class="estado">Cargando…</p>
     } @else if (estaticoTipoActivo(); as tipo) {
       <section class="panel">
-        <h2 class="panel__titulo">{{ ETIQUETAS_TIPO_ESTATICO[tipo] }}</h2>
+        <div class="panel__cabecera">
+          <h2 class="panel__titulo">{{ ETIQUETAS_TIPO_ESTATICO[tipo] }}</h2>
+          @if (!estSinResultados()) {
+            <div class="exportar">
+              <button type="button" class="boton boton--secundario" (click)="exportarEstaticoPdf()">
+                Exportar PDF
+              </button>
+              <button type="button" class="boton boton--secundario" (click)="exportarEstaticoExcel()">
+                Exportar Excel
+              </button>
+            </div>
+          }
+        </div>
         <p class="secundario">Foto actual, no depende del rango de fechas.</p>
         @if (estSinResultados()) {
           <p class="estado">No hay datos para mostrar.</p>
@@ -596,7 +611,17 @@
       <p class="estado">Cargando…</p>
     } @else if (dinTipoActivo(); as tipo) {
       <section class="panel">
-        <h2 class="panel__titulo">{{ ETIQUETAS_TIPO_DINAMICO[tipo] }}</h2>
+        <div class="panel__cabecera">
+          <h2 class="panel__titulo">{{ ETIQUETAS_TIPO_DINAMICO[tipo] }}</h2>
+          <div class="exportar">
+            <button type="button" class="boton boton--secundario" (click)="exportarDinamicoPdf()">
+              Exportar PDF
+            </button>
+            <button type="button" class="boton boton--secundario" (click)="exportarDinamicoExcel()">
+              Exportar Excel
+            </button>
+          </div>
+        </div>
         @switch (tipo) {
           @case ('indicadores') {
             @if (dinIndicadores(); as ind) {
@@ -737,16 +762,105 @@
     }
   }
 
-  <!-- Reporte con IA: placeholder, sin implementar todavia. -->
+  <!-- Reporte con IA: chat de texto/voz contra POST /reportes/consulta-ia. Claude llama a una
+       herramienta por reporte (mismo alcance por sucursal que las otras pestañas) y nunca inventa
+       una cifra; la tabla con el detalle se arma con la ultima consulta que hizo. La voz se
+       transcribe en el navegador con la Web Speech API (Chrome/Edge) y se manda como si el
+       usuario la hubiera escrito -- no hay backend de audio. -->
   @if (vista() === 'ia') {
-    <section class="panel panel--proximamente">
-      <h2 class="panel__titulo">Consultas por voz (próximamente)</h2>
-      <p class="aviso">
-        Acá va a vivir un asistente que arme estos mismos reportes a partir de un comando de voz,
-        usando la API de Claude. Por ahora es solo un espacio reservado: los reportes dinámicos y
-        estáticos de las otras pestañas ya cubren CU15.
+    <section class="panel">
+      <div class="panel__cabecera">
+        <h2 class="panel__titulo">Reporte con IA</h2>
+        <button
+          type="button"
+          class="boton boton--secundario"
+          (click)="reiniciarIa()"
+          [disabled]="iaCargando() || iaMensajes().length === 0"
+        >
+          Nueva consulta
+        </button>
+      </div>
+      <p class="secundario">
+        Preguntá en lenguaje natural (o por voz) por ventas, stock, reservas, envíos, cajas o
+        recepciones. La IA consulta los datos reales antes de responder.
       </p>
-      <button type="button" class="boton boton--secundario" disabled>Hacer una consulta por voz</button>
+
+      @if (iaError()) {
+        <p class="error">{{ iaError() }}</p>
+      }
+      @if (!iaSoportaVoz()) {
+        <p class="aviso">Tu navegador no soporta dictado por voz; probá con Chrome o Edge, o escribí tu consulta.</p>
+      }
+
+      <div class="ia-chat">
+        @if (iaMensajes().length === 0) {
+          <p class="estado">Probá con algo como "¿cómo van las ventas de este mes en Santa Cruz?".</p>
+        }
+        @for (m of iaMensajes(); track $index) {
+          <div class="ia-mensaje" [class.ia-mensaje--usuario]="m.rol === 'user'">
+            <span class="ia-mensaje__texto">{{ m.texto }}</span>
+          </div>
+        }
+        @if (iaCargando()) {
+          <p class="estado">Consultando…</p>
+        }
+      </div>
+
+      <form class="ia-form" [formGroup]="iaForm" (ngSubmit)="enviarConsultaIa()">
+        <input
+          type="text"
+          class="ia-form__campo"
+          formControlName="texto"
+          placeholder="Escribí tu consulta…"
+          [disabled]="iaCargando()"
+        />
+        @if (iaSoportaVoz()) {
+          <button
+            type="button"
+            class="boton boton--secundario"
+            [class.boton--grabando]="iaEscuchando()"
+            (click)="alternarEscucha()"
+            [disabled]="iaCargando()"
+          >
+            {{ iaEscuchando() ? 'Escuchando…' : 'Usar voz' }}
+          </button>
+        }
+        <button type="submit" class="boton" [disabled]="iaCargando() || !iaForm.controls.texto.value.trim()">
+          Consultar
+        </button>
+      </form>
+
+      @if (iaTabla().length) {
+        <section class="panel">
+          <div class="panel__cabecera">
+            <h3 class="panel__titulo">{{ iaTitulo() }}</h3>
+            <div class="exportar">
+              <button type="button" class="boton boton--secundario" (click)="exportarIaPdf()">Exportar PDF</button>
+              <button type="button" class="boton boton--secundario" (click)="exportarIaExcel()">Exportar Excel</button>
+            </div>
+          </div>
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  @for (c of iaColumnas(); track c.clave) {
+                    <th>{{ c.etiqueta }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of iaTabla(); track $index) {
+                  <tr>
+                    @for (c of iaColumnas(); track c.clave) {
+                      <td>{{ fila[c.clave] }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
     </section>
   }
 </app-panel-shell>

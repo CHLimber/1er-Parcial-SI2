@@ -100,10 +100,7 @@
       limpio, `ng serve` compila.
       FALTA (a proposito, ver charla con el usuario):
         - Movil: panel_reportes_pagina.dart no se hizo, CU15 queda solo en backend+web.
-        - "Consultas por voz con IA": en la pantalla web hay una seccion
-          "Consultas por voz (proximamente)" que es placeholder puro -- sin
-          endpoint, sin ANTHROPIC_API_KEY en .env, sin dependencia del SDK de
-          Claude. Es una tarea aparte, CU15 (reportes) ya esta cerrado sin ella.
+        - "Consultas por voz con IA" y exportacion PDF/Excel: resuelto en [2.5.5].
 
       [2.5.1] [HECHO 2026-09-18] Ampliacion de CU15: mas filtros en los dinamicos +
       4 estaticos nuevos + 1 endpoint auxiliar, backend + web (movil sigue sin CU15,
@@ -208,6 +205,111 @@
       auditoria, reportes), asi que el cambio se ve en todas, no solo en
       reportes -- es intencional, mismo sistema de diseno para toda la pantalla
       de gestion. `ng build` limpio.
+
+      [2.5.5] [HECHO 2026-09-18] "Reporte con IA" pasa de
+      placeholder a funcional (texto + voz) y se suma exportacion PDF/Excel a las
+      3 pestanias de tablas -- backend + web, movil sigue sin CU15 a proposito.
+      Backend: `app/modules/reportes/router.py` se refactorizo primero (sin
+      cambiar ninguna consulta) para sacar el SQL de cada uno de los 11 reportes
+      a una funcion interna `_consultar_*(conn, ...)` que devuelve dict/list[dict]
+      crudo (Decimal ya convertido a float via `_normalizar` -- Pydantic v2
+      serializa Decimal como string en el JSON, ver nota vieja de este mismo
+      archivo mas arriba); los 11 endpoints HTTP quedaron como wrappers finos
+      sobre esas funciones, mismo comportamiento que antes. Con eso ya factorizado,
+      `POST /reportes/consulta-ia` (mismo permiso `reportes.leer`, sin permiso
+      nuevo) hace un loop de tool-use contra la API de Claude (mismo patron que
+      CU18) con 11 herramientas, una por reporte, que reusan esas funciones --
+      el modelo nunca inventa una cifra, solo puede citar lo que una herramienta
+      devolvio en esa conversacion. Las herramientas reciben filtros en lenguaje
+      natural (`sucursal_nombre`, `categoria_nombre`, `vendedor_nombre` resueltos
+      por ILIKE contra la base, no un uuid que Claude tendria que adivinar); si
+      el nombre no matchea o el usuario no tiene permiso para esa sucursal (mismo
+      alcance de `_resolver_sucursal` que el resto de CU15), la herramienta
+      devuelve un aviso en texto en vez de un 403 que cortaria la conversacion.
+      Sin persistencia, igual que CU18: el frontend reenvia `mensajes[]` completo.
+      Web: la pestania "Reporte con IA" de `panel-reportes.page.ts/html` dejo de
+      ser el placeholder "Consultas por voz (proximamente)" y ahora es un chat
+      (burbujas usuario/asistente) con un campo de texto y un boton "Usar voz"
+      que dicta con la Web Speech API del navegador (`SpeechRecognition` /
+      `webkitSpeechRecognition`, sin backend de audio: transcribe en el cliente y
+      manda el texto como si el usuario lo hubiera escrito) -- el boton no se
+      muestra si el navegador no la soporta (Firefox/Safari), con un aviso en su
+      lugar. La respuesta trae `titulo`/`columnas`/`tabla` ademas del texto, asi
+      que la pantalla arma una tabla generica con el detalle de la ultima
+      herramienta que Claude llamo.
+      Exportacion (`shared/reportes/exportar-reportes.ts`, nuevo): todo corre en
+      el navegador con `jspdf` + `jspdf-autotable` (PDF) y `xlsx`/SheetJS (Excel)
+      sobre los datos que ya estan en los signals de la vista activa -- no hay
+      endpoint nuevo en el backend solo para exportar lo mismo de otra forma.
+      "Reporte Estaticos", "Reporte Dinamicos" y "Reporte con IA" tienen botones
+      "Exportar PDF"/"Exportar Excel" para la tabla que esta en pantalla.
+      "Graficas" SOLO tiene "Exportar PDF" (a pedido explicito del usuario: no
+      tiene sentido un Excel de graficos) -- vuelca cada `<canvas>` de Chart.js
+      como imagen (`chart.toBase64Image()`) mas los KPIs del resumen en un PDF
+      con varias paginas si hace falta.
+      `angular.json`: se agregaron `html2canvas`/`canvg`/`raf`/`rgbcolor`/`core-js`
+      a `allowedCommonJsDependencies` (dependencias transitivas de jsPDF que no
+      son ESM) para que `ng build` no tire warnings; el chunk lazy de
+      panel-reportes crecio a ~270kB transferidos por jsPDF+xlsx, aceptable
+      porque solo lo carga esa pantalla de gestion.
+      `ANTHROPIC_API_KEY` ya estaba en `backend/.env` de una sesion anterior (CU18).
+
+      [2.5.6] [HECHO 2026-09-18] Bugs reales encontrados al probar [2.5.5] en vivo
+      (el usuario reporto "se reinicia la pagina" y un 503 constante), los 4 se
+      corrigieron y se reverifico con curl contra Postgres real (login real,
+      3 consultas distintas: dinamico por nombre de sucursal, estatico con lista
+      larga, y sucursal inexistente):
+        1. Web: el `<form>` de "Reporte con IA" usaba `(ngSubmit)` sobre un
+           `FormControl` suelto (`iaTexto`), sin `[formGroup]` -- sin esa
+           directiva Angular no intercepta el "submit" nativo, asi que apretar
+           "Consultar" (o Enter en el campo) hacia un submit real del navegador
+           = recarga de pagina. Se reemplazo por un `FormGroup` (`iaForm`) igual
+           que `filtro`/`filtroEstatico`/`filtroDinamico`, que si tienen
+           `[formGroup]` + `(ngSubmit)` funcionando.
+        2. Backend: las 11 herramientas de IA tenian `strict: true` con TODAS
+           las propiedades `required` y nullable (`type: [string, null]`),
+           patron de OpenAI, no de Claude. Rompia de 3 formas distintas contra
+           la API real (`anthropic.APIStatusError`, capturado por el except
+           generico -- por eso el usuario siempre veia "no estan disponibles en
+           este momento" en vez de un error mas especifico):
+           a) `type:[string,null]` + `enum` con `None` adentro -> 400 ("Enum
+              value 'WEB' does not match declared type").
+           b) `minimum`/`maximum` en propiedades `integer` -> 400 ("properties
+              maximum, minimum are not supported").
+           c) Ya resueltas a y b, quedo un tercer 400: mas de 16 parametros con
+              tipo union (nullable) contradas entre TODAS las herramientas del
+              request (35 en las 11 herramientas juntas) -> "Schemas contains
+              too many parameters with union types... limit: 16". Se saco
+              `strict`, se sacaron los `null`/`required` y se dejaron
+              propiedades simplemente opcionales (el patron nativo de Claude);
+              el clamp de `limite` y el default de fecha ya vivian en
+              `_ejecutar_herramienta_reporte`, asi que no se perdio validacion.
+              OJO si se agregan mas herramientas: el limite de 16 parametros-
+              union es del REQUEST completo, no por herramienta.
+        3. `sucursal_nombre` solo buscaba contra `sucursal.nombre` (el nombre
+           comercial, ej. "FashionStore Equipetrol"), pero la gente pregunta
+           por CIUDAD ("Santa Cruz", "La Paz") -- eso vive en `sucursal.ciudad`
+           (ENUM `ciudad_bo`). `_resolver_sucursal_nombre` ahora matchea contra
+           `nombre` O `replace(ciudad::text, '_', ' ')`.
+        4. Menor (no rompia nada, pero el modelo se equivocaba): sin la fecha de
+           hoy en el prompt, Claude resolvia "este mes" con la fecha de su
+           corte de entrenamiento en vez de la real. Se agrega `Hoy es
+           {date.today()}` al system prompt en cada request. Se agrego tambien
+           una linea pidiendole que cuente las filas de la tabla antes de decir
+           "no hay resultados" (se vio un caso real donde la herramienta trajo
+           50 filas y el resumen del modelo decia que no habia nada).
+      Contenedor `backend` reconstruido 3 veces (`docker compose up -d --build
+      backend`) para probar cada tanda de fixes -- no hay volumen de codigo
+      montado en docker-compose.yml, asi que un `docker compose restart` solo
+      no alcanza, hace falta `--build`.
+      MISMO BUG LATENTE en CU18: `asistente/router.py` (`HERRAMIENTA_BUSCAR_CATALOGO`)
+      usa el mismo patron `strict: true` + `minimum`/`maximum` en `limite` que
+      recien se probo que Claude rechaza. CU18 sigue marcado "FALTA PROBAR EN
+      VIVO" en `cu18_asistente_chatbot.md` -- cuando se pruebe, es casi seguro
+      que hace falta el mismo fix (sacar `minimum`/`maximum` del integer; con
+      una sola herramienta no pega el limite de 16 union-params, asi que el
+      `type: [string, null]` se puede dejar si no se combina con `enum`, pero
+      convendria alinearlo al mismo patron por consistencia).
 
 [2.6] Ajustes manuales de stock: idem.
       El permiso inventario.ajustar esta asignado a ADMIN, ENCARGADO y ALMACEN,
@@ -620,16 +722,16 @@
       usar -- no es cierto, no existe en db/01_schema.sql (corregido ahi mismo). El historial que
       usa CU17 sale de venta_detalle/venta y reserva_detalle/reserva, no de favoritos.
 
-[2.11] [HECHO 2026-09-18, FALTA PROBAR EN VIVO] CU18 "Asistir al Cliente via Chatbot": backend +
-      web. A diferencia de CU17, esta CU si llama a un modelo de IA de verdad (API de Claude,
-      Anthropic) -- aclaracion explicita del usuario al pedirla.
+[2.11] [HECHO 2026-09-18, PROBADO EN VIVO 2026-09-18] CU18 "Asistir al Cliente via Chatbot":
+      backend + web. A diferencia de CU17, esta CU si llama a un modelo de IA de verdad (API de
+      Claude, Anthropic) -- aclaracion explicita del usuario al pedirla.
       Backend: app/modules/asistente/router.py, POST /asistente/chat, solo CLIENTE (403 para
       STAFF, mismo patron _exigir_cliente que recomendaciones/carrito). Decisiones conversadas
       con el usuario:
         - Modelo: claude-haiku-4-5 (barato, configurable por ANTHROPIC_MODEL en .env).
         - Grounding: tool use, NO todo el catalogo en el prompt. Una herramienta
-          "buscar_catalogo" (strict, JSON schema) que Claude llama con filtros (categoria_slug,
-          q, talla_codigo, color_nombre, precio_maximo, limite) contra Postgres en vivo -- nunca
+          "buscar_catalogo" (JSON schema) que Claude llama con filtros (categoria_slug, q,
+          talla_codigo, color_nombre, precio_maximo, limite) contra Postgres en vivo -- nunca
           inventa productos. El system prompt le pide expresamente hacer 1-2 preguntas para
           acotar ANTES de llamar a la herramienta si el pedido es muy general (para no gastar de
           mas ni traer resultados demasiado amplios), y restringe la charla a temas de
@@ -648,15 +750,35 @@
       Config nueva: ANTHROPIC_API_KEY / ANTHROPIC_MODEL en backend/.env(.example),
       requirements.txt suma anthropic==1.6.0. Sin la clave, /asistente/chat responde 503 en vez
       de romper el arranque del backend (probado). El 403 para STAFF tambien esta probado.
-      LO QUE FALTA PROBAR: una conversacion real contra la API de Claude (necesita
-      ANTHROPIC_API_KEY real en backend/.env, que gasta saldo de la cuenta del usuario -- no se
-      hizo sin su autorizacion explicita). Falta confirmar en vivo: que el loop de la herramienta
-      funcione de punta a punta, que el modelo efectivamente pregunte antes de buscar cuando el
-      pedido es vago, y que rechace temas fuera de la tienda.
+      BUG CORREGIDO al probar en vivo: `HERRAMIENTA_BUSCAR_CATALOGO` tenia `"strict": true` +
+      union types con null (`["string","null"]`) + `minimum`/`maximum` en `limite` -- el mismo
+      patron de OpenAI (no el de Claude) que ya habia goteado en CU15 ("Reporte con IA"). La API
+      de Claude lo rechazaba con 400. Fix: se saco `strict`, se sacaron los union types (`type`
+      simple, sin `required`, todo opcional) y se saco `minimum`/`maximum` de `limite` (el clamp
+      1-8 ya vivia en `_ejecutar_busqueda`, no hacia falta duplicarlo en el schema).
+      PROBADO EN VIVO contra la API real de Claude (con ANTHROPIC_API_KEY real en backend/.env,
+      autorizado por el usuario): pedido vago -> el asistente pregunta 1-2 cosas antes de buscar;
+      pedido con talla/color/presupuesto en un segundo turno -> llama a buscar_catalogo y trae
+      3 vestidos reales con precio/tallas/disponibilidad correctos en `productos_sugeridos`;
+      pregunta fuera de tema (el clima) -> rechaza y redirige al catalogo; STAFF -> 403.
       Web: pages/asistente/ (ruta /asistente, link nuevo en la cabecera de tienda.page junto a
       "Mis compras"), burbujas de chat con Bs formateados, reusa <li app-producto-card> (el mismo
       componente de CU17) para mostrar las prendas sugeridas debajo de la respuesta del
       asistente. Verificado: tsc --noEmit limpio, `ng build` limpio.
+      RENDERIZADO MARKDOWN (2026-09-18): Claude devuelve la respuesta en markdown (negrita,
+      listas) aunque el prompt le pedia evitarlo -- se veia como texto crudo (asteriscos, guiones)
+      en la burbuja. Se agrego `shared/markdown.pipe.ts` (pipe standalone `markdown`, usa el
+      paquete npm `marked`) y se aplica solo a las burbujas del asistente (`[innerHTML]="mensaje.texto
+      | markdown"`, `asistente.page.html`); los mensajes del usuario siguen como texto plano.
+      Angular sanitiza automaticamente cualquier valor bindeado por `[innerHTML]` (no se usa
+      `bypassSecurityTrustHtml`), asi que no hace falta una libreria de sanitizado aparte para el
+      HTML que devuelve `marked`. CSS nuevo en `asistente.page.css` (`.burbuja__markdown`) para
+      parrafos/listas/negrita/codigo/links dentro de la burbuja. Se aflojo `_SYSTEM_PROMPT_BASE`
+      en el backend (ya no le pide evitar markdown, ahora que el chat lo renderiza) y se
+      reconstruyo el contenedor del backend. Probado en vivo con `marked.parse()` sobre una
+      respuesta real (lista con negritas) -> HTML limpio (`<ul><li><strong>`). No se toco el chat
+      "Reporte con IA" de CU15 (panel-reportes): ese prompt le pide texto plano a proposito porque
+      las respuestas tambien se leen en voz alta (Web Speech API), markdown ahi estorbaria.
       FALTA (a proposito, mismo criterio que CU15/CU17): movil no se toco.
 
 [2.12] [HECHO 2026-09-18] CU19 "Consultar Bitacora de Auditoria": backend + web.

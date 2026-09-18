@@ -86,7 +86,53 @@
   font-size: 0.95rem;
   line-height: 1.45;
   color: var(--ink);
+}
+
+.burbuja--user .burbuja__texto {
   white-space: pre-wrap;
+}
+
+/* Markdown de las respuestas del asistente (CU18, texto de la API de Claude). Angular sanitiza
+   el HTML del pipe `markdown` al bindearlo con [innerHTML], asi que solo faltan estilos. */
+.burbuja__markdown > :first-child {
+  margin-top: 0;
+}
+
+.burbuja__markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.burbuja__markdown p,
+.burbuja__markdown ul,
+.burbuja__markdown ol {
+  margin: 0 0 0.6rem;
+}
+
+.burbuja__markdown ul,
+.burbuja__markdown ol {
+  padding-left: 1.2rem;
+}
+
+.burbuja__markdown li + li {
+  margin-top: 0.2rem;
+}
+
+.burbuja__markdown strong {
+  font-weight: 700;
+}
+
+.burbuja__markdown code {
+  background: var(--paper);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+}
+
+.burbuja__markdown a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .burbuja__productos {

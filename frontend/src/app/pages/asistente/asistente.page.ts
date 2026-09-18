@@ -8,6 +8,7 @@ import { MensajeChat } from '../../core/asistente/asistente.models';
 import { ProductoOut } from '../../core/catalogo/catalogo.models';
 import { interpretarError } from '../../shared/errores';
 import { ProductoCard } from '../../shared/catalogo/producto-card';
+import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 interface MensajeVista extends MensajeChat {
   productos?: ProductoOut[];
@@ -18,7 +19,7 @@ interface MensajeVista extends MensajeChat {
 @Component({
   selector: 'app-asistente-page',
   standalone: true,
-  imports: [FormsModule, ProductoCard, RouterLink],
+  imports: [FormsModule, ProductoCard, RouterLink, MarkdownPipe],
   templateUrl: './asistente.page.html',
   styleUrl: './asistente.page.css',
 })

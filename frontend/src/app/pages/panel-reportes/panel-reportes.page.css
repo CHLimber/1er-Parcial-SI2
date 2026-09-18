@@ -98,3 +98,75 @@
   color: var(--flame-dark);
   border-bottom-color: var(--flame);
 }
+
+.exportar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* --- Reporte con IA --- */
+
+.ia-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 1rem 0;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.ia-mensaje {
+  align-self: flex-start;
+  max-width: 32rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.ia-mensaje--usuario {
+  align-self: flex-end;
+  background: var(--ink);
+  color: var(--white);
+  border-color: var(--ink);
+}
+
+.ia-mensaje__texto {
+  white-space: pre-wrap;
+}
+
+.ia-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.ia-form__campo {
+  flex: 1 1 16rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.boton--grabando {
+  background: var(--flame);
+  color: var(--white);
+  border-color: var(--flame);
+  animation: ia-pulso 1.1s ease-in-out infinite;
+}
+
+@keyframes ia-pulso {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
