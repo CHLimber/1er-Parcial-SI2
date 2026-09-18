@@ -1,0 +1,88 @@
+<mxfile host="app.diagrams.net" agent="FashionStore" version="24.7.17" type="device">
+  <diagram id="cu01-login-comunicacion" name="CU01 - Iniciar Sesion">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ═══ OBJETOS ═══ -->
+
+        <mxCell id="obj_cliente" value="Cliente" style="shape=actor;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="50" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obj_form" value="&lt;u&gt;:FormularioLogin&lt;/u&gt;&lt;br&gt;&lt;i&gt;(Interfaz Angular)&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;align=center;" vertex="1" parent="1">
+          <mxGeometry x="180" y="310" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obj_api" value="&lt;u&gt;:ApiAuth&lt;/u&gt;&lt;br&gt;&lt;i&gt;(FastAPI /auth/login)&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;align=center;" vertex="1" parent="1">
+          <mxGeometry x="440" y="310" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obj_bd" value="&lt;u&gt;:BaseDeDatos&lt;/u&gt;&lt;br&gt;&lt;i&gt;(PostgreSQL)&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;align=center;" vertex="1" parent="1">
+          <mxGeometry x="740" y="310" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="obj_seg" value="&lt;u&gt;:ModuloSeguridad&lt;/u&gt;&lt;br&gt;&lt;i&gt;(bcrypt + JWT)&lt;/i&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;fontColor=#000000;align=center;" vertex="1" parent="1">
+          <mxGeometry x="440" y="500" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ MENSAJES: Cliente &lt;-&gt; FormularioLogin ═══ -->
+
+        <mxCell id="msg1" value="1: ingresarCredenciales(email, password)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_cliente" target="obj_form">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="120" y="325" as="sourcePoint" />
+            <mxPoint x="180" y="325" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="msg5a" value="5a: mostrarError(error)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_form" target="obj_cliente">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg9" value="9: [esValida] redirigirAPanel()" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.85;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_form" target="obj_cliente">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ MENSAJES: FormularioLogin &lt;-&gt; ApiAuth ═══ -->
+
+        <mxCell id="msg2" value="2: login(email, password)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_form" target="obj_api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg4a" value="4a: [¬esValida] error := &quot;Email o contrasena invalidos&quot;" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_form">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg8" value="8: [esValida] sesionIniciada(token, usuario)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=1;entryY=0.8;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_form">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ MENSAJES: ApiAuth &lt;-&gt; BaseDeDatos ═══ -->
+
+        <mxCell id="msg3" value="3: fila := buscarUsuarioPorEmail(email)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.2;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_bd">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg5" value="5: [esValida] permisos := obtenerPermisos(fila.id)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_bd">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg7" value="7: [esValida] registrarAccesoYAuditoria(fila.id)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.8;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_bd">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ═══ MENSAJES: ApiAuth &lt;-&gt; ModuloSeguridad ═══ -->
+
+        <mxCell id="msg4" value="4: esValida := verificarPassword(password, fila.hash)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0.35;exitY=1;exitDx=0;exitDy=0;entryX=0.35;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_seg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="msg6" value="6: [esValida] token := generarTokenJWT(fila.id, fila.tipo)" style="html=1;endArrow=block;endFill=1;endSize=8;fontColor=#000000;strokeColor=#000000;exitX=0.65;exitY=1;exitDx=0;exitDy=0;entryX=0.65;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="obj_api" target="obj_seg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
