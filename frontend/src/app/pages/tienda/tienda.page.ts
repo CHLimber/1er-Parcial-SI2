@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
@@ -18,7 +18,7 @@ import { ProductoCard } from '../../shared/catalogo/producto-card';
   templateUrl: './tienda.page.html',
   styleUrl: './tienda.page.css',
 })
-export class TiendaPage implements OnInit {
+export class TiendaPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly catalogo = inject(CatalogoService);
   private readonly router = inject(Router);
@@ -46,6 +46,11 @@ export class TiendaPage implements OnInit {
   protected colorId: number | null = null;
   protected temporadaId = '';
 
+  /** Cantidad de resultados de la ultima busqueda, para el resumen "N prendas". */
+  protected readonly totalResultados = computed(() => this.productos().length);
+
+  private temporizadorBusqueda: ReturnType<typeof setTimeout> | undefined;
+
   protected hayFiltrosActivos(): boolean {
     return !!(this.categoriaSlug || this.q || this.tallaId || this.colorId || this.temporadaId);
   }
@@ -63,6 +68,61 @@ export class TiendaPage implements OnInit {
         error: () => this.recomendaciones.set([]),
       });
     }
+  }
+
+  /** Chips de categoria: un clic aplica el filtro al toque, sin pasar por "Filtrar". */
+  protected seleccionarCategoria(slug: string): void {
+    this.categoriaSlug = this.categoriaSlug === slug ? '' : slug;
+    this.buscar();
+  }
+
+  protected seleccionarTalla(id: number): void {
+    this.tallaId = this.tallaId === id ? null : id;
+    this.buscar();
+  }
+
+  protected seleccionarColor(id: number): void {
+    this.colorId = this.colorId === id ? null : id;
+    this.buscar();
+  }
+
+  protected cambiarTemporada(): void {
+    this.buscar();
+  }
+
+  /** Busqueda por texto en vivo, con una pausa corta para no pegarle a la API en cada tecla. */
+  protected buscarConDemora(): void {
+    clearTimeout(this.temporizadorBusqueda);
+    this.temporizadorBusqueda = setTimeout(() => this.buscar(), 350);
+  }
+
+  protected quitarFiltro(campo: 'categoria' | 'q' | 'talla' | 'color' | 'temporada'): void {
+    if (campo === 'categoria') this.categoriaSlug = '';
+    if (campo === 'q') this.q = '';
+    if (campo === 'talla') this.tallaId = null;
+    if (campo === 'color') this.colorId = null;
+    if (campo === 'temporada') this.temporadaId = '';
+    this.buscar();
+  }
+
+  protected nombreCategoria(slug: string): string {
+    return this.filtros()?.categorias.find((c) => c.slug === slug)?.nombre ?? slug;
+  }
+
+  protected codigoTalla(id: number): string {
+    return this.filtros()?.tallas.find((t) => t.id === id)?.codigo ?? '';
+  }
+
+  protected nombreColor(id: number): string {
+    return this.filtros()?.colores.find((c) => c.id === id)?.nombre ?? '';
+  }
+
+  protected nombreTemporada(id: string): string {
+    return this.filtros()?.temporadas.find((t) => t.id === id)?.nombre ?? id;
+  }
+
+  ngOnDestroy(): void {
+    clearTimeout(this.temporizadorBusqueda);
   }
 
   protected buscar(): void {

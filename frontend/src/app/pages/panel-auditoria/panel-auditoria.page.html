@@ -57,12 +57,12 @@
               <th>Entidad</th>
               <th>ID</th>
               <th>Acción</th>
-              <th></th>
+              <th class="tabla__acciones-th">Cambios</th>
             </tr>
           </thead>
           <tbody>
             @for (fila of items(); track fila.id) {
-              <tr>
+              <tr [attr.data-inactivo]="!(fila.datos_antes || fila.datos_despues) ? 'true' : null">
                 <td class="mono">{{ fila.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
                 <td>
                   @if (fila.usuario_nombre) {
@@ -81,27 +81,92 @@
                 </td>
                 <td class="tabla__acciones">
                   @if (fila.datos_antes || fila.datos_despues) {
-                    <button type="button" class="boton boton--secundario boton--chico" (click)="alternarDetalle(fila.id)">
-                      {{ filaExpandida() === fila.id ? 'Ocultar' : 'Ver detalle' }}
+                    <button
+                      type="button"
+                      class="boton-detalle"
+                      [class.boton-detalle--abierto]="filaExpandida() === fila.id"
+                      [attr.aria-expanded]="filaExpandida() === fila.id"
+                      (click)="alternarDetalle(fila.id)"
+                    >
+                      {{ filaExpandida() === fila.id ? 'Ocultar cambios' : 'Ver qué cambió' }}
+                      <span class="boton-detalle__flecha" aria-hidden="true">⌄</span>
                     </button>
+                  } @else {
+                    <span class="tabla__vacio" title="No hay antes/después registrado para este evento">Sin cambios</span>
                   }
                 </td>
               </tr>
               @if (filaExpandida() === fila.id) {
-                <tr>
+                <tr class="fila-detalle">
                   <td colspan="6">
                     <div class="detalle-auditoria">
-                      @if (fila.datos_antes) {
-                        <div>
-                          <p class="campo__etiqueta">Antes</p>
-                          <pre class="mono">{{ fila.datos_antes | json }}</pre>
-                        </div>
-                      }
-                      @if (fila.datos_despues) {
-                        <div>
-                          <p class="campo__etiqueta">Después</p>
-                          <pre class="mono">{{ fila.datos_despues | json }}</pre>
-                        </div>
+                      @if (fila.datos_antes && fila.datos_despues) {
+                        <!-- ACTUALIZAR (y similares): comparacion campo a campo, solo lo que cambio primero -->
+                        @if (filasCambiadas(fila).length === 0) {
+                          <p class="detalle-auditoria__nada">No se registraron cambios de valor en este evento.</p>
+                        } @else {
+                          <p class="detalle-auditoria__resumen">
+                            Cambiaron {{ filasCambiadas(fila).length }} de {{ filasTotales(fila).length }} campos:
+                          </p>
+                          <table class="tabla-comparacion">
+                            <thead>
+                              <tr>
+                                <th>Campo</th>
+                                <th>Antes</th>
+                                <th>Después</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              @for (f of filasCambiadas(fila); track f.campo) {
+                                <tr>
+                                  <td>{{ etiquetaCampo(f.campo) }}</td>
+                                  <td>{{ f.antes }}</td>
+                                  <td class="tabla-comparacion__despues">{{ f.despues }}</td>
+                                </tr>
+                              }
+                            </tbody>
+                          </table>
+                        }
+                        @if (filasSinCambio(fila).length > 0) {
+                          <button type="button" class="detalle-auditoria__toggle" (click)="alternarSinCambios(fila.id)">
+                            {{ mostrarSinCambiosDe() === fila.id ? 'Ocultar' : 'Mostrar' }}
+                            {{ filasSinCambio(fila).length }} campo{{ filasSinCambio(fila).length === 1 ? '' : 's' }} sin cambios
+                          </button>
+                          @if (mostrarSinCambiosDe() === fila.id) {
+                            <table class="tabla-comparacion tabla-comparacion--muda">
+                              <tbody>
+                                @for (f of filasSinCambio(fila); track f.campo) {
+                                  <tr>
+                                    <td>{{ etiquetaCampo(f.campo) }}</td>
+                                    <td colspan="2">{{ f.antes }}</td>
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          }
+                        }
+                      } @else if (fila.datos_despues) {
+                        <!-- CREAR: solo hay "despues" -->
+                        <p class="detalle-auditoria__resumen">Se creó con estos datos:</p>
+                        <dl class="detalle-lista">
+                          @for (f of soloValores(fila.datos_despues); track f.campo) {
+                            <div class="detalle-lista__fila">
+                              <dt>{{ etiquetaCampo(f.campo) }}</dt>
+                              <dd>{{ f.valor }}</dd>
+                            </div>
+                          }
+                        </dl>
+                      } @else if (fila.datos_antes) {
+                        <!-- ELIMINAR: solo hay "antes" -->
+                        <p class="detalle-auditoria__resumen">Tenía estos datos antes de eliminarse:</p>
+                        <dl class="detalle-lista">
+                          @for (f of soloValores(fila.datos_antes); track f.campo) {
+                            <div class="detalle-lista__fila">
+                              <dt>{{ etiquetaCampo(f.campo) }}</dt>
+                              <dd>{{ f.valor }}</dd>
+                            </div>
+                          }
+                        </dl>
                       }
                     </div>
                   </td>

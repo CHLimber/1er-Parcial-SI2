@@ -50,61 +50,125 @@
     }
 
     <section class="catalogo">
-      <h2 class="catalogo__titulo">Catálogo</h2>
+      <div class="catalogo__cabecera">
+        <h2 class="catalogo__titulo">Catálogo</h2>
+        @if (!cargandoCatalogo() && !errorCatalogo()) {
+          <span class="catalogo__contador">
+            {{ totalResultados() }} {{ totalResultados() === 1 ? 'prenda encontrada' : 'prendas encontradas' }}
+          </span>
+        }
+      </div>
 
       <form class="filtros" (ngSubmit)="buscar()">
         <div class="filtros__campo filtros__campo--busqueda">
           <label for="q">Buscar</label>
-          <input id="q" type="search" name="q" [(ngModel)]="q" placeholder="Nombre de la prenda" />
+          <input
+            id="q"
+            type="search"
+            name="q"
+            [(ngModel)]="q"
+            (ngModelChange)="buscarConDemora()"
+            placeholder="Ej. vestido, blusa, jean…"
+          />
         </div>
 
-        <div class="filtros__campo">
-          <label for="categoria">Categoría</label>
-          <select id="categoria" name="categoria" [(ngModel)]="categoriaSlug">
-            <option value="">Todas</option>
-            @for (categoria of filtros()?.categorias ?? []; track categoria.id) {
-              <option [value]="categoria.slug">{{ categoria.nombre }}</option>
-            }
-          </select>
-        </div>
+        @if ((filtros()?.categorias ?? []).length > 0) {
+          <div class="filtros__grupo">
+            <span class="filtros__etiqueta">Categoría</span>
+            <div class="chips">
+              @for (categoria of filtros()!.categorias; track categoria.id) {
+                <button
+                  type="button"
+                  class="chip"
+                  [class.chip--activo]="categoriaSlug === categoria.slug"
+                  (click)="seleccionarCategoria(categoria.slug)"
+                >
+                  {{ categoria.nombre }}
+                </button>
+              }
+            </div>
+          </div>
+        }
 
-        <div class="filtros__campo">
-          <label for="talla">Talla</label>
-          <select id="talla" name="talla" [(ngModel)]="tallaId">
-            <option [ngValue]="null">Todas</option>
-            @for (talla of filtros()?.tallas ?? []; track talla.id) {
-              <option [ngValue]="talla.id">{{ talla.codigo }}</option>
-            }
-          </select>
-        </div>
+        @if ((filtros()?.tallas ?? []).length > 0) {
+          <div class="filtros__grupo">
+            <span class="filtros__etiqueta">Talla</span>
+            <div class="chips">
+              @for (talla of filtros()!.tallas; track talla.id) {
+                <button
+                  type="button"
+                  class="chip chip--talla"
+                  [class.chip--activo]="tallaId === talla.id"
+                  (click)="seleccionarTalla(talla.id)"
+                >
+                  {{ talla.codigo }}
+                </button>
+              }
+            </div>
+          </div>
+        }
 
-        <div class="filtros__campo">
-          <label for="color">Color</label>
-          <select id="color" name="color" [(ngModel)]="colorId">
-            <option [ngValue]="null">Todos</option>
-            @for (color of filtros()?.colores ?? []; track color.id) {
-              <option [ngValue]="color.id">{{ color.nombre }}</option>
-            }
-          </select>
-        </div>
+        @if ((filtros()?.colores ?? []).length > 0) {
+          <div class="filtros__grupo">
+            <span class="filtros__etiqueta">Color</span>
+            <div class="swatches">
+              @for (color of filtros()!.colores; track color.id) {
+                <button
+                  type="button"
+                  class="swatch"
+                  [class.swatch--activo]="colorId === color.id"
+                  [style.background-color]="color.codigo_hex"
+                  [title]="color.nombre"
+                  [attr.aria-label]="'Color ' + color.nombre"
+                  (click)="seleccionarColor(color.id)"
+                ></button>
+              }
+            </div>
+          </div>
+        }
 
-        <div class="filtros__campo">
-          <label for="temporada">Temporada</label>
-          <select id="temporada" name="temporada" [(ngModel)]="temporadaId">
-            <option value="">Todas</option>
-            @for (temporada of filtros()?.temporadas ?? []; track temporada.id) {
-              <option [value]="temporada.id">{{ temporada.nombre }}</option>
-            }
-          </select>
-        </div>
-
-        <div class="filtros__acciones">
-          <button type="submit" class="filtros__boton">Filtrar</button>
-          @if (hayFiltrosActivos()) {
-            <button type="button" class="filtros__limpiar" (click)="limpiarFiltros()">Limpiar</button>
-          }
-        </div>
+        @if ((filtros()?.temporadas ?? []).length > 0) {
+          <div class="filtros__campo">
+            <label for="temporada">Temporada</label>
+            <select id="temporada" name="temporada" [(ngModel)]="temporadaId" (ngModelChange)="cambiarTemporada()">
+              <option value="">Todas</option>
+              @for (temporada of filtros()!.temporadas; track temporada.id) {
+                <option [value]="temporada.id">{{ temporada.nombre }}</option>
+              }
+            </select>
+          </div>
+        }
       </form>
+
+      @if (hayFiltrosActivos()) {
+        <div class="filtros-activos">
+          <span class="filtros-activos__etiqueta">Filtrando por:</span>
+          @if (q) {
+            <button type="button" class="filtro-activo" (click)="quitarFiltro('q')">"{{ q }}" <span aria-hidden="true">×</span></button>
+          }
+          @if (categoriaSlug) {
+            <button type="button" class="filtro-activo" (click)="quitarFiltro('categoria')">
+              {{ nombreCategoria(categoriaSlug) }} <span aria-hidden="true">×</span>
+            </button>
+          }
+          @if (tallaId) {
+            <button type="button" class="filtro-activo" (click)="quitarFiltro('talla')">
+              Talla {{ codigoTalla(tallaId) }} <span aria-hidden="true">×</span>
+            </button>
+          }
+          @if (colorId) {
+            <button type="button" class="filtro-activo" (click)="quitarFiltro('color')">
+              {{ nombreColor(colorId) }} <span aria-hidden="true">×</span>
+            </button>
+          }
+          @if (temporadaId) {
+            <button type="button" class="filtro-activo" (click)="quitarFiltro('temporada')">
+              {{ nombreTemporada(temporadaId) }} <span aria-hidden="true">×</span>
+            </button>
+          }
+          <button type="button" class="filtros__limpiar" (click)="limpiarFiltros()">Limpiar todo</button>
+        </div>
+      }
 
       @if (cargandoCatalogo()) {
         <p class="catalogo__estado">Cargando productos…</p>
