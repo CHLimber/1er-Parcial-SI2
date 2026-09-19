@@ -716,11 +716,18 @@
       siempre y la seccion nueva "Recomendado para vos" en tienda.page.html (arriba del catalogo,
       solo para clientes, oculta si no hay recomendaciones). Verificado: tsc --noEmit limpio,
       `ng build` limpio.
-      FALTA (a proposito, mismo criterio que CU15): movil no se toco, CU17 queda solo en
-      backend+web.
       NOTA: [2.7] (mas arriba en este mismo archivo) decia que existia una tabla `favorito` sin
       usar -- no es cierto, no existe en db/01_schema.sql (corregido ahi mismo). El historial que
       usa CU17 sale de venta_detalle/venta y reserva_detalle/reserva, no de favoritos.
+
+      [2.10.1] [HECHO 2026-09-19] CU17 en movil: modulos nuevos core/recomendaciones/
+      (recomendaciones_models.dart con ProductoRecomendadoOut extends ProductoOut, y
+      recomendaciones_service.dart con GET /recomendaciones). tienda_pagina.dart pide las
+      recomendaciones en initState (en silencio, igual que la web) solo si !auth.esStaff, y si
+      hay resultado muestra un carrusel horizontal "Recomendado para vos" arriba del buscador,
+      con TarjetaProducto (el mismo widget del grid de CU03, ya reusado por el asistente de
+      CU18) al que se le sumo un parametro `motivo` opcional para la leyenda. `flutter analyze`
+      limpio. Reportes (CU15) y la bitacora (CU19) siguen sin movil, a proposito.
 
 [2.11] [HECHO 2026-09-18, PROBADO EN VIVO 2026-09-18] CU18 "Asistir al Cliente via Chatbot":
       backend + web. A diferencia de CU17, esta CU si llama a un modelo de IA de verdad (API de
@@ -779,7 +786,76 @@
       respuesta real (lista con negritas) -> HTML limpio (`<ul><li><strong>`). No se toco el chat
       "Reporte con IA" de CU15 (panel-reportes): ese prompt le pide texto plano a proposito porque
       las respuestas tambien se leen en voz alta (Web Speech API), markdown ahi estorbaria.
-      FALTA (a proposito, mismo criterio que CU15/CU17): movil no se toco.
+      MOVIL (2026-09-19, agregado despues, mismo backend sin cambios): paginas/asistente_pagina.dart
+      (ruta /asistente), acceso nuevo en cuenta_pagina.dart bajo "Mi actividad" (solo si
+      !auth.esStaff, mismo criterio que "Mis direcciones") -- no hay link en la barra inferior
+      porque esa barra es fija a las 4 pantallas de uso diario (Tienda/Reservas/Carrito/Cuenta).
+      core/asistente/{asistente_models.dart,asistente_service.dart} en espejo del modulo web.
+      Para el markdown de la respuesta de Claude se sumo la dependencia flutter_markdown_plus
+      (fork mantenido de flutter_markdown, que esta discontinuado) -- MarkdownBody sobre las
+      burbujas del asistente, estilos ajustados a la Paleta del proyecto; los mensajes del usuario
+      siguen en texto plano. Las tarjetas de producto sugeridas reusan TarjetaProducto de
+      tienda_pagina.dart (export explicito) en una lista horizontal debajo de cada respuesta, en
+      vez de duplicar el widget de tarjeta. Probado en vivo en el emulador Pixel_10a contra el
+      backend real (Docker local + ANTHROPIC_API_KEY real): pedido con talla/color concretos ->
+      respuesta en markdown bien renderizada (negrita, lista numerada) + 2 vestidos reales
+      sugeridos con precio y tallas correctos. `flutter analyze` y `flutter test` limpios.
+
+      [2.11.1] [HECHO 2026-09-19] Dictado por voz en el asistente movil: unico lugar del
+      proyecto con voz ademas del "Reporte con IA" de panel-reportes (CU15, Web Speech API del
+      navegador). En movil no hay equivalente nativo, asi que se sumo el paquete
+      `speech_to_text` (7.5.0) a pubspec.yaml. Icono de microfono nuevo en asistente_pagina.dart,
+      al lado del boton de enviar (visible solo si `_vozDisponible`, que se resuelve en
+      initState llamando a `SpeechToText.initialize()` -- devuelve false si el usuario nunca
+      dio permiso o el dispositivo no tiene reconocimiento de voz). Mismo criterio que
+      `alternarEscucha()` de panel-reportes.page.ts: una sola frase (`partialResults: false`),
+      sin resultados parciales, que al terminar (`finalResult`) se carga en el campo de texto y
+      se manda igual que un mensaje escrito (auto-envio, sin que el usuario tenga que tocar
+      "Enviar" de nuevo). Mientras escucha el icono se pone rojo (`Paleta.rojo`) y el hint del
+      campo cambia a "Escuchando...". Permisos: `RECORD_AUDIO` + un `<queries>` para
+      `android.speech.RecognitionService` en AndroidManifest.xml (sin esto, Android 11+ no
+      encuentra el servicio de reconocimiento del sistema por package visibility);
+      `NSMicrophoneUsageDescription` + `NSSpeechRecognitionUsageDescription` en Info.plist para
+      iOS (no probado en iOS, solo Android). `flutter analyze` limpio. Probado en vivo en el
+      emulador Pixel_10a: el permiso de microfono se pide solo al entrar al asistente (primera
+      vez), el icono cambia a rojo con "Escuchando..." al tocarlo y vuelve al estado normal al
+      tocarlo de nuevo (toggle) -- el emulador no tiene microfono real conectado, asi que no se
+      probo una transcripcion de principio a fin con audio real, solo el flujo de permisos y
+      estados (initialize/listen/stop, callbacks onStatus/onError).
+
+      [2.11.2] [HECHO 2026-09-19] Dictado por voz en el asistente web, mismo pedido pero para
+      `pages/asistente`. Hasta aca el unico lugar con voz en la web era panel-reportes (CU15,
+      "Reporte con IA"), con `ResultadoVoz`/`ReconocedorVoz`/`obtenerConstructorVoz` definidos
+      local al archivo. Como no es un schema de dominio (es infraestructura de navegador pura,
+      sin logica de negocio, mismo criterio que shared/errores.ts), se extrajo a
+      `frontend/src/app/shared/voz.ts` (nuevo: agrega tambien `soportaVoz()` y
+      `crearReconocedorVoz()`, que arma el reconocedor con lang/interimResults/continuous ya
+      seteados) y panel-reportes.page.ts se refactorizo para importar de ahi en vez de duplicar
+      -- mismo comportamiento, sin cambios funcionales en CU15. asistente.page.ts suma
+      `soportaVoz`/`escuchando` (signals) + `alternarEscucha()`, identico a `panel-reportes` en
+      logica: una sola frase, al `onresult` carga el texto en `borrador` y llama a `enviar()`
+      solo. `asistente.page.html` agrega un boton circular al lado de "Enviar" (oculto si
+      `!soportaVoz()`, mismo patron que iaSoportaVoz en CU15 -- Firefox/Safari no implementan
+      Web Speech API); mientras escucha, `chat__mic--grabando` (CSS nuevo en
+      asistente.page.css, con el mismo pulso que `.boton--grabando` de panel-reportes) lo pinta
+      de `--flame` y el placeholder del input cambia a "Escuchando...". `ngOnDestroy` para
+      el reconocedor no quedo escuchando si se navega fuera de la pagina a mitad de una frase
+      (bug que panel-reportes ya evita con su propio hook `ngOnDestroy`, existente antes de este
+      cambio).
+      ICONO (ajuste del mismo dia, a pedido explicito): la primera version uso el emoji 🎤 como
+      contenido del boton y el usuario lo encontro feo ("que no sea un icono como tal se ve feo,
+      hace un diseno minimalista o silueta de microfono"). Se reemplazo por un SVG inline propio
+      (silueta de linea, sin relleno, `stroke="currentColor"`, sin libreria de iconos porque el
+      proyecto no usa ninguna en ningun otro lado -- ver CLAUDE.md, identidad visual solo
+      tipografica) y el boton paso de pildora a circulo (`border-radius: 50%`, 2.7rem x 2.7rem)
+      para que la silueta quede centrada. Renderizado verificado con un HTML suelto + Chrome
+      headless (`--screenshot`) antes de aplicarlo, en gris sobre blanco en reposo y blanco sobre
+      `--flame` en estado grabando.
+      Verificado: `tsc --noEmit` limpio, `ng build` limpio (incluye el refactor de
+      panel-reportes). No probado clic a clic en un navegador real (requiere microfono y otorgar
+      permiso de forma interactiva, sin herramienta de automatizacion de navegador disponible en
+      esta sesion) -- a diferencia del movil (2.11.1), donde si se probo en vivo en el emulador
+      con adb.
 
 [2.12] [HECHO 2026-09-18] CU19 "Consultar Bitacora de Auditoria": backend + web.
       Solo lectura sobre la tabla `auditoria` que ya existia en el esquema (db/01_schema.sql:639)
@@ -961,6 +1037,40 @@
       (ver 4.1), no hay SDK embebido en Flutter en esta entrega. Verificado: `flutter analyze`
       sin issues, `flutter test` 3/3.
 
+      [ACTUALIZADO 2026-09-18, sesion posterior] El parrafo de arriba quedo obsoleto: a pedido
+      del usuario ("no salir de la app"), Stripe en canal MOVIL dejo de abrir el navegador. Se
+      agrego el paquete `flutter_stripe` (Stripe SDK nativo para Android/iOS) y el checkout de
+      MOVIL con STRIPE ahora crea un `PaymentIntent` (`ventas/router.py::_crear_sesion_stripe`,
+      antes solo hacia Checkout Session hospedada para este canal) en vez de una Checkout
+      Session: la app llama a `Stripe.instance.initPaymentSheet()` /
+      `presentPaymentSheet()` con ese `client_secret` y el formulario de tarjeta aparece como un
+      bottom sheet nativo, sin salir de FashionStore. La confirmacion real sigue llegando por el
+      webhook firmado de siempre (`_procesar_evento`, idempotente por `evento_pasarela`); se
+      sumo el manejo de `payment_intent.succeeded` (aprueba) y `payment_intent.canceled`
+      (rechaza) en `pagos/router.py::webhook_stripe`. A proposito NO se trata
+      `payment_intent.payment_failed` como rechazo: ese evento se dispara en cada tarjeta
+      declinada dentro del mismo PaymentSheet (el cliente puede seguir probando otra sin cerrarlo)
+      y anular el pedido ahi lo cortaria a mitad de un reintento legitimo -- Checkout Session
+      (web) nunca tuvo este problema porque Stripe absorbe esos reintentos sin emitir webhook.
+      `MainActivity.kt` paso de `FlutterActivity` a `FlutterFragmentActivity` (el PaymentSheet de
+      Android se presenta como Fragment). La publishable key se pide una vez a `/pagos/config`
+      (mismo endpoint que ya usaba la web) y se cachea (`asegurarStripeInicializado()` en
+      `ventas_service.dart`); la imagen QR se separo en un asset propio
+      (`assets/images/pago-qr.jpeg`, copia de `frontend/public/pago-qr.jpeg`) porque la app no
+      corre contra el frontend web para pedirsela ahi.
+      LIMITACION CONOCIDA nueva: si el mismo carrito ya tiene un checkout STRIPE pendiente
+      iniciado desde el OTRO canal (WEB crea Checkout Session `cs_...`, MOVIL PaymentIntent
+      `pi_...`) y se reintenta desde este dispositivo antes de pagar, `_pago_pendiente_stripe`
+      no puede recuperar el id con el tipo de objeto que espera y devuelve `client_secret: null`;
+      el carrito (ambos lados) ya lo maneja sin romper (mensaje de "no se pudo continuar", no
+      crash) en vez de armar el PaymentSheet o el iframe. Mismo cruce "muy improbable" que ya
+      estaba documentado mas abajo para la version anterior (hosted). Verificado:
+      `flutter analyze` sin issues, `flutter test` 3/3, `python -m py_compile` limpio en los tres
+      archivos de backend tocados. FALTA: no se corrio un build nativo (`flutter build apk`) en
+      esta sesion, asi que el Gradle/MainActivity nuevo no se probo compilando de punta a punta,
+      y tampoco se probo un pago real de punta a punta (hace falta `STRIPE_WEBHOOK_SECRET`
+      configurado y `stripe listen` corriendo, ver punto de mas arriba).
+
       BUG ENCONTRADO Y CORREGIDO (reportado por el usuario probando en vivo): "en Stripe no me
       aparece el monto que deberia pagar y en QR/Efectivo me carga el Stripe". Causa real: el
       "reintento de checkout" (`POST /ventas/checkout` con una venta+pago ya PENDIENTE para ese
@@ -1103,16 +1213,81 @@
       propio. Con QR no pasa: se resuelve dentro de la app. Esto solo aplica al
       movil -- en la WEB (ver 2.14) Stripe ya no redirige a ningun lado.
 
+[4.7] EL BACKEND DE RAILWAY ESTA ATRASADO RESPECTO DEL CODIGO LOCAL. <-- BLOQUEANTE
+      SINTOMA : en el APK de release (que apunta a Railway), pagar con Stripe corta
+                con "No se pudo continuar este pago desde el celular. Volve a
+                intentarlo". En debug contra el Docker local no pasa.
+      CAUSA   : el PaymentSheet nativo del movil (canal MOVIL -> PaymentIntent)
+                esta SIN COMMITEAR: `git log -S PaymentIntent.create` no devuelve
+                nada y ventas/router.py, ventas/schemas.py y pagos/router.py
+                figuran como modificados. Railway despliega desde GitHub, o sea
+                que corre el ultimo commit, donde canal MOVIL todavia devolvia
+                Checkout hospedado -> `client_secret = None`, y es justo lo que la
+                app nueva necesita para abrir el PaymentSheet.
+      EVIDENCIA: la venta PENDIENTE del cliente demo (2026-09-19 22:14, Bs 338.89)
+                tiene canal MOVIL pero id_transaccion `cs_test_...`, o sea una
+                Checkout Session; el codigo local, con canal MOVIL, habria creado
+                un `pi_...`.
+      FALTA   : commitear backend/ + movil/ + frontend/ y pushear a
+                github.com/CHLimber/1er-Parcial-SI2 (Railway redespliega solo), y
+                agregar al webhook del Dashboard de Stripe los eventos
+                `payment_intent.succeeded` y `payment_intent.canceled` (ver la nota
+                de Stripe en RAILWAY.md): sin ellos el cobro del movil sale pero la
+                venta se queda PENDIENTE.
+      NOTA    : no tiene nada que ver con el telefono (Huawei) ni con el APK.
+
+[4.8] [RESUELTO 2026-09-19] Un checkout pendiente no se podia retomar desde el otro canal.
+      El reuso del intento PENDIENTE se busca por carrito y no miraba con que canal
+      se habia creado, asi que un pedido empezado en la web (Checkout Session
+      `cs_...`) y retomado desde el celular hacia PaymentIntent.retrieve("cs_...")
+      -> StripeError -> client_secret vacio -> el mismo mensaje de 4.7, pero por
+      otro motivo. Y al reves igual. FIX en ventas/router.py:
+      `_intento_sirve_para_canal()` exige que el tipo de id_transaccion (`cs_` para
+      WEB, `pi_` para MOVIL) corresponda al canal que reintenta; si no, el intento
+      se abandona y se arma uno nuevo. Ademas, si Stripe ya no reconoce el objeto
+      (expiro o quedo de otra clave), ahora tambien se abandona en vez de devolver
+      un checkout sin client_secret. Esto es lo que ademas destraba las ventas
+      PENDIENTE que quedaron con `cs_...` y canal MOVIL por culpa de 4.7.
+
 [4.2] iOS no esta compilado ni probado.
       El proyecto se genero con las plataformas android e ios y el Info.plist ya
       tiene ATS y LSApplicationQueriesSchemes, pero desde Windows no se puede
       compilar. Solo Android esta verificado (emulador Pixel_10a, APK debug y
       release).
 
-[4.3] ndkVersion clavado a una version local.
-      android/app/build.gradle.kts fija 30.0.16138531 porque el NDK que pide
-      url_launcher_android (28.2.13676358) no esta instalado en esta maquina. En
-      otra maquina hay que poner el NDK que tenga instalado, o instalar el 28.2.
+[4.3] [RESUELTO 2026-09-19] ndkVersion clavado a una version local.
+      Decia 30.0.16138531 porque el NDK que piden los plugins (28.2.13676358) no
+      estaba instalado. Ya lo esta, asi que build.gradle.kts apunta al 28.2 y el
+      strip de las .so lo hace el NDK correcto. Si otra maquina no lo tiene, se
+      instala desde el SDK Manager en vez de apuntar a otra version.
+
+[4.6] [RESUELTO 2026-09-19] El APK de release instalaba pero la app no abria.
+      SINTOMA : se instala bien, se toca el icono y se cierra sin mostrar nada.
+                Solo en release; en debug y en `flutter run` nunca paso.
+      CAUSA   : el proyecto usa AGP 9.1.0, que enciende R8 por defecto en release
+                (AGP 8, el del proyecto de referencia, no lo hacia). R8 renombra
+                androidx.work.impl.WorkDatabase_Impl, que Room instancia por
+                reflexion, y el proceso muere al crear el ContentProvider de
+                androidx.startup, antes de que corra una linea de Dart:
+                  RuntimeException: Unable to get provider
+                    androidx.startup.InitializationProvider
+                  Caused by: Failed to create an instance of
+                    androidx.work.impl.WorkDatabase
+                WorkManager entra por google_mlkit_pose_detection (CU16).
+      FIX     : android/app/build.gradle.kts -> release { isMinifyEnabled = false
+                isShrinkResources = false }, con el porque comentado ahi y en
+                movil/README.md ("Notas del entorno Android").
+      VERIFICADO: APK release reinstalado en el emulador -> abre, login real
+                contra Railway OK, catalogo con imagenes y recomendaciones CU17
+                cargando. `adb logcat` sin FATAL.
+      TAMANIO : de paso, el APK universal (122 MB con las 3 arquitecturas) se
+                reemplaza por --split-per-abi para instalar en un telefono:
+                app-arm64-v8a-release.apk pesa 65 MB. El resto del peso son las
+                .so (motor de Flutter + ML Kit), no se achica desde Dart.
+      QUEDA   : si alguna vez se quiere R8 de vuelta (solo tiene sentido para
+                publicar en Play Store), hay que escribir reglas -keep para Room,
+                WorkManager, ML Kit y Stripe y volver a probar el APK instalado,
+                no solo compilarlo.
 
 [4.4] La URL de produccion esta horneada en el codigo.
       Config.apiUrlProduccion tiene el dominio de Railway. Si se regenera el

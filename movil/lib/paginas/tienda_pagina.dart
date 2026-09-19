@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../compartido/widgets.dart';
+import '../core/auth/auth_service.dart';
 import '../core/catalogo/catalogo_models.dart';
 import '../core/catalogo/catalogo_service.dart';
 import '../core/config.dart';
 import '../core/errores.dart';
+import '../core/recomendaciones/recomendaciones_models.dart';
+import '../core/recomendaciones/recomendaciones_service.dart';
 import '../core/tema.dart';
 
 /// CU03: Consultar Catalogo. Busca, filtra y pagina la vitrina publica.
@@ -27,6 +31,9 @@ class _TiendaPaginaState extends State<TiendaPagina> {
   FiltrosOut? _filtros;
   List<ProductoOut> _productos = [];
 
+  /// CU17: se llena en silencio (no es critico para la pagina), solo para clientes.
+  List<ProductoRecomendadoOut> _recomendaciones = [];
+
   String? _categoriaSlug;
   int? _tallaId;
   int? _colorId;
@@ -43,6 +50,19 @@ class _TiendaPaginaState extends State<TiendaPagina> {
     super.initState();
     _scroll.addListener(_alDesplazar);
     _cargarTodo();
+    if (!context.read<AuthService>().esStaff) {
+      _cargarRecomendaciones();
+    }
+  }
+
+  Future<void> _cargarRecomendaciones() async {
+    try {
+      final recomendaciones = await recomendacionesService.obtener(limite: 8);
+      if (!mounted) return;
+      setState(() => _recomendaciones = recomendaciones);
+    } catch (_) {
+      if (mounted) setState(() => _recomendaciones = []);
+    }
   }
 
   @override
@@ -282,6 +302,7 @@ class _TiendaPaginaState extends State<TiendaPagina> {
         ),
         body: Column(
           children: [
+            if (_recomendaciones.isNotEmpty) _SeccionRecomendaciones(productos: _recomendaciones),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: TextField(
@@ -358,9 +379,12 @@ class _TiendaPaginaState extends State<TiendaPagina> {
 
 /// Tarjeta del grid de la vitrina.
 class TarjetaProducto extends StatelessWidget {
-  const TarjetaProducto({super.key, required this.producto});
+  const TarjetaProducto({super.key, required this.producto, this.motivo});
 
   final ProductoOut producto;
+
+  /// CU17: por que se sugiere esta prenda. Ausente en el catalogo comun (CU03).
+  final String? motivo;
 
   @override
   Widget build(BuildContext context) => TarjetaPanel(
@@ -417,7 +441,57 @@ class TarjetaProducto extends StatelessWidget {
                       style: fuenteMono(fontSize: 11, letterSpacing: 0.4, color: Paleta.inkSuave),
                     ),
                   ],
+                  if (motivo != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      motivo!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontStyle: FontStyle.italic,
+                        color: Paleta.flameOscuro,
+                      ),
+                    ),
+                  ],
                 ],
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+/// CU17 - Recibir Recomendaciones de IA: carrusel horizontal arriba del catalogo,
+/// espejo movil de la seccion "Recomendado para vos" de `tienda.page.html`. Solo se
+/// muestra si hay recomendaciones (se pide en silencio y no es critico para la pagina).
+class _SeccionRecomendaciones extends StatelessWidget {
+  const _SeccionRecomendaciones({required this.productos});
+
+  final List<ProductoRecomendadoOut> productos;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 0, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Titular('Recomendado para vos', tamano: 18, mayusculas: false),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 236,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.only(right: 16),
+                itemCount: productos.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                itemBuilder: (contexto, indice) {
+                  final producto = productos[indice];
+                  return SizedBox(
+                    width: 170,
+                    child: TarjetaProducto(producto: producto, motivo: producto.motivo),
+                  );
+                },
               ),
             ),
           ],

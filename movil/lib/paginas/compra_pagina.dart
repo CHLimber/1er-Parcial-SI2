@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +14,16 @@ import '../core/tema.dart';
 import '../core/ventas/ventas_models.dart';
 import '../core/ventas/ventas_service.dart';
 import 'mis_reservas_pagina.dart' show fechaLegible;
+
+// CU20: el reparto lo hace un servicio de delivery externo, no hay un repartidor real en la
+// demo marcando DESPACHADO/ENTREGADO. Simulamos ese avance en la app (sin tocar el backend)
+// para poder mostrar la pantalla completa sin importar la pasarela usada -- mismo criterio que
+// la web (pages/compra/compra.page.ts).
+const _pasosEnvio = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
+const _simulacionEnvio = <(int, String, String, Duration)>[
+  (1, 'DESPACHADO', 'Retirado por el servicio de delivery (simulado)', Duration(milliseconds: 2000)),
+  (2, 'ENTREGADO', 'Entrega confirmada por el servicio de delivery (simulado)', Duration(milliseconds: 4500)),
+];
 
 /// CU06: resultado de la compra. Mientras el pago sigue PENDIENTE (el webhook de Stripe
 /// puede tardar unos segundos) la pantalla ofrece volver a consultar el estado.
@@ -31,10 +43,54 @@ class _CompraPaginaState extends State<CompraPagina> {
   bool _refrescando = false;
   String? _error;
 
+  int _pasoSimulado = 0;
+  List<EventoEnvio> _eventosSimulados = [];
+  bool _simulacionIniciada = false;
+  final List<Timer> _timers = [];
+
   @override
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _timers) {
+      timer.cancel();
+    }
+    super.dispose();
+  }
+
+  void _iniciarSimulacionSiCorresponde(EnvioOut? envio) {
+    if (envio == null || _simulacionIniciada || envio.estado != 'PENDIENTE') return;
+    _simulacionIniciada = true;
+    for (final (paso, estado, nota, espera) in _simulacionEnvio) {
+      _timers.add(Timer(espera, () {
+        if (!mounted) return;
+        setState(() {
+          _pasoSimulado = paso;
+          _eventosSimulados = [
+            ..._eventosSimulados,
+            EventoEnvio(estado: estado, nota: nota, fecha: DateTime.now()),
+          ];
+        });
+      }));
+    }
+  }
+
+  /// Estado real del envio, salvo que la simulacion ya lo haya adelantado.
+  String _estadoEnvioMostrado() {
+    final envio = _envio;
+    if (envio == null) return 'PENDIENTE';
+    final indiceReal = _pasosEnvio.indexOf(envio.estado);
+    return _pasoSimulado > indiceReal ? _pasosEnvio[_pasoSimulado] : envio.estado;
+  }
+
+  List<EventoEnvio> _eventosEnvioMostrados() {
+    final envio = _envio;
+    if (envio == null) return [];
+    return [...envio.eventos, ..._eventosSimulados];
   }
 
   Future<void> _cargar({bool esRefresco = false}) async {
@@ -66,6 +122,7 @@ class _CompraPaginaState extends State<CompraPagina> {
         _cargando = false;
         _refrescando = false;
       });
+      _iniciarSimulacionSiCorresponde(envio);
       // el carrito quedo consumido por el checkout
       await context.read<CarritoService>().refrescar();
     } catch (error) {
@@ -156,7 +213,11 @@ class _CompraPaginaState extends State<CompraPagina> {
                   if (_envio != null) ...[
                     const EtiquetaDato('Tu envio'),
                     const SizedBox(height: 8),
-                    _SeguimientoEnvio(envio: _envio!),
+                    _SeguimientoEnvio(
+                      envio: _envio!,
+                      estadoMostrado: _estadoEnvioMostrado(),
+                      eventosMostrados: _eventosEnvioMostrados(),
+                    ),
                     const SizedBox(height: 16),
                   ],
                   if (venta.items.isNotEmpty) ...[
@@ -259,15 +320,19 @@ class _CompraPaginaState extends State<CompraPagina> {
 
 /// CU20: en que anda el pedido a domicilio, con la bitacora que escribe tg_envio_historial.
 class _SeguimientoEnvio extends StatelessWidget {
-  const _SeguimientoEnvio({required this.envio});
+  const _SeguimientoEnvio({
+    required this.envio,
+    required this.estadoMostrado,
+    required this.eventosMostrados,
+  });
 
   final EnvioOut envio;
-
-  static const _pasos = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
+  final String estadoMostrado;
+  final List<EventoEnvio> eventosMostrados;
 
   @override
   Widget build(BuildContext context) {
-    final indice = _pasos.indexOf(envio.estado);
+    final indice = _pasosEnvio.indexOf(estadoMostrado);
     final cerrado = envio.estado == 'FALLIDO' || envio.estado == 'CANCELADO';
 
     return TarjetaPanel(
@@ -278,11 +343,11 @@ class _SeguimientoEnvio extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  etiquetaEstadoEnvio(envio.estado),
+                  etiquetaEstadoEnvio(estadoMostrado),
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                 ),
               ),
-              BadgeEstado(envio.estado),
+              BadgeEstado(estadoMostrado),
             ],
           ),
           const SizedBox(height: 6),
@@ -295,7 +360,7 @@ class _SeguimientoEnvio extends StatelessWidget {
           if (!cerrado) ...[
             const SizedBox(height: 12),
             Row(
-              children: List.generate(_pasos.length * 2 - 1, (posicion) {
+              children: List.generate(_pasosEnvio.length * 2 - 1, (posicion) {
                 if (posicion.isOdd) {
                   final hecho = posicion ~/ 2 < indice;
                   return Expanded(
@@ -336,7 +401,7 @@ class _SeguimientoEnvio extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 10),
-          ...envio.eventos.map(
+          ...eventosMostrados.map(
             (evento) => Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(

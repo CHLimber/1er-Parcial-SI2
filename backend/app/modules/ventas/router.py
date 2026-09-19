@@ -33,20 +33,41 @@ stripe.api_key = settings.stripe_secret_key
 
 
 async def _crear_sesion_stripe(
-    venta_id: UUID, numero: str, total: Decimal, *, embebido: bool
+    venta_id: UUID, numero: str, total: Decimal, *, canal: str
 ) -> tuple[str, str | None, str | None]:
     """CU06 paso 1: envia la orden de cobro a la pasarela. Devuelve
     (id_transaccion, url_pago, client_secret).
 
-    `embebido=True` (canal WEB) pide un Checkout Session con `ui_mode="embedded"`: Stripe.js lo
-    monta inline en la misma pagina con el client_secret, sin redirigir a checkout.stripe.com, y
-    `redirect_on_completion="never"` evita que Stripe intente navegar por su cuenta al terminar
-    -- la confirmacion real sigue llegando por el webhook firmado, server-to-server, esto es solo
-    la UI. `embebido=False` (canal MOVIL, sin SDK de Stripe embebido en Flutter) pide el Checkout
-    hospedado de siempre, que la app abre en el navegador del telefono."""
+    canal == "WEB" pide un Checkout Session con `ui_mode="embedded"`: Stripe.js lo monta inline en
+    la misma pagina con el client_secret, sin redirigir a checkout.stripe.com, y
+    `redirect_on_completion="never"` evita que Stripe intente navegar por su cuenta al terminar.
+    canal == "MOVIL" pide en cambio un PaymentIntent: el paquete `flutter_stripe` (Stripe SDK
+    nativo para Android/iOS) muestra su propio PaymentSheet DENTRO de la app con ese
+    client_secret, sin abrir el navegador del telefono -- ya no hay Checkout hospedado en el
+    movil. En ambos casos la confirmacion real sigue llegando por el webhook firmado,
+    server-to-server; esto solo arma la UI de cobro."""
+    if canal == "MOVIL":
+        try:
+            intento = await asyncio.to_thread(
+                stripe.PaymentIntent.create,
+                amount=int(total * 100),
+                currency="bob",
+                payment_method_types=["card"],
+                description=f"Pedido {numero} - FashionStore",
+                metadata={"venta_id": str(venta_id), "numero": numero},
+            )
+        except stripe.error.StripeError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"No se pudo iniciar el pago con Stripe: {error}",
+            ) from error
+        return intento.id, None, intento.client_secret
+
     parametros: dict = {
         "mode": "payment",
         "payment_method_types": ["card"],
+        "ui_mode": "embedded",
+        "redirect_on_completion": "never",
         "line_items": [
             {
                 "price_data": {
@@ -59,13 +80,6 @@ async def _crear_sesion_stripe(
         ],
         "metadata": {"venta_id": str(venta_id), "numero": numero},
     }
-    if embebido:
-        parametros["ui_mode"] = "embedded"
-        parametros["redirect_on_completion"] = "never"
-    else:
-        parametros["success_url"] = f"{settings.frontend_url}/compra/{venta_id}"
-        parametros["cancel_url"] = f"{settings.frontend_url}/carrito"
-
     try:
         sesion = await asyncio.to_thread(stripe.checkout.Session.create, **parametros)
     except stripe.error.StripeError as error:
@@ -73,22 +87,40 @@ async def _crear_sesion_stripe(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"No se pudo iniciar el pago con Stripe: {error}",
         ) from error
-
-    if embebido:
-        return sesion.id, None, sesion.client_secret
-    return sesion.id, sesion.url, None
+    return sesion.id, None, sesion.client_secret
 
 
-async def _pago_pendiente_stripe(id_transaccion: str, venta_id: UUID, *, embebido: bool) -> tuple[str | None, str | None]:
-    """Reintento de un checkout que ya se inicio (doble click): recupera la sesion en vez de
-    crear una nueva. Devuelve (url_pago, client_secret)."""
+async def _pago_pendiente_stripe(id_transaccion: str, *, canal: str) -> tuple[str | None, str | None]:
+    """Reintento de un checkout que ya se inicio (doble click): recupera el PaymentIntent o la
+    Checkout Session en vez de crear uno nuevo. Devuelve (url_pago, client_secret)."""
     try:
+        if canal == "MOVIL":
+            intento = await asyncio.to_thread(stripe.PaymentIntent.retrieve, id_transaccion)
+            return None, intento.client_secret
         sesion = await asyncio.to_thread(stripe.checkout.Session.retrieve, id_transaccion)
-    except stripe.error.StripeError:
-        return (None, None) if embebido else (f"/pago-simulado/{venta_id}", None)
-    if embebido:
         return None, sesion.client_secret
-    return sesion.url or f"/pago-simulado/{venta_id}", None
+    except stripe.error.StripeError:
+        return None, None
+
+
+def _intento_sirve_para_canal(
+    pasarela: str | None, id_transaccion: str | None, canal: str
+) -> bool:
+    """Si un checkout STRIPE que quedo PENDIENTE se puede retomar desde este canal.
+
+    Cada canal arma un objeto distinto en Stripe -- la web una Checkout Session (`cs_...`) que
+    monta Stripe.js, el movil un PaymentIntent (`pi_...`) que abre el PaymentSheet nativo -- y
+    cada SDK solo entiende el client_secret del suyo. Como el reuso de un pendiente se busca por
+    carrito, sin esto el mismo pedido empezado en la web y retomado desde el celular (o al reves)
+    intentaba recuperar el objeto equivocado: `PaymentIntent.retrieve("cs_...")` tira StripeError,
+    el client_secret volvia vacio y la app se quedaba sin forma de cobrar. Tambien ataja los pagos
+    que quedaron pendientes con un backend anterior, cuando el movil todavia usaba Checkout
+    hospedado. Si no sirve, el checkout abandona ese intento y arma uno nuevo para este canal."""
+    if pasarela != "STRIPE":
+        return True
+    if not id_transaccion:
+        return False
+    return id_transaccion.startswith("cs_" if canal == "WEB" else "pi_")
 
 
 def _exigir_cliente(usuario: dict) -> None:
@@ -336,7 +368,7 @@ async def iniciar_checkout(
             Decimal("0.01")
         )
         formula_vigente = pendiente["iva"] == iva_esperado and pendiente["total"] == total_esperado
-    if pendiente is not None and (
+    reusar = pendiente is not None and (
         formula_vigente
         and pendiente["pasarela"] == body.metodo_pago
         and pendiente["sucursal_id"] == sucursal_id
@@ -344,14 +376,22 @@ async def iniciar_checkout(
         and pendiente["direccion_id"] == direccion_id
         and pendiente["subtotal"] == subtotal
         and pendiente["codigo_cupon"] == codigo_cupon
-    ):
-        embebido = body.canal == "WEB"
-        client_secret = None
-        if pendiente["pasarela"] == "STRIPE":
-            url_pago, client_secret = await _pago_pendiente_stripe(
-                pendiente["id_transaccion"], pendiente["venta_id"], embebido=embebido
-            )
-        else:
+        and _intento_sirve_para_canal(
+            pendiente["pasarela"], pendiente["id_transaccion"], body.canal
+        )
+    )
+    url_pago = None
+    client_secret = None
+    if reusar and pendiente["pasarela"] == "STRIPE":
+        url_pago, client_secret = await _pago_pendiente_stripe(
+            pendiente["id_transaccion"], canal=body.canal
+        )
+        # Stripe ya no lo reconoce (la sesion expiro, o quedo de otra cuenta/clave): no hay nada
+        # que retomar, asi que se abandona igual que si el pedido hubiera cambiado y se arma uno
+        # nuevo. Devolverlo sin client_secret dejaba a la clienta sin forma de pagar ese carrito.
+        reusar = client_secret is not None
+    if reusar:
+        if pendiente["pasarela"] != "STRIPE":
             url_pago = f"/pago-simulado/{pendiente['venta_id']}"
         return CheckoutOut(
             venta_id=pendiente["venta_id"],
@@ -448,7 +488,7 @@ async def iniciar_checkout(
         if body.metodo_pago == "STRIPE":
             pasarela_val = "STRIPE"
             id_transaccion, url_pago, client_secret = await _crear_sesion_stripe(
-                venta["id"], venta["numero"], total, embebido=body.canal == "WEB"
+                venta["id"], venta["numero"], total, canal=body.canal
             )
         elif body.metodo_pago == "QR":
             pasarela_val = "QR"

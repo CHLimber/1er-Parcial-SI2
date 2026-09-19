@@ -7,10 +7,11 @@ plugins {
 android {
     namespace = "bo.fashionstore.fashionstore_movil"
     compileSdk = flutter.compileSdkVersion
-    // El NDK 28.2.13676358 que pide url_launcher_android no esta en el SDK de esta
-    // maquina; se usa el 30, que ya esta instalado y es compatible hacia atras. Si el
-    // entorno de otra maquina no lo tiene, cambiar por el NDK que si tenga instalado.
-    ndkVersion = "30.0.16138531"
+    // El NDK que piden los plugins nativos (url_launcher_android, camera, mlkit). Es el que
+    // Gradle usa para hacer `strip` de las .so del APK de release: conviene que sea
+    // exactamente este y no uno mas nuevo "compatible". Si otra maquina no lo tiene
+    // instalado, se instala desde el SDK Manager en vez de cambiar el numero de aca.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -37,6 +38,24 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+
+            // AGP 9 activa R8 por defecto en release (AGP 8 no lo hacia). Con R8 encendido
+            // el APK instalaba pero moria antes del primer frame:
+            //
+            //   java.lang.RuntimeException: Unable to get provider androidx.startup.InitializationProvider
+            //   Caused by: Failed to create an instance of androidx.work.impl.WorkDatabase
+            //
+            // WorkManager entra por google_mlkit_pose_detection (CU16) y su base Room se
+            // instancia por reflexion (`WorkDatabase_Impl`); R8 le cambia el nombre y la
+            // clase deja de existir, asi que el ContentProvider de androidx.startup explota
+            // en el arranque del proceso. Mantener R8 exigiria reglas -keep para Room,
+            // WorkManager, ML Kit y Stripe, y cada plugin nuevo que use reflexion seria otra
+            // bomba de tiempo que solo se nota en release. El codigo Dart (donde vive la
+            // logica) ya viaja compilado en libapp.so, y el dex es una fraccion minima del
+            // APK frente a las .so, asi que apagarlo no cambia el tamanio en la practica:
+            // para eso se compila con --split-per-abi (ver movil/README.md).
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

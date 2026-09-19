@@ -125,13 +125,20 @@ class _CuentaPaginaState extends State<CuentaPagina> {
             detalle: 'Prendas apartadas en el vestidor',
             alTocar: () => context.go('/mis-reservas'),
           ),
-          if (!auth.esStaff)
+          if (!auth.esStaff) ...[
             _Acceso(
               icono: Icons.location_on_outlined,
               titulo: 'Mis direcciones',
               detalle: 'CU20 · Donde te llevamos los pedidos',
               alTocar: () => context.push('/mis-direcciones'),
             ),
+            _Acceso(
+              icono: Icons.chat_bubble_outline,
+              titulo: 'Asistente',
+              detalle: 'CU18 · Contale qué buscás y te sugiere prendas',
+              alTocar: () => context.push('/asistente'),
+            ),
+          ],
 
           if (auth.esStaff) ...[
             const SizedBox(height: 26),

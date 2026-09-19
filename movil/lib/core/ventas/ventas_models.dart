@@ -9,6 +9,7 @@ class CheckoutOut {
     required this.pasarela,
     required this.idTransaccion,
     required this.urlPago,
+    required this.clientSecret,
     required this.subtotal,
     required this.descuento,
     required this.costoEnvio,
@@ -25,10 +26,14 @@ class CheckoutOut {
   final String? pasarela;
   final String? idTransaccion;
 
-  /// STRIPE devuelve una URL absoluta de checkout.stripe.com (hay que abrir el navegador);
-  /// QR devuelve la ruta interna `/pago-simulado/{venta_id}` (pantalla nativa); EFECTIVO
-  /// devuelve directo `/compra/{venta_id}` porque ya quedo pagada al toque.
+  /// STRIPE nunca la manda (se paga inline, con clientSecret); QR devuelve la ruta interna
+  /// `/pago-simulado/{venta_id}` (pantalla nativa); EFECTIVO devuelve directo
+  /// `/compra/{venta_id}` porque ya quedo pagada al toque.
   final String? urlPago;
+
+  /// Solo STRIPE: el PaymentIntent que `Stripe.instance.initPaymentSheet()` usa para mostrar el
+  /// PaymentSheet nativo dentro de la app (CU06, paquete `flutter_stripe`).
+  final String? clientSecret;
   final double subtotal;
   final double descuento;
 
@@ -38,7 +43,6 @@ class CheckoutOut {
   final double total;
   final String estado;
 
-  bool get esUrlExterna => urlPago != null && (urlPago!.startsWith('http://') || urlPago!.startsWith('https://'));
   bool get esPagoSimulado => urlPago != null && urlPago!.startsWith('/pago-simulado');
 
   factory CheckoutOut.desdeJson(Map<String, dynamic> j) => CheckoutOut(
@@ -48,6 +52,7 @@ class CheckoutOut {
         pasarela: j['pasarela'] as String?,
         idTransaccion: j['id_transaccion'] as String?,
         urlPago: j['url_pago'] as String?,
+        clientSecret: j['client_secret'] as String?,
         subtotal: aDouble(j['subtotal']),
         descuento: aDouble(j['descuento']),
         costoEnvio: aDouble(j['costo_envio']),

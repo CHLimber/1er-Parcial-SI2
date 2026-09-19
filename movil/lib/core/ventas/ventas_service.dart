@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter_stripe/flutter_stripe.dart';
+
 import '../api.dart';
 import 'ventas_models.dart';
 
@@ -50,6 +52,18 @@ class VentasService {
   }
 }
 
+/// Espejo de `ConfigPagoOut` (backend). La publishable key de Stripe no es secreta -- esta
+/// pensada para viajar al cliente -- asi que se pide por un endpoint publico en vez de
+/// hornearla en el build de la app, y asi cambia por entorno (local/Railway) sin recompilar.
+class ConfigPagoOut {
+  ConfigPagoOut({required this.stripePublishableKey});
+
+  final String stripePublishableKey;
+
+  factory ConfigPagoOut.desdeJson(Map<String, dynamic> j) =>
+      ConfigPagoOut(stripePublishableKey: j['stripe_publishable_key'] as String);
+}
+
 /// CU06. Stripe confirma por webhook firmado desde sus servidores; QR no tiene
 /// sandbox real, asi que la pantalla de pago simulado manda el resultado a mano. El
 /// backend usa `evento_id` como clave de idempotencia (tabla `evento_pasarela`).
@@ -66,6 +80,25 @@ class PagosService {
     });
     return WebhookOut.desdeJson(respuesta as Map<String, dynamic>);
   }
+
+  Future<ConfigPagoOut> obtenerConfig() async {
+    final respuesta = await api.get('/pagos/config');
+    return ConfigPagoOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+}
+
+bool _stripeInicializado = false;
+
+/// CU06 canal MOVIL: el SDK nativo de Stripe (paquete `flutter_stripe`) necesita la publishable
+/// key antes de poder mostrar el PaymentSheet. Se pide una sola vez (perezoso, recien cuando la
+/// clienta elige pagar con Stripe) y se cachea en este flag -- no hace falta bloquear el arranque
+/// de la app ni repetir el pedido en cada compra.
+Future<void> asegurarStripeInicializado() async {
+  if (_stripeInicializado) return;
+  final config = await pagosService.obtenerConfig();
+  Stripe.publishableKey = config.stripePublishableKey;
+  await Stripe.instance.applySettings();
+  _stripeInicializado = true;
 }
 
 /// UUID v4 aleatorio (el equivalente de `crypto.randomUUID()` del navegador).

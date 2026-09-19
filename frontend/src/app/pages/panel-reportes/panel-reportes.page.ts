@@ -47,6 +47,7 @@ import { SucursalOut } from '../../core/sucursales/sucursales.models';
 import { SucursalesService } from '../../core/sucursales/sucursales.service';
 import { interpretarError } from '../../shared/errores';
 import { PanelShell } from '../../shared/panel/panel-shell';
+import { crearReconocedorVoz, ReconocedorVoz, soportaVoz } from '../../shared/voz';
 
 Chart.register(...registerables);
 
@@ -172,30 +173,6 @@ const COLUMNAS_DINAMICO: Record<Exclude<TipoDinamico, 'indicadores'>, ColumnaExp
     { clave: 'monto_vendido', etiqueta: 'Monto vendido (Bs)' },
   ],
 };
-
-// Web Speech API: sin tipos propios en el lib.dom.d.ts de TypeScript, se declara lo minimo que
-// se usa. Solo Chrome/Edge lo implementan (con prefijo webkit); en Firefox/Safari sin soporte
-// SpeechRecognitionCtor queda undefined y el boton de voz ni se muestra (ver iaSoportaVoz).
-interface ResultadoVoz {
-  results: { [indice: number]: { [alt: number]: { transcript: string } } };
-}
-interface ReconocedorVoz {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((ev: ResultadoVoz) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-function obtenerConstructorVoz(): (new () => ReconocedorVoz) | null {
-  const global = window as unknown as Record<string, unknown>;
-  return (global['SpeechRecognition'] ?? global['webkitSpeechRecognition'] ?? null) as
-    | (new () => ReconocedorVoz)
-    | null;
-}
 
 function hoyIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -358,7 +335,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
 
   // --- Reporte con IA: chat de texto/voz sobre los mismos 11 reportes (POST /reportes/consulta-ia) ---
 
-  protected readonly iaSoportaVoz = signal(obtenerConstructorVoz() !== null);
+  protected readonly iaSoportaVoz = signal(soportaVoz());
   protected readonly iaEscuchando = signal(false);
   protected readonly iaCargando = signal(false);
   protected readonly iaError = signal<string | null>(null);
@@ -876,13 +853,9 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
       this.reconocedorVoz?.stop();
       return;
     }
-    const Constructor = obtenerConstructorVoz();
-    if (!Constructor) return;
+    const reconocedor = crearReconocedorVoz();
+    if (!reconocedor) return;
 
-    const reconocedor = new Constructor();
-    reconocedor.lang = 'es-BO';
-    reconocedor.interimResults = false;
-    reconocedor.continuous = false;
     reconocedor.onresult = (ev) => {
       const texto = ev.results[0]?.[0]?.transcript ?? '';
       if (texto) {

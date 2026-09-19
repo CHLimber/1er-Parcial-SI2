@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/auth/auth_service.dart';
+import 'paginas/asistente_pagina.dart';
 import 'paginas/atender_reservas_pagina.dart';
 import 'paginas/caja_pagina.dart';
 import 'paginas/carrito_pagina.dart';
@@ -127,6 +128,7 @@ GoRouter construirRouter(AuthService auth) {
         path: '/mis-direcciones',
         builder: (contexto, estado) => const MisDireccionesPagina(),
       ),
+      GoRoute(path: '/asistente', builder: (contexto, estado) => const AsistentePagina()),
       GoRoute(
         path: '/pago-simulado/:ventaId',
         builder: (contexto, estado) =>

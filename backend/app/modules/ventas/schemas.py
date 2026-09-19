@@ -25,10 +25,11 @@ class CheckoutOut(BaseModel):
     pago_id: UUID
     pasarela: str | None
     id_transaccion: str | None
-    # STRIPE en canal WEB no manda url_pago (se paga inline con client_secret); en los demas
-    # casos es a donde navega el frontend (pasarela simulada o directo a /compra/{id}).
+    # STRIPE nunca manda url_pago (se paga inline, con client_secret, en los dos canales); en los
+    # demas casos es a donde navega el cliente (pasarela simulada o directo a /compra/{id}).
     url_pago: str | None
-    # Solo canal WEB + STRIPE: Stripe.js lo usa para montar el Checkout embebido inline.
+    # Solo STRIPE: WEB lo usa para montar el Checkout Session embebido con Stripe.js; MOVIL, para
+    # abrir el PaymentSheet nativo de flutter_stripe con un PaymentIntent.
     client_secret: str | None = None
     subtotal: float
     descuento: float

@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, ElementRef, ViewChild, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, ViewChild, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -9,6 +9,7 @@ import { ProductoOut } from '../../core/catalogo/catalogo.models';
 import { interpretarError } from '../../shared/errores';
 import { ProductoCard } from '../../shared/catalogo/producto-card';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
+import { crearReconocedorVoz, ReconocedorVoz, soportaVoz } from '../../shared/voz';
 
 interface MensajeVista extends MensajeChat {
   productos?: ProductoOut[];
@@ -23,7 +24,7 @@ interface MensajeVista extends MensajeChat {
   templateUrl: './asistente.page.html',
   styleUrl: './asistente.page.css',
 })
-export class AsistentePage {
+export class AsistentePage implements OnDestroy {
   private readonly servicio = inject(AsistenteService);
 
   protected readonly mensajes = signal<MensajeVista[]>([]);
@@ -31,7 +32,39 @@ export class AsistentePage {
   protected readonly error = signal<string | null>(null);
   protected borrador = '';
 
+  /** Dictado por voz (mismo mecanismo que "Reporte con IA" en panel-reportes, CU15). */
+  protected readonly soportaVoz = signal(soportaVoz());
+  protected readonly escuchando = signal(false);
+  private reconocedorVoz: ReconocedorVoz | null = null;
+
   @ViewChild('contenedor') private contenedor?: ElementRef<HTMLDivElement>;
+
+  ngOnDestroy(): void {
+    this.reconocedorVoz?.stop();
+  }
+
+  protected alternarEscucha(): void {
+    if (this.escuchando()) {
+      this.reconocedorVoz?.stop();
+      return;
+    }
+    const reconocedor = crearReconocedorVoz();
+    if (!reconocedor) return;
+
+    reconocedor.onresult = (ev) => {
+      const texto = ev.results[0]?.[0]?.transcript ?? '';
+      if (texto) {
+        this.borrador = texto;
+        this.enviar();
+      }
+    };
+    reconocedor.onerror = () => this.escuchando.set(false);
+    reconocedor.onend = () => this.escuchando.set(false);
+
+    this.reconocedorVoz = reconocedor;
+    this.escuchando.set(true);
+    reconocedor.start();
+  }
 
   protected enviar(): void {
     const texto = this.borrador.trim();

@@ -1,7 +1,7 @@
 # FashionStore movil (Flutter)
 
-App Android/iOS que cubre los mismos casos de uso que la web (CU01 a CU14 y CU20), mas el
-vestidor virtual con realidad aumentada (CU16, que solo existe aca), contra la misma
+App Android/iOS que cubre los mismos casos de uso que la web (CU01 a CU14, CU17, CU18 y CU20),
+mas el vestidor virtual con realidad aumentada (CU16, que solo existe aca), contra la misma
 API de FastAPI. No tiene logica de negocio propia: la fuente de verdad sigue siendo la base
 de datos (`db/01_schema.sql`, `db/02_logica.sql`) y el backend.
 
@@ -73,10 +73,32 @@ flutter build apk --debug     # APK para instalar a mano (apunta al backend loca
 flutter build apk --release   # APK de produccion (apunta a Railway)
 ```
 
+### APK para instalar en un telefono
+
+Para un telefono real conviene el build **partido por arquitectura**: el APK
+"universal" mete las tres (`arm64-v8a`, `armeabi-v7a`, `x86_64`) en el mismo
+archivo y pesa ~122 MB, de los cuales el telefono usa un tercio.
+
+```bash
+flutter build apk --release --split-per-abi
+```
+
+Deja tres archivos en `build/app/outputs/flutter-apk/`:
+
+| Archivo | Peso | Para que |
+|---|---|---|
+| `app-arm64-v8a-release.apk` | ~65 MB | **el que se instala en un celular** (cualquiera de los ultimos ~10 anios) |
+| `app-armeabi-v7a-release.apk` | ~59 MB | telefonos viejos de 32 bits |
+| `app-x86_64-release.apk` | ~68 MB | el emulador de Android |
+
+El peso lo dominan las `.so`: `libflutter.so` mas el motor de ML Kit
+(`libxeno_native.so`, ~10 MB) que trae la deteccion de pose del vestidor virtual
+(CU16). No se achica apagando cosas del lado de Dart.
+
 Para instalar un APK ya compilado en el emulador o en un telefono conectado:
 
 ```bash
-adb install -r build/app/outputs/flutter-apk/app-debug.apk
+adb install -r build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 ```
 
 (`adb` esta en `%LOCALAPPDATA%\Android\sdk\platform-tools`.)
@@ -112,7 +134,8 @@ el APK. El despliegue esta documentado en `../RAILWAY.md`.
 | "No se pudo conectar con http://10.0.2.2:8081" | el backend local no esta levantado, o `docker compose` se cayo |
 | La app abre pero el catalogo queda vacio | la base se recreo sin seed: `docker compose down -v && docker compose up --build` |
 | 403 en las pantallas del panel | el rol del usuario no tiene ese permiso (CU13), o los permisos de la base estan sin sembrar |
-| El build falla por el NDK | ver `android/app/build.gradle.kts`: la version esta clavada a la que hay instalada en esta maquina |
+| El build falla por el NDK | falta instalar el NDK que fija `android/app/build.gradle.kts` (SDK Manager -> NDK 28.2.13676358) |
+| El APK de release instala pero la app **no abre** (se cierra sin mostrar nada) | R8: ver "Notas del entorno Android". Confirmarlo con `adb logcat` mientras se abre la app; el stack dice `Unable to get provider androidx.startup.InitializationProvider` |
 
 ## Estructura
 
@@ -154,6 +177,8 @@ de servicios son objetos sin estado que solo hablan con la API.
 | CU12 Gestionar sucursales | `panel_sucursales_pagina.dart` | `/panel/sucursales` |
 | CU13 Gestionar usuarios y roles | `panel_usuarios_pagina.dart` | `/panel/usuarios` |
 | CU16 Vestidor virtual (RA) | `vestidor_virtual_pagina.dart` | desde el detalle de producto |
+| CU17 Recibir recomendaciones de IA | `tienda_pagina.dart` (seccion "Recomendado para vos") | `/tienda` |
+| CU18 Asistir al cliente via chatbot (con dictado por voz) | `asistente_pagina.dart` | `/asistente` |
 | CU20 Entrega a domicilio | `mis_direcciones_pagina.dart`, `panel_envios_pagina.dart` | `/mis-direcciones`, `/panel/envios` |
 
 La barra inferior tiene las cuatro pantallas de uso diario del cliente (Tienda, Reservas,
@@ -196,8 +221,24 @@ En los dos casos el detalle de la venta se escribe recien cuando el pago se apru
 
 ## Notas del entorno Android
 
-- `android/app/build.gradle.kts` fija `ndkVersion = "30.0.16138531"` porque el NDK que pide
-  `url_launcher_android` no esta instalado en esta maquina. Si otra maquina tiene otro NDK,
-  cambiar esa linea por el que tenga.
+- `android/app/build.gradle.kts` fija `ndkVersion = "28.2.13676358"`, que es el que piden los
+  plugins nativos y el que Gradle usa para hacer `strip` de las `.so` del release. Si falta,
+  se instala desde el SDK Manager en vez de apuntar a otra version "compatible".
+- **R8 apagado en release** (`isMinifyEnabled = false`). El proyecto usa AGP 9, que lo
+  enciende por defecto (AGP 8 no lo hacia), y con R8 el APK instalaba pero la app moria
+  antes del primer frame:
+
+  ```
+  java.lang.RuntimeException: Unable to get provider androidx.startup.InitializationProvider
+  Caused by: Failed to create an instance of androidx.work.impl.WorkDatabase
+  ```
+
+  WorkManager entra por `google_mlkit_pose_detection` (CU16) y su base Room se instancia por
+  reflexion (`WorkDatabase_Impl`); R8 le cambia el nombre, la clase deja de existir y el
+  `ContentProvider` de `androidx.startup` explota al crear el proceso, antes de que corra una
+  sola linea de Dart. Por eso solo pasaba en release. Volver a encenderlo exigiria reglas
+  `-keep` para Room, WorkManager, ML Kit y Stripe, y cada plugin nuevo con reflexion seria
+  otra bomba de tiempo que solo se nota al instalar el APK; a cambio ahorra ~13 MB de dex
+  sobre un APK cuyo peso son las `.so`. Para achicar de verdad se usa `--split-per-abi`.
 - El manifiesto declara `INTERNET`, el `network_security_config` para HTTP local y la query
   de `VIEW https` que `url_launcher` necesita en Android 11+.

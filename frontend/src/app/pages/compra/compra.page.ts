@@ -2,13 +2,20 @@ import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
-import { EnvioOut, EstadoEnvio } from '../../core/envios/envios.models';
+import { EnvioEventoOut, EnvioOut, EstadoEnvio } from '../../core/envios/envios.models';
 import { EnviosService } from '../../core/envios/envios.service';
 import { VentaOut } from '../../core/ventas/ventas.models';
 import { VentasService } from '../../core/ventas/ventas.service';
 
 const POLL_MS = 3000;
 const POLL_MAX_INTENTOS = 20; // ~1 minuto: tiempo de sobra para que llegue el webhook de Stripe
+
+// CU20: el reparto lo hace un servicio de delivery externo, no hay un repartidor real en la
+// demo marcando DESPACHADO/ENTREGADO. Simulamos ese avance en el navegador (sin tocar el
+// backend) para poder mostrar la pantalla completa sin importar la pasarela usada.
+// Momentos (desde que se ve el envio, en ms) en los que pasa a DESPACHADO y a ENTREGADO.
+const SIMULACION_MS: [number, number] = [2000, 4500];
+const ORDEN_ENVIO: EstadoEnvio[] = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
 
 @Component({
   selector: 'app-compra-page',
@@ -27,9 +34,14 @@ export class CompraPage implements OnInit, OnDestroy {
   protected readonly cargando = signal(true);
   protected readonly noEncontrada = signal(false);
 
+  private readonly pasoSimulado = signal(0);
+  private readonly eventosSimulados = signal<EnvioEventoOut[]>([]);
+
   private ventaId = '';
   private intentosPoll = 0;
   private pollHandle?: ReturnType<typeof setTimeout>;
+  private simulacionIniciada = false;
+  private readonly simulacionHandles: ReturnType<typeof setTimeout>[] = [];
 
   ngOnInit(): void {
     this.ventaId = this.route.snapshot.paramMap.get('ventaId') ?? '';
@@ -43,6 +55,7 @@ export class CompraPage implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.pollHandle) clearTimeout(this.pollHandle);
+    this.simulacionHandles.forEach((handle) => clearTimeout(handle));
   }
 
   private cargarVenta(): void {
@@ -71,9 +84,37 @@ export class CompraPage implements OnInit, OnDestroy {
 
   private cargarEnvio(): void {
     this.enviosService.envioDeVenta(this.ventaId).subscribe({
-      next: (envio) => this.envio.set(envio),
+      next: (envio) => {
+        this.envio.set(envio);
+        this.iniciarSimulacionSiCorresponde(envio);
+      },
       error: () => this.envio.set(null),
     });
+  }
+
+  /**
+   * El envio existe apenas se aprueba el pago (estado PENDIENTE) y el kardex real lo mueve un
+   * repartidor externo desde el panel de admin -- algo que la demo no tiene. Para poder ver la
+   * pantalla completa sin importar la pasarela (Stripe o Libelula/efectivo), simulamos el avance
+   * PENDIENTE -> DESPACHADO -> ENTREGADO en el navegador, sin pegarle al backend.
+   */
+  private iniciarSimulacionSiCorresponde(envio: EnvioOut): void {
+    if (this.simulacionIniciada || envio.estado !== 'PENDIENTE') return;
+    this.simulacionIniciada = true;
+
+    const avanzar = (paso: number, estado: EstadoEnvio, nota: string, ms: number) => {
+      const handle = setTimeout(() => {
+        this.pasoSimulado.set(paso);
+        this.eventosSimulados.update((eventos) => [
+          ...eventos,
+          { estado, nota, fecha: new Date().toISOString() },
+        ]);
+      }, ms);
+      this.simulacionHandles.push(handle);
+    };
+
+    avanzar(1, 'DESPACHADO', 'Retirado por el servicio de delivery (simulado)', SIMULACION_MS[0]);
+    avanzar(2, 'ENTREGADO', 'Entrega confirmada por el servicio de delivery (simulado)', SIMULACION_MS[1]);
   }
 
   protected formatearPrecio(precio: number): string {
@@ -99,9 +140,21 @@ export class CompraPage implements OnInit, OnDestroy {
 
   /** Posición del estado dentro de la línea de tiempo, para pintar los pasos cumplidos. */
   protected pasoActual(estado: EstadoEnvio): number {
-    const orden: EstadoEnvio[] = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
-    const indice = orden.indexOf(estado);
+    const indice = ORDEN_ENVIO.indexOf(estado);
     return indice === -1 ? 0 : indice;
+  }
+
+  /** Estado real, salvo que la simulación ya lo haya adelantado (ver iniciarSimulacionSiCorresponde). */
+  protected estadoMostrado(): EstadoEnvio {
+    const e = this.envio();
+    if (!e) return 'PENDIENTE';
+    const paso = this.pasoSimulado();
+    return paso > this.pasoActual(e.estado) ? ORDEN_ENVIO[paso] : e.estado;
+  }
+
+  /** Bitácora real del envío más los pasos que fue agregando la simulación. */
+  protected eventosMostrados(): EnvioEventoOut[] {
+    return [...(this.envio()?.eventos ?? []), ...this.eventosSimulados()];
   }
 
   protected readonly pasos: { estado: EstadoEnvio; etiqueta: string }[] = [

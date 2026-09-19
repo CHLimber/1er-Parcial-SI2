@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <!-- CU18: dictado por voz en el asistente (speech_to_text). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
     <application
         android:label="FashionStore"
@@ -60,6 +62,11 @@
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="intent"/>
+        </intent>
+        <!-- CU18: sin esto, speech_to_text no encuentra el servicio de reconocimiento de voz
+             del sistema en Android 11+ (package visibility) y falla silenciosamente. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>

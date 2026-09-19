@@ -80,10 +80,18 @@ Los archivos que ya quedaron preparados para esto:
 
 **Nota Stripe (CU06):** `stripe listen` es solo para desarrollo local. En produccion, andá a
 [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/webhooks), agregá un
-endpoint apuntando a `https://<url-del-backend>/pagos/webhook/stripe`, evento
-`checkout.session.completed` (+ `async_payment_succeeded`/`async_payment_failed`/`expired`), y
-copiá el "Signing secret" (`whsec_...`) que te muestra ahi -- ese es el `STRIPE_WEBHOOK_SECRET`
-de produccion, distinto al que imprime `stripe listen`.
+endpoint apuntando a `https://<url-del-backend>/pagos/webhook/stripe` y copiá el "Signing secret"
+(`whsec_...`) que te muestra ahi -- ese es el `STRIPE_WEBHOOK_SECRET` de produccion, distinto al
+que imprime `stripe listen`. Los eventos que hay que marcar son de **dos familias**, porque cada
+canal cobra con un objeto distinto de Stripe:
+
+| Evento | Quien lo dispara |
+|---|---|
+| `checkout.session.completed` (+ `async_payment_succeeded` / `async_payment_failed` / `expired`) | la **web**, que monta una Checkout Session embebida |
+| `payment_intent.succeeded` (+ `payment_intent.canceled`) | el **movil**, que cobra con el PaymentSheet nativo sobre un PaymentIntent |
+
+Si falta la segunda familia, un pago hecho desde la app se le cobra a la clienta pero la venta se
+queda en PENDIENTE para siempre: el detalle de la venta se escribe recien cuando llega el webhook.
 
 ## 3. Frontend (Angular + Nginx)
 

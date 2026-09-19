@@ -185,3 +185,56 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* Dictado por voz (CU18), mismo mecanismo que "Reporte con IA" en panel-reportes (CU15).
+   Silueta de microfono minimalista en SVG (linea, sin relleno) en vez de un emoji: con la
+   tipografia display de la identidad visual, el emoji desentonaba y se veia poco cuidado. */
+.chat__mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.7rem;
+  height: 2.7rem;
+  padding: 0;
+  border: 1px solid var(--paper-line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.chat__mic svg {
+  display: block;
+}
+
+.chat__mic:hover:not(:disabled) {
+  border-color: var(--flame);
+  color: var(--flame);
+}
+
+.chat__mic:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.chat__mic--grabando {
+  background: var(--flame);
+  border-color: var(--flame);
+  color: var(--white);
+  animation: mic-pulso 1.1s ease-in-out infinite;
+}
+
+@keyframes mic-pulso {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}

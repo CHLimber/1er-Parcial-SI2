@@ -35,10 +35,11 @@ async def webhook_stripe(
         ) from error
 
     tipo = event["type"]
-    sesion = event["data"]["object"]
+    objeto = event["data"]["object"]
 
     if tipo == "checkout.session.completed":
-        if sesion.get("payment_status") != "paid":
+        # CU06 canal WEB: Checkout Session embebida.
+        if objeto.get("payment_status") != "paid":
             # metodo de pago asincrono (p.ej. transferencia): esperamos el evento de resultado
             return WebhookOut(procesado=False, mensaje="Pago asincrono pendiente de confirmacion")
         aprobado = True
@@ -47,13 +48,23 @@ async def webhook_stripe(
     elif tipo in ("checkout.session.async_payment_failed", "checkout.session.expired"):
         # E1: timeout/expiracion de la sesion de pago -- se trata como rechazo
         aprobado = False
+    elif tipo == "payment_intent.succeeded":
+        # CU06 canal MOVIL: PaymentIntent confirmado in-app por el PaymentSheet de flutter_stripe.
+        aprobado = True
+    elif tipo == "payment_intent.canceled":
+        # Terminal de verdad (alguien cancelo el PaymentIntent explicitamente). A diferencia de
+        # Checkout Session, un PaymentIntent no expira solo y "payment_intent.payment_failed" NO
+        # se trata aca como rechazo: ese evento se dispara en CADA intento de tarjeta declinada
+        # dentro del mismo PaymentSheet (el cliente puede seguir probando otra tarjeta sin cerrarlo)
+        # -- tratarlo como rechazo anularia el pedido mientras la clienta todavia esta reintentando.
+        aprobado = False
     else:
         return WebhookOut(procesado=False, mensaje=f"Evento ignorado: {tipo}")
 
     return await _procesar_evento(
         conn,
         pasarela="STRIPE",
-        id_transaccion=sesion["id"],
+        id_transaccion=objeto["id"],
         evento_id=event["id"],
         aprobado=aprobado,
     )

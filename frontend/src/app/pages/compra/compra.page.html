@@ -80,8 +80,9 @@
 
       <!-- CU20: seguimiento del delivery -->
       @if (envio(); as e) {
+        @let estadoActual = estadoMostrado();
         <section class="envio">
-          <h2 class="envio__titulo">{{ etiquetaEnvio(e.estado) }}</h2>
+          <h2 class="envio__titulo">{{ etiquetaEnvio(estadoActual) }}</h2>
           <p class="envio__destino">
             {{ e.direccion }}@if (e.referencia) { · {{ e.referencia }} }
           </p>
@@ -89,7 +90,7 @@
           @if (e.estado !== 'CANCELADO' && e.estado !== 'FALLIDO') {
             <ol class="linea">
               @for (paso of pasos; track paso.estado; let i = $index) {
-                <li class="linea__paso" [class.linea__paso--hecho]="i <= pasoActual(e.estado)">
+                <li class="linea__paso" [class.linea__paso--hecho]="i <= pasoActual(estadoActual)">
                   <span class="linea__punto"></span>
                   <span class="linea__texto">{{ paso.etiqueta }}</span>
                 </li>
@@ -105,7 +106,7 @@
           }
 
           <ul class="envio__eventos">
-            @for (evento of e.eventos; track evento.fecha) {
+            @for (evento of eventosMostrados(); track evento.fecha) {
               <li>
                 <span class="envio__evento-estado">{{ etiquetaEnvio(evento.estado) }}</span>
                 <span class="envio__evento-fecha">{{ evento.fecha | date: 'short' }}</span>

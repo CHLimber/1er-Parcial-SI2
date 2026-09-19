@@ -43,6 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Salida de Gradle: /build/ de arriba solo cubre la raiz del proyecto Flutter, no esta
+/android/build/
 
 # Widget Preview related
 .widget_preview/
