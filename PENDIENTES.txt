@@ -1213,7 +1213,7 @@
       propio. Con QR no pasa: se resuelve dentro de la app. Esto solo aplica al
       movil -- en la WEB (ver 2.14) Stripe ya no redirige a ningun lado.
 
-[4.7] EL BACKEND DE RAILWAY ESTA ATRASADO RESPECTO DEL CODIGO LOCAL. <-- BLOQUEANTE
+[4.7] [RESUELTO 2026-09-19] El backend de Railway estaba atrasado respecto del codigo local.
       SINTOMA : en el APK de release (que apunta a Railway), pagar con Stripe corta
                 con "No se pudo continuar este pago desde el celular. Volve a
                 intentarlo". En debug contra el Docker local no pasa.
@@ -1228,13 +1228,17 @@
                 tiene canal MOVIL pero id_transaccion `cs_test_...`, o sea una
                 Checkout Session; el codigo local, con canal MOVIL, habria creado
                 un `pi_...`.
-      FALTA   : commitear backend/ + movil/ + frontend/ y pushear a
-                github.com/CHLimber/1er-Parcial-SI2 (Railway redespliega solo), y
-                agregar al webhook del Dashboard de Stripe los eventos
+      FIX     : commit 023574e (backend + movil + frontend) pusheado a main;
+                Railway redesplego solo.
+      VERIFICADO: POST /ventas/checkout con canal MOVIL contra Railway devuelve
+                `pi_...` con client_secret (antes del deploy, el mismo request
+                devolvia `cs_test_...` y client_secret vacio), y en el emulador el
+                PaymentSheet nativo abre dentro de la app con "Pay BOB338.89".
+      FALTA   : agregar al webhook del Dashboard de Stripe los eventos
                 `payment_intent.succeeded` y `payment_intent.canceled` (ver la nota
                 de Stripe en RAILWAY.md): sin ellos el cobro del movil sale pero la
-                venta se queda PENDIENTE.
-      NOTA    : no tiene nada que ver con el telefono (Huawei) ni con el APK.
+                venta se queda PENDIENTE. Es configuracion en Stripe, no codigo.
+      NOTA    : no tenia nada que ver con el telefono (Huawei) ni con el APK.
 
 [4.8] [RESUELTO 2026-09-19] Un checkout pendiente no se podia retomar desde el otro canal.
       El reuso del intento PENDIENTE se busca por carrito y no miraba con que canal
