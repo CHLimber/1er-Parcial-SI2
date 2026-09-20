@@ -1,4 +1,4 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, OnInit, computed, inject, input } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
@@ -6,7 +6,80 @@ import { AuthService } from '../../core/auth/auth.service';
 interface EntradaNav {
   ruta: string;
   etiqueta: string;
-  visible: () => boolean;
+  visible: (auth: AuthService) => boolean;
+}
+
+/**
+ * Secciones del panel de gestion (CU09 a CU13), en el orden en que se muestran en la
+ * navegacion. `primeraSeccionPanel` reusa esta misma lista para saber a donde mandar a un
+ * usuario que entra a /panel sin una seccion puntual.
+ */
+const ENTRADAS_PANEL: EntradaNav[] = [
+  {
+    ruta: '/panel/catalogo',
+    etiqueta: 'Catálogo',
+    visible: (auth) => auth.tienePermiso('catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
+  },
+  {
+    ruta: '/panel/recepciones',
+    etiqueta: 'Recepciones',
+    visible: (auth) => auth.tienePermiso('recepciones.leer', 'recepciones.crear'),
+  },
+  {
+    ruta: '/panel/proveedores',
+    etiqueta: 'Proveedores',
+    visible: (auth) =>
+      auth.tienePermiso(
+        'proveedores.leer',
+        'proveedores.crear',
+        'proveedores.actualizar',
+        'proveedores.eliminar',
+      ),
+  },
+  {
+    ruta: '/panel/sucursales',
+    etiqueta: 'Sucursales',
+    visible: (auth) =>
+      auth.tienePermiso(
+        'sucursales.leer',
+        'sucursales.crear',
+        'sucursales.actualizar',
+        'sucursales.eliminar',
+      ),
+  },
+  {
+    ruta: '/panel/usuarios',
+    etiqueta: 'Usuarios y roles',
+    visible: (auth) =>
+      auth.tienePermiso(
+        'usuarios.leer',
+        'usuarios.crear',
+        'usuarios.actualizar',
+        'usuarios.eliminar',
+        'roles.leer',
+      ),
+  },
+  {
+    ruta: '/panel/reportes',
+    etiqueta: 'Reportes',
+    visible: (auth) => auth.tienePermiso('reportes.leer'),
+  },
+  {
+    ruta: '/panel/auditoria',
+    etiqueta: 'Auditoría',
+    visible: (auth) => auth.tienePermiso('auditoria.leer'),
+  },
+  { ruta: '/caja', etiqueta: 'Caja', visible: (auth) => auth.usuario()?.rol === 'CAJERO' },
+  {
+    ruta: '/atender-reservas',
+    etiqueta: 'Reservas',
+    visible: (auth) => auth.usuario()?.rol === 'ENCARGADO',
+  },
+];
+
+/** A donde mandar a quien entra a /panel: su primera seccion habilitada, o la tienda si no tiene ninguna. */
+export function primeraSeccionPanel(auth: AuthService): string {
+  return ENTRADAS_PANEL.find((entrada) => entrada.visible(auth))?.ruta ?? '/tienda';
 }
 
 /**
@@ -20,86 +93,23 @@ interface EntradaNav {
   templateUrl: './panel-shell.html',
   styleUrl: './panel-shell.css',
 })
-export class PanelShell {
+export class PanelShell implements OnInit {
   readonly titulo = input.required<string>();
   readonly bajada = input<string>('');
 
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
-  private readonly entradas: EntradaNav[] = [
-    { ruta: '/panel', etiqueta: 'Panel', visible: () => true },
-    {
-      ruta: '/panel/catalogo',
-      etiqueta: 'Catálogo',
-      visible: () =>
-        this.auth.tienePermiso('catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
-    },
-    {
-      ruta: '/panel/recepciones',
-      etiqueta: 'Recepciones',
-      visible: () => this.auth.tienePermiso('recepciones.leer', 'recepciones.crear'),
-    },
-    {
-      ruta: '/panel/proveedores',
-      etiqueta: 'Proveedores',
-      visible: () =>
-        this.auth.tienePermiso(
-          'proveedores.leer',
-          'proveedores.crear',
-          'proveedores.actualizar',
-          'proveedores.eliminar',
-        ),
-    },
-    {
-      ruta: '/panel/sucursales',
-      etiqueta: 'Sucursales',
-      visible: () =>
-        this.auth.tienePermiso(
-          'sucursales.leer',
-          'sucursales.crear',
-          'sucursales.actualizar',
-          'sucursales.eliminar',
-        ),
-    },
-    {
-      ruta: '/panel/usuarios',
-      etiqueta: 'Usuarios y roles',
-      visible: () =>
-        this.auth.tienePermiso(
-          'usuarios.leer',
-          'usuarios.crear',
-          'usuarios.actualizar',
-          'usuarios.eliminar',
-          'roles.leer',
-        ),
-    },
-    {
-      ruta: '/panel/reportes',
-      etiqueta: 'Reportes',
-      visible: () => this.auth.tienePermiso('reportes.leer'),
-    },
-    {
-      ruta: '/panel/auditoria',
-      etiqueta: 'Auditoría',
-      visible: () => this.auth.tienePermiso('auditoria.leer'),
-    },
-    {
-      ruta: '/panel/envios',
-      etiqueta: 'Envíos',
-      visible: () => this.auth.tienePermiso('envios.leer', 'envios.actualizar'),
-    },
-    { ruta: '/caja', etiqueta: 'Caja', visible: () => this.auth.usuario()?.rol === 'CAJERO' },
-    {
-      ruta: '/atender-reservas',
-      etiqueta: 'Reservas',
-      visible: () => this.auth.usuario()?.rol === 'ENCARGADO',
-    },
-  ];
-
   protected readonly navegacion = computed(() =>
-    this.entradas.filter((entrada) => entrada.visible()),
+    ENTRADAS_PANEL.filter((entrada) => entrada.visible(this.auth)),
   );
+
+  protected readonly inicio = computed(() => primeraSeccionPanel(this.auth));
+
+  ngOnInit(): void {
+    // si el administrador cambio los permisos del rol, esta es la oportunidad de enterarse
+    this.auth.refrescarSesion().subscribe({ error: () => undefined });
+  }
 
   protected cerrarSesion(): void {
     this.auth.cerrarSesion();

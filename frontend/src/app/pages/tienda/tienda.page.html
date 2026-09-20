@@ -112,16 +112,22 @@
           <div class="filtros__grupo">
             <span class="filtros__etiqueta">Color</span>
             <div class="swatches">
-              @for (color of filtros()!.colores; track color.id) {
+              @for (color of coloresAMostrar(); track color.id) {
                 <button
                   type="button"
                   class="swatch"
                   [class.swatch--activo]="colorId === color.id"
-                  [style.background-color]="color.codigo_hex"
-                  [title]="color.nombre"
                   [attr.aria-label]="'Color ' + color.nombre"
                   (click)="seleccionarColor(color.id)"
-                ></button>
+                >
+                  <span class="swatch__pastilla" [style.background-color]="color.codigo_hex"></span>
+                  <span class="swatch__nombre">{{ color.nombre }}</span>
+                </button>
+              }
+              @if (hayColoresOcultos() || mostrarTodosLosColores()) {
+                <button type="button" class="swatch swatch--mas" (click)="alternarTodosLosColores()">
+                  {{ mostrarTodosLosColores() ? 'Ver menos' : 'Ver todos (' + filtros()!.colores.length + ')' }}
+                </button>
               }
             </div>
           </div>

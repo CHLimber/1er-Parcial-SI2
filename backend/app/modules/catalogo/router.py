@@ -34,7 +34,15 @@ async def obtener_filtros(conn: asyncpg.Connection = Depends(get_connection)) ->
         "SELECT id, nombre, slug, categoria_padre_id FROM categoria WHERE activa ORDER BY orden, nombre"
     )
     tallas = await conn.fetch("SELECT id, codigo, tipo FROM talla ORDER BY tipo, orden")
-    colores = await conn.fetch("SELECT id, nombre, codigo_hex FROM color ORDER BY nombre")
+    colores = await conn.fetch(
+        """
+        SELECT DISTINCT c.id, c.nombre, c.codigo_hex
+        FROM color c
+        JOIN producto_variante pv ON pv.color_id = c.id AND pv.activa
+        JOIN producto p ON p.id = pv.producto_id AND p.activo
+        ORDER BY c.nombre
+        """
+    )
     temporadas = await conn.fetch(
         "SELECT id, nombre, tipo FROM temporada WHERE activa ORDER BY fecha_inicio DESC"
     )

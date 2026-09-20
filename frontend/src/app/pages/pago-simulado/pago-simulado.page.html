@@ -1,15 +1,19 @@
 <div class="pagina">
   <main class="contenido">
     @if (cargando()) {
-      <p class="estado">Conectando con la pasarela…</p>
-    } @else if (noEncontrada() || !venta()) {
+      <p class="estado">Confirmando tu pago…</p>
+    } @else if (noEncontrada() || errorConfirmando()) {
       <div class="estado estado--error">
-        <p>No encontramos ese pedido.</p>
+        <p>
+          {{
+            errorConfirmando()
+              ? 'No pudimos confirmar tu pago. Intentalo nuevamente.'
+              : 'No encontramos ese pedido.'
+          }}
+        </p>
         <a class="enlace" routerLink="/carrito">Volver al carrito</a>
       </div>
-    } @else {
-      @let v = venta()!;
-
+    } @else if (ventaStripe(); as v) {
       <section class="pasarela-card">
         <span class="pasarela-card__marca">QR</span>
 
@@ -22,34 +26,10 @@
           <strong>{{ formatearPrecio(v.total) }}</strong>
         </div>
 
-        @if (v.pago?.pasarela === 'STRIPE') {
-          <p class="pasarela-card__aviso">
-            Este pedido se paga con Stripe, no acá. Volvé al carrito para generar un nuevo intento de pago.
-          </p>
-          <a class="boton" routerLink="/carrito">Volver al carrito</a>
-        } @else {
-          <p class="pasarela-card__aviso">
-            Esta es una pasarela simulada para fines académicos: ningún cobro real ocurre acá.
-          </p>
-          <div class="pasarela-card__acciones">
-            <button
-              type="button"
-              class="boton"
-              [disabled]="procesando()"
-              (click)="simularPago('APROBADO')"
-            >
-              {{ procesando() ? 'Procesando…' : 'Simular pago aprobado' }}
-            </button>
-            <button
-              type="button"
-              class="boton boton--secundario"
-              [disabled]="procesando()"
-              (click)="simularPago('RECHAZADO')"
-            >
-              Simular pago rechazado
-            </button>
-          </div>
-        }
+        <p class="pasarela-card__aviso">
+          Este pedido se paga con Stripe, no acá. Volvé al carrito para generar un nuevo intento de pago.
+        </p>
+        <a class="boton" routerLink="/carrito">Volver al carrito</a>
       </section>
     }
   </main>

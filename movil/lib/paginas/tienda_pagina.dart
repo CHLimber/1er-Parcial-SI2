@@ -302,7 +302,7 @@ class _TiendaPaginaState extends State<TiendaPagina> {
         ),
         body: Column(
           children: [
-            if (_recomendaciones.isNotEmpty) _SeccionRecomendaciones(productos: _recomendaciones),
+            // Fijo: unico elemento que no se desplaza con el resto del contenido.
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: TextField(
@@ -324,52 +324,81 @@ class _TiendaPaginaState extends State<TiendaPagina> {
                 ),
               ),
             ),
-            if (_hayFiltrosActivos)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${_productos.length} prenda(s) con los filtros activos',
-                        style: const TextStyle(color: Paleta.inkSuave, fontSize: 13),
-                      ),
-                    ),
-                    TextButton(onPressed: _limpiarFiltros, child: const Text('Quitar filtros')),
-                  ],
-                ),
-              ),
             Expanded(
               child: VistaAsincrona(
                 cargando: _cargando,
                 error: _error,
                 alReintentar: _cargarTodo,
-                hijo: _productos.isEmpty
-                    ? const EstadoVacio(
-                        mensaje: 'No hay prendas que coincidan con tu busqueda.',
-                        icono: Icons.search_off,
-                      )
-                    : RefreshIndicator(
-                        color: Paleta.flame,
-                        onRefresh: _cargarTodo,
-                        child: GridView.builder(
-                          controller: _scroll,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                            maxCrossAxisExtent: 260,
-                            mainAxisSpacing: 14,
-                            crossAxisSpacing: 14,
-                            childAspectRatio: 0.6,
-                          ),
-                          itemCount: _productos.length + (_cargandoMas ? 1 : 0),
-                          itemBuilder: (contexto, indice) {
-                            if (indice >= _productos.length) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
-                            return TarjetaProducto(producto: _productos[indice]);
-                          },
+                // Recomendados, filtros activos y la grilla van todos dentro del mismo
+                // scroll, para que se desplacen juntos por debajo de la busqueda fija.
+                hijo: RefreshIndicator(
+                  color: Paleta.flame,
+                  onRefresh: _cargarTodo,
+                  child: CustomScrollView(
+                    controller: _scroll,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    slivers: [
+                      if (_recomendaciones.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: _SeccionRecomendaciones(productos: _recomendaciones),
                         ),
-                      ),
+                      if (_hayFiltrosActivos)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${_productos.length} prenda(s) con los filtros activos',
+                                    style:
+                                        const TextStyle(color: Paleta.inkSuave, fontSize: 13),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _limpiarFiltros,
+                                  child: const Text('Quitar filtros'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      if (_productos.isEmpty)
+                        const SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: EstadoVacio(
+                            mensaje: 'No hay prendas que coincidan con tu busqueda.',
+                            icono: Icons.search_off,
+                          ),
+                        )
+                      else ...[
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          sliver: SliverGrid(
+                            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 260,
+                              mainAxisSpacing: 14,
+                              crossAxisSpacing: 14,
+                              childAspectRatio: 0.6,
+                            ),
+                            delegate: SliverChildBuilderDelegate(
+                              (contexto, indice) =>
+                                  TarjetaProducto(producto: _productos[indice]),
+                              childCount: _productos.length,
+                            ),
+                          ),
+                        ),
+                        if (_cargandoMas)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ],

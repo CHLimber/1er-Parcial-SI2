@@ -1,3 +1,4 @@
+import { inject } from '@angular/core';
 import { Routes } from '@angular/router';
 
 import {
@@ -7,6 +8,8 @@ import {
   invitadoGuard,
   permisoGuard,
 } from './core/auth/auth.guard';
+import { AuthService } from './core/auth/auth.service';
+import { primeraSeccionPanel } from './shared/panel/panel-shell';
 
 export const routes: Routes = [
   {
@@ -92,8 +95,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
     children: [
       {
+        // Sin pantalla propia: el menu de arriba (panel-shell) ya lista todas las secciones
+        // habilitadas para el rol, asi que /panel manda directo a la primera de ellas.
         path: '',
-        loadComponent: () => import('./pages/panel/panel.page').then((m) => m.PanelPage),
+        pathMatch: 'full',
+        redirectTo: () => primeraSeccionPanel(inject(AuthService)),
       },
       {
         path: 'catalogo',
@@ -171,12 +177,6 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),
         canActivate: [permisoGuard('auditoria.leer')],
-      },
-      {
-        path: 'envios',
-        loadComponent: () =>
-          import('./pages/panel-envios/panel-envios.page').then((m) => m.PanelEnviosPage),
-        canActivate: [permisoGuard('envios.leer', 'envios.actualizar')],
       },
     ],
   },

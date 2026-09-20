@@ -49,6 +49,28 @@ export class TiendaPage implements OnInit, OnDestroy {
   /** Cantidad de resultados de la ultima busqueda, para el resumen "N prendas". */
   protected readonly totalResultados = computed(() => this.productos().length);
 
+  /** El catalogo tiene decenas de tonos casi identicos (ver PENDIENTES.txt);
+   * arrancamos mostrando solo los primeros para no saturar el filtro. */
+  private static readonly COLORES_VISIBLES_INICIAL = 12;
+  protected readonly mostrarTodosLosColores = signal(false);
+
+  protected readonly coloresAMostrar = computed(() => {
+    const colores = this.filtros()?.colores ?? [];
+    const colorSeleccionado = colores.find((c) => c.id === this.colorId);
+    if (this.mostrarTodosLosColores() || colores.length <= TiendaPage.COLORES_VISIBLES_INICIAL) {
+      return colores;
+    }
+    const visibles = colores.slice(0, TiendaPage.COLORES_VISIBLES_INICIAL);
+    if (colorSeleccionado && !visibles.includes(colorSeleccionado)) {
+      visibles.push(colorSeleccionado);
+    }
+    return visibles;
+  });
+
+  protected readonly hayColoresOcultos = computed(
+    () => (this.filtros()?.colores.length ?? 0) > this.coloresAMostrar().length,
+  );
+
   private temporizadorBusqueda: ReturnType<typeof setTimeout> | undefined;
 
   protected hayFiltrosActivos(): boolean {
@@ -84,6 +106,10 @@ export class TiendaPage implements OnInit, OnDestroy {
   protected seleccionarColor(id: number): void {
     this.colorId = this.colorId === id ? null : id;
     this.buscar();
+  }
+
+  protected alternarTodosLosColores(): void {
+    this.mostrarTodosLosColores.set(!this.mostrarTodosLosColores());
   }
 
   protected cambiarTemporada(): void {
@@ -155,6 +181,7 @@ export class TiendaPage implements OnInit, OnDestroy {
     this.tallaId = null;
     this.colorId = null;
     this.temporadaId = '';
+    this.mostrarTodosLosColores.set(false);
     this.buscar();
   }
 

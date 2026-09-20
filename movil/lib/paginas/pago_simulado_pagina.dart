@@ -22,7 +22,7 @@ class PagoSimuladoPagina extends StatefulWidget {
 class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
   VentaOut? _venta;
   bool _cargando = true;
-  bool _procesando = false;
+  bool _confirmando = false;
   String? _error;
 
   @override
@@ -48,6 +48,7 @@ class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
         _venta = venta;
         _cargando = false;
       });
+      await _confirmarPago(venta);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -57,19 +58,23 @@ class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
     }
   }
 
-  Future<void> _simularPago(String resultado) async {
-    final pago = _venta?.pago;
-    if (pago?.pasarela == null || pago?.idTransaccion == null) return;
-
-    setState(() => _procesando = true);
+  Future<void> _confirmarPago(VentaOut venta) async {
+    final pago = venta.pago;
+    if (pago?.pasarela == null || pago?.idTransaccion == null) {
+      setState(() => _error = 'No se pudo confirmar el pago.');
+      return;
+    }
+    setState(() => _confirmando = true);
     try {
-      await pagosService.simularWebhook(pago!.pasarela!, pago.idTransaccion!, resultado);
+      await pagosService.simularWebhook(pago!.pasarela!, pago.idTransaccion!, 'APROBADO');
       if (!mounted) return;
       context.pushReplacement('/compra/${widget.ventaId}');
     } catch (error) {
       if (!mounted) return;
-      mostrarAviso(context, interpretarError(error), esError: true);
-      setState(() => _procesando = false);
+      setState(() {
+        _error = interpretarError(error);
+        _confirmando = false;
+      });
     }
   }
 
@@ -88,20 +93,6 @@ class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Paleta.gold.withValues(alpha: 0.12),
-                      border: Border.all(color: Paleta.gold.withValues(alpha: 0.4)),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Entorno de prueba: el QR no tiene sandbox disponible, asi que esta '
-                      'pantalla simula la respuesta de la pasarela.',
-                      style: TextStyle(fontSize: 13, height: 1.4),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
                   const EtiquetaDato('Orden de pago'),
                   const SizedBox(height: 6),
                   Titular(venta.numero, tamano: 26),
@@ -134,25 +125,17 @@ class _PagoSimuladoPaginaState extends State<PagoSimuladoPagina> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 26),
-                  ElevatedButton.icon(
-                    onPressed: _procesando ? null : () => _simularPago('APROBADO'),
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('SIMULAR PAGO APROBADO'),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: _procesando ? null : () => _simularPago('RECHAZADO'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Paleta.rojo,
-                      side: const BorderSide(color: Paleta.rojo),
+                  if (_confirmando) ...[
+                    const SizedBox(height: 26),
+                    const Center(
+                      child: Column(
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 12),
+                          Text('Confirmando tu pago…'),
+                        ],
+                      ),
                     ),
-                    icon: const Icon(Icons.cancel_outlined),
-                    label: const Text('SIMULAR PAGO RECHAZADO'),
-                  ),
-                  if (_procesando) ...[
-                    const SizedBox(height: 20),
-                    const Center(child: CircularProgressIndicator()),
                   ],
                 ],
               ),

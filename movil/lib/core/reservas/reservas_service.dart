@@ -1,8 +1,17 @@
+import 'package:flutter/foundation.dart';
+
 import '../api.dart';
 import 'reservas_models.dart';
 
 /// CU04 (cliente) y CU08 (encargado de sucursal).
 class ReservasService {
+  /// `MisReservasPagina` vive dentro del IndexedStack de la barra inferior, que
+  /// mantiene su estado (y su lista ya cargada) al cambiar de pestana -- sin esto,
+  /// confirmar una reserva y volver a esa pantalla mostraria la lista vieja, como si
+  /// la reserva nueva no se hubiera guardado. Se notifica al crear una reserva para
+  /// que esa pantalla sepa que tiene que volver a pedir la lista.
+  final ValueNotifier<int> actualizaciones = ValueNotifier<int>(0);
+
   Future<ReservaOut> crear({
     required String sucursalId,
     required DateTime fechaVisita,
@@ -19,7 +28,9 @@ class ReservasService {
           .map((i) => {'variante_id': i.varianteId, 'cantidad': i.cantidad})
           .toList(),
     });
-    return ReservaOut.desdeJson(respuesta as Map<String, dynamic>);
+    final reserva = ReservaOut.desdeJson(respuesta as Map<String, dynamic>);
+    actualizaciones.value++;
+    return reserva;
   }
 
   Future<List<ReservaOut>> listarMisReservas() async {
