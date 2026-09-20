@@ -40,6 +40,21 @@ flutter devices                          # el emulador tiene que aparecer aca
 Si no hay ninguno, se crea con `flutter emulators --create` o desde el Device
 Manager de Android Studio.
 
+**Solo para la realidad aumentada de CU16** (el boton "ver en tu espacio"): el
+emulador no trae "Google Play Services para RA" y sin esa app el AR no arranca.
+El visor 3D de la app funciona igual sin ella, asi que esto es opcional. Google
+publica el APK para emulador en las releases del SDK:
+
+```bash
+curl -L -o arcore.apk https://github.com/google-ar/arcore-android-sdk/releases/download/1.56.0/Google_Play_Services_for_AR_1.56.0_x86_for_emulator.apk
+adb install -r -t arcore.apk
+```
+
+En un telefono real se instala desde la Play Store. Ojo con los equipos **sin
+servicios de Google** (los Huawei posteriores al veto, por ejemplo): ahi no hay
+ARCore de ninguna forma y solo queda el visor 3D, que es justamente por lo que el
+visor vive dentro de la app y no se delega todo a Scene Viewer.
+
 ### 3. Correr la app
 
 Desde `movil/`:

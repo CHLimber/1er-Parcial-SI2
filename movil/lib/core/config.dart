@@ -62,3 +62,18 @@ String? resolverUrlMedia(String? url) {
   }
   return url;
 }
+
+/// CU16 nivel 2: la URL del modelo 3D tal como la necesita un visor EXTERNO.
+///
+/// El visor embebido de la app (`Visor3dPagina`) puede leer el GLB por HTTP plano,
+/// porque el WebView es nuestro y hereda `network_security_config.xml`. Google Scene
+/// Viewer no: es otra app, exige HTTPS para el `file=` y no tiene forma de alcanzar el
+/// `10.0.2.2:8081` del Docker local. Por eso, cuando la URL no es HTTPS, se sirve el
+/// mismo archivo desde el deploy publico de Railway -- los GLB son los del seed, asi
+/// que el binario es identico en las dos bases.
+String resolverUrlModeloAr(String url) {
+  if (url.startsWith('https://')) return url;
+  final ruta = url.indexOf('/media/');
+  if (ruta == -1) return url;
+  return '${Config.apiUrlProduccion}${url.substring(ruta)}';
+}

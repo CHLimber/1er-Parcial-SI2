@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../compartido/widgets.dart';
 import '../core/carrito/carrito_service.dart';
@@ -15,6 +12,7 @@ import '../core/reservas/reservas_models.dart';
 import '../core/tema.dart';
 import 'tienda_pagina.dart';
 import 'vestidor_virtual_pagina.dart';
+import 'visor_3d_pagina.dart';
 
 /// CU03 (detalle de prenda) y punto de entrada de CU04 (reservar) y CU05 (comprar).
 ///
@@ -188,28 +186,20 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
     );
   }
 
-  /// CU16 nivel 2: lanza Google Scene Viewer con el modelo GLB. Solo Android
-  /// por ahora -- Quick Look (iOS) necesita el mismo modelo convertido a
-  /// USDZ, y eso requiere Reality Converter (Mac); ver IMAGENES_AR.txt.
-  Future<void> _abrirVisor3d(ImagenArOut modelo) async {
-    final url = Uri.encodeComponent(modelo.url);
-    // mode=ar_preferred y no ar_only: con ar_only, un equipo sin ARCore (o el
-    // emulador) no abre NADA. Con ar_preferred siempre se ve el modelo en 3D y
-    // el boton de "ver en tu espacio" aparece solo si el equipo lo soporta.
-    final intent = Uri.parse(
-      'intent://arvr.google.com/scene-viewer/1.0?file=$url&mode=ar_preferred'
-      '&title=${Uri.encodeComponent(_producto?.nombre ?? "FashionStore")}'
-      '#Intent;scheme=https;package=com.google.ar.core;'
-      'action=android.intent.action.VIEW;S.browser_fallback_url=$url;end;',
+  /// CU16 nivel 2: abre el visor 3D embebido (`<model-viewer>` en un WebView).
+  ///
+  /// Antes esto lanzaba directamente un intent de Google Scene Viewer, y por eso el
+  /// boton "no hacia nada" en cualquier equipo sin servicios de Google (un Huawei sin
+  /// GMS, o el emulador sin "Play Services para RA"). El visor propio funciona en
+  /// todos lados; la RA sigue disponible desde ahi para quien la soporte.
+  void _abrirVisor3d(ImagenArOut modelo) {
+    final producto = _producto;
+    if (producto == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Visor3dPagina(nombrePrenda: producto.nombre, modelo: modelo),
+      ),
     );
-    final abierto = await launchUrl(intent, mode: LaunchMode.externalApplication);
-    if (!abierto && mounted) {
-      mostrarAviso(
-        context,
-        'No se pudo abrir el visor de RA. ¿Tenes instalado "Google Play Services para RA"?',
-        esError: true,
-      );
-    }
   }
 
   Future<void> _agregarAlCarrito() async {
@@ -370,18 +360,11 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
         const SizedBox(height: 10),
       ],
       if (modelo3d != null)
-        if (Platform.isAndroid)
-          OutlinedButton.icon(
-            onPressed: () => _abrirVisor3d(modelo3d),
-            icon: const Icon(Icons.view_in_ar_outlined),
-            label: const Text('VER EN 3D / PROBAR EN TU ESPACIO'),
-          )
-        else
-          const Text(
-            'El modelo 3D todavia solo esta disponible en Android '
-            '(falta convertir el archivo a USDZ para iOS).',
-            style: TextStyle(fontSize: 12.5, color: Paleta.inkSuave, height: 1.4),
-          ),
+        OutlinedButton.icon(
+          onPressed: () => _abrirVisor3d(modelo3d),
+          icon: const Icon(Icons.view_in_ar_outlined),
+          label: const Text('VER EN 3D / PROBAR EN TU ESPACIO'),
+        ),
     ];
   }
 

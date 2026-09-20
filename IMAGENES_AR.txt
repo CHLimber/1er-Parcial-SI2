@@ -256,13 +256,39 @@
 
       NIVEL 1 - overlay 2D (AR_OVERLAY). Implementado en
       movil/lib/paginas/vestidor_virtual_pagina.dart: camera +
-      google_mlkit_pose_detection (agregados a pubspec.yaml). En vez de usar
-      escala_base para calibrar en cm, arma una transformacion de similitud
-      que lleva hombro_izq/hombro_der del PNG exactamente sobre los hombros
-      detectados -- mas simple y no necesita saber la distancia real a la
-      camara. FALTA PROBAR EN UN DISPOSITIVO REAL (no se pudo en la sesion
-      que lo escribio): lo primero a revisar es si la camara frontal entrega
-      el buffer ya espejado o no, ver el comentario en `_PrendaPintor.paint`.
+      google_mlkit_pose_detection (agregados a pubspec.yaml). No usa
+      escala_base para calibrar en cm: lleva hombro_izq/hombro_der del PNG
+      sobre los hombros detectados, que no necesita saber la distancia real a
+      la camara.
+
+      [5.2.1] [2026-09-19] SEGUIMIENTO MEJORADO. La version original anclaba
+      bien pero se veia pobre: la prenda vibraba con la persona quieta (la
+      deteccion cruda salta unos pixeles por frame) y usaba UN solo factor de
+      escala, asi que a un torso largo le quedaba corta. Cambios:
+        - Suavizado temporal con media exponencial de paso adaptativo: quieta
+          se planta, en movimiento responde. Es lo que hace que la prenda
+          "siga" en vez de titilar.
+        - Escala vertical propia, sacada de la distancia hombros->caderas
+          detectada contra hombros->cintura del PNG, acotada entre 0.75x y
+          1.45x del ancho para que una mala deteccion no estire la prenda.
+          **Por esto el anclaje `cintura` ahora SI se usa** (antes estaba
+          medido pero muerto).
+        - Se descartan los landmarks con likelihood < 0.45 y hace falta perder
+          la pose 8 frames seguidos para borrar la prenda (antes parpadeaba).
+        - La pose se normaliza (0..1) apenas sale del detector, asi el pintor
+          no vuelve a pensar en rotaciones ni en el buffer -- y la misma
+          transformacion sirve para componer la FOTO.
+        - Funciones nuevas: sacar una foto con la prenda puesta y compartirla
+          (`share_plus`; no se puede capturar la pantalla porque la vista
+          previa es una textura y sale negra, asi que se toma la foto y se
+          vuelve a componer la prenda encima), cambiar entre camara frontal y
+          trasera, y un slider de ajuste fino de tamano (los anclajes estan
+          medidos sobre una talla M).
+        - El espejado depende de `lensDirection == front`, y los hombros se
+          asignan a los anclajes POR POSICION EN PANTALLA (el de menor X va al
+          anclaje izquierdo) en vez de por anatomia: eso vuelve el visor
+          indiferente a si la camara entrega el buffer ya espejado. El boton
+          "invertir lados" queda igual para el caso de una persona de espaldas.
 
       WEB: no se hizo (CU16 se pidio solo para movil). Si se retoma, el plan
       original seguia en pie: MediaPipe Pose Landmarker desde CDN para el
@@ -308,5 +334,160 @@
           Hecho, pero sin probar en un dispositivo real (ver punto 5.2 y
           PENDIENTES.txt 2.8) -- es lo primero a validar antes de la
           defensa del 22/09.
+
+-------------------------------------------------------------------------------
+ 8. AGREGAR UNA PRENDA NUEVA A RA - REQUERIMIENTOS COMPLETOS
+-------------------------------------------------------------------------------
+
+ Los dos niveles NO comparten requisitos ni sirven para las mismas prendas.
+ Elegir primero cual corresponde:
+
+     Prenda de TORSO (blusa, vestido, abrigo)  -> NIVEL 1, probarse con camara
+     Calzado, cartera, sombrero, objeto rigido -> NIVEL 2, verla en 3D / RA
+
+ No hay cruce: el nivel 1 ancla a los hombros (no sirve para un zapato) y el
+ nivel 2 planta el objeto en el piso (no sirve para un vestido).
+
+ ..... 8.A  NIVEL 1: OVERLAY PARA PROBARSE CON LA CAMARA ......................
+
+ Costo real: ~15 minutos por prenda, sin programar nada. El visor ya esta
+ hecho y es el mismo para todas.
+
+ [1] QUE PRENDA SIRVE (si falla algo de esto, el resultado se ve falso)
+     - De torso. Pantalones, faldas y calzado NO: necesitarian otro esquema de
+       anclajes y otra logica en el visor.
+     - LISA o con estampado muy chico. Los estampados grandes se recortan mal
+       y encima se ven pegoteados sobre el cuerpo (ver punto 1, "NO USAR").
+     - Foto flat-lay de FRENTE, prenda extendida y simetrica, sin modelo
+       humano, sin percha, sin sombra fuerte, sobre fondo plano.
+     - Mangas y ruedo completos dentro del encuadre, sin recortes del borde.
+
+ [2] EL ARCHIVO
+     - PNG con canal alfa REAL (no un rectangulo blanco: es el error mas
+       comun y solo se nota al probarlo; verificar componiendolo sobre un
+       fondo de color, ver punto 1.7).
+     - ~1000x1400 px, maximo 500 KB. Si pesa mas, cuantizar a 256 colores con
+       FASTOCTREE (conserva el alfa) -- asi bajaron los tres actuales de 2.4 MB
+       a 77/155/563 KB sin diferencia visible.
+     - Nombre: {codigo}-ar-{color}.png en minusculas y sin acentos
+       (blu-002-ar-marfil.png).
+     - Se guarda en backend/app/media_semilla/ar/, que se copia a MEDIA_DIR en
+       cada arranque y se sirve por /media/ar/<archivo>.
+
+ [3] LAS TRES MEDIDAS (esto es lo unico que no se puede automatizar)
+     Coordenadas NORMALIZADAS 0..1 sobre el PNG, medidas a ojo con una grilla
+     del 10% encima de la imagen:
+
+         hombro_izq  -> costura del hombro que se VE a la izquierda
+         hombro_der  -> la de la derecha
+         cintura     -> centro de la prenda a la altura de la cintura
+
+     "Izquierda" y "derecha" son como se ven en la imagen, NO anatomicas.
+     Las tres son obligatorias: sin `cintura` el visor no puede ajustar el
+     largo al torso de la persona y cae al ajuste proporcional (punto 5.2.1).
+
+     escala_base = ancho real de hombro a hombro en CENTIMETROS a talla M
+     (~36 blusa, ~38 vestido, ~42 tapado). Hoy el visor no la usa; queda
+     cargada para una futura sugerencia de talla.
+
+ [4] CARGARLA - dos caminos, los dos validos
+     (a) Seed SQL, que es como estan las tres actuales: una fila en
+         producto_imagen dentro del bloque "CU16" de db/03_datos_iniciales.sql.
+         Requiere recrear el volumen (`docker compose down -v && up --build`).
+
+           INSERT INTO producto_imagen (producto_id, color_id, uso, formato, url, orden,
+                                        anclajes, escala_base)
+           VALUES (
+             (SELECT id FROM producto WHERE slug = 'blusa-de-seda-manga-larga'),
+             NULL, 'AR_OVERLAY', 'PNG',
+             'http://localhost:8081/media/ar/blu-002-ar-marfil.png', 1,
+             '{"tipo":"TORSO",
+               "hombro_izq":{"x":0.22,"y":0.17},
+               "hombro_der":{"x":0.76,"y":0.17},
+               "cintura":{"x":0.50,"y":0.62}}'::jsonb,
+             36.0
+           );
+
+         OJO: la URL del seed es localhost:8081 a proposito. La app movil la
+         reescribe sola (resolverUrlMedia), pero en Railway hay que correr el
+         UPDATE de reescritura despues de sembrar (ver PENDIENTES.txt 2.8).
+
+     (b) API de CU10, sin tocar la base:
+         POST /admin/catalogo/productos/{id}/imagenes con uso=AR_OVERLAY,
+         formato=PNG y los campos anclajes + escala_base (permiso
+         catalogo.actualizar). El endpoint ya los guarda (punto 5.1).
+         El FORMULARIO del panel todavia no tiene esos campos: por ahora este
+         camino es por curl/Postman, no por pantalla.
+
+ [5] VERIFICAR (los tres, en orden)
+     - curl http://localhost:8081/catalogo/productos/<slug> -> el campo `ar`
+       trae la fila con anclajes y escala_base completos (no null).
+     - El archivo responde 200 en /media/ar/<archivo> con content-type image/png.
+     - En la app: detalle de la prenda -> "PROBARTE ESTA PRENDA CON LA CAMARA",
+       pararse de frente a un paso. La prenda tiene que quedar con las costuras
+       de hombro sobre los hombros. Si queda cruzada, el boton de invertir
+       lados; si queda corrida para arriba o abajo, el anclaje esta mal medido.
+
+ ..... 8.B  NIVEL 2: MODELO 3D PARA VER EN RA ................................
+
+ Costo real: 30-60 minutos por prenda, y casi todo es BUSCAR el modelo. El
+ visor ya esta hecho (visor_3d_pagina.dart, `<model-viewer>` embebido).
+
+ [1] CONSEGUIR EL MODELO
+     - poly.pizza (sin login) o Sketchfab filtrando por licencia descargable.
+     - Licencia: CC0 o CC BY. Si es CC BY, la atribucion es OBLIGATORIA y va
+       anotada en el seed y en la pagina de previsualizacion, como las dos
+       actuales.
+     - REGLA DE ORO, aprendida a golpes: si el modelo NO ES la prenda del
+       catalogo (una bota texana no es una botineta), NO colgarselo a ese
+       producto. La clienta veria en RA algo distinto de lo que compra. O se
+       da de alta un producto nuevo que coincida con el modelo, o no se usa.
+
+ [2] EL ARCHIVO
+     - GLB, maximo 5 MB (bajo eso mejor: lo descarga el telefono).
+     - Texturas embebidas en el GLB, sin archivos sueltos al lado.
+     - Sin animaciones.
+     - **ESCALA EN METROS REALES Y APOYADO EN EL PISO (Y=0), +Y arriba.**
+       Los dos modelos actuales venian en unidades arbitrarias (la bota media
+       2.58 "metros") y Scene Viewer los planta en RA con ese tamano: una bota
+       de dos pisos. Es invisible hasta que se abre en RA y arruina la demo.
+       Se corrige envolviendo las raices de la escena en un nodo con matriz de
+       escala, sin tocar la geometria. Referencia de tamanos reales: bota
+       31x36x35 cm, sandalia 13x8x26 cm.
+     - Nombre: {codigo}-ar.glb. Va en backend/app/media_semilla/ar/.
+
+ [3] VERIFICAR LA BBOX ANTES DE CARGARLO
+     Medir el bounding box del GLB y confirmar que da centimetros creibles y
+     que el minimo en Y es 0. Es el paso que mas veces se saltea y el que mas
+     caro sale.
+
+ [4] LA FOTO DE CATALOGO
+     Conviene que sea un RENDER DEL PROPIO MODELO (asi se hizo con las dos
+     actuales) para que la foto del catalogo y lo que se ve en RA sean
+     exactamente la misma prenda.
+
+ [5] CARGARLA
+     Igual que 8.A[4], con uso='AR_MODELO' y formato='GLB'. Sin anclajes ni
+     escala_base (son de torso, no aplican).
+
+ [6] VERIFICAR
+     - /media/ar/<archivo>.glb responde 200 con content-type
+       model/gltf-binary (ya resuelto en app/main.py con mimetypes.add_type;
+       si algun dia vuelve text/plain, Scene Viewer rechaza el modelo).
+     - /media/ar/previsualizar.html lo muestra en el navegador, sin telefono.
+     - En la app: "VER EN 3D / PROBAR EN TU ESPACIO".
+
+ [7] iOS
+     Falta el USDZ (punto 2.4). El visor 3D embebido anda igual en iOS; lo que
+     no hay es el "ver en tu espacio" de Quick Look.
+
+ ..... 8.C  LO QUE NO DEPENDE DE LOS ARCHIVOS .................................
+
+ Para que la RA de verdad (plantar el objeto en la habitacion) funcione hace
+ falta ARCore, o sea un Android CON servicios de Google. En un Huawei sin GMS
+ no existe y no se puede instalar: ahi queda el visor 3D, que es justamente
+ por lo que el visor vive dentro de la app (PENDIENTES.txt 2.8.1). En el
+ emulador se instala el APK oficial para emulador de las releases del SDK de
+ ARCore (ver movil/README.md).
 
 ===============================================================================
