@@ -78,3 +78,23 @@
   gap: 0.35rem;
   margin-bottom: 1rem;
 }
+
+@media (max-width: 48rem) {
+  .solapas {
+    flex-wrap: wrap;
+  }
+
+  .solapa {
+    flex: 1 1 8rem;
+  }
+
+  .imagen {
+    gap: 0.6rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .imagen__miniatura {
+    width: 2.75rem;
+    height: 3.4rem;
+  }
+}

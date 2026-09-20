@@ -40,7 +40,7 @@ const FILTROS = [
   standalone: true,
   imports: [FormsModule],
   templateUrl: './atender-reservas.page.html',
-  styleUrl: './atender-reservas.page.css',
+  styleUrls: ['./atender-reservas.page.css', '../../shared/responsive.css'],
 })
 export class AtenderReservasPage implements OnInit {
   private readonly reservasService = inject(ReservasService);

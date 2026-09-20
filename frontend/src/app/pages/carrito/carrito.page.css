@@ -354,3 +354,43 @@
   color: var(--ink-soft);
   justify-self: start;
 }
+
+/* ==========================================================================
+   Responsive
+   --------------------------------------------------------------------------
+   La fila de cada prenda pasa a grilla de dos filas en `shared/responsive.css`, que es
+   el mismo layout que usan la bolsa de reserva y el ticket de caja. Aca queda solo lo
+   propio del checkout.
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .contenido {
+    gap: 1.1rem;
+  }
+
+  .formulario {
+    padding: 1rem;
+  }
+
+  .carrito__item {
+    padding: 0.7rem 0.8rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .resumen__linea,
+  .resumen__total {
+    gap: 0.5rem;
+  }
+
+  .carrito__cantidad input {
+    width: 4rem;
+  }
+
+  /* El checkout embebido de Stripe (CU06) trae su propio iframe: sin esto se lleva el
+     ancho del formulario y aparece scroll horizontal en la pagina. */
+  .stripe-embed {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+}

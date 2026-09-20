@@ -148,3 +148,11 @@
   font-weight: 700;
   color: var(--ink);
 }
+
+@media (max-width: 48rem) {
+  .compra__cabecera {
+    /* El numero/codigo y el badge de estado no entran en una linea de 360px. */
+    flex-wrap: wrap;
+    gap: 0.4rem 0.6rem;
+  }
+}

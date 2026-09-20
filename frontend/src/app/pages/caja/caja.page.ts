@@ -20,7 +20,7 @@ interface TicketItem extends VarianteBusquedaOut {
   standalone: true,
   imports: [FormsModule],
   templateUrl: './caja.page.html',
-  styleUrl: './caja.page.css',
+  styleUrls: ['./caja.page.css', '../../shared/responsive.css'],
 })
 export class CajaPage implements OnInit {
   private readonly cajaService = inject(CajaService);

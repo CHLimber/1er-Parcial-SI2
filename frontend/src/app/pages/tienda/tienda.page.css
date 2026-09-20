@@ -357,3 +357,192 @@
   grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 1.5rem;
 }
+
+/* ==========================================================================
+   Menu de la cabecera en telefono y tablet
+   --------------------------------------------------------------------------
+   La cabecera de la clienta tiene seis enlaces mas el nombre y el boton de salir: en
+   escritorio entran en una fila, abajo de 64rem no. Ahi se pliegan detras de la
+   hamburguesa y bajan como panel absoluto (absoluto y no en el flujo para que abrir el
+   menu no empuje el catalogo hacia abajo; la cabecera no es sticky, asi que alcanza).
+   ========================================================================== */
+
+.cabecera__menu {
+  display: none;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid rgba(255, 253, 249, 0.35);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--white);
+  cursor: pointer;
+}
+
+/* Las tres barras: la del medio es el propio span, las otras dos sus pseudoelementos.
+   Al abrir, la del medio se apaga y las otras giran para formar la X. */
+.cabecera__menu-barras,
+.cabecera__menu-barras::before,
+.cabecera__menu-barras::after {
+  display: block;
+  width: 1.15rem;
+  height: 2px;
+  background: currentColor;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.cabecera__menu-barras::before,
+.cabecera__menu-barras::after {
+  content: '';
+  position: absolute;
+}
+
+.cabecera__menu-barras::before {
+  transform: translateY(-0.4rem);
+}
+
+.cabecera__menu-barras::after {
+  transform: translateY(0.4rem);
+}
+
+/* La barra del medio se apaga con `background` y no con `opacity`: la opacidad del padre
+   arrastra a sus pseudoelementos, asi que con `opacity: 0` desaparecia tambien la X. */
+.cabecera__menu--abierto .cabecera__menu-barras {
+  background: transparent;
+}
+
+.cabecera__menu--abierto .cabecera__menu-barras::before {
+  transform: rotate(45deg);
+}
+
+.cabecera__menu--abierto .cabecera__menu-barras::after {
+  transform: rotate(-45deg);
+}
+
+/* Con el menu cerrado no se ven los contadores de la bolsa y del carrito: este punto
+   avisa que hay prendas pendientes sin tener que abrirlo. */
+.cabecera__menu-punto {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--flame);
+}
+
+@media (max-width: 64rem) {
+  .cabecera {
+    position: relative;
+  }
+
+  .cabecera__menu {
+    display: inline-flex;
+  }
+
+  .cabecera__cuenta {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0.35rem clamp(1rem, 4vw, 3rem) 1rem;
+    background: var(--ink);
+    border-top: 1px solid rgba(255, 253, 249, 0.15);
+    box-shadow: 0 18px 28px -18px rgba(0, 0, 0, 0.75);
+  }
+
+  .cabecera__cuenta--abierto {
+    display: flex;
+  }
+
+  .cabecera__reserva {
+    justify-content: space-between;
+    padding: 0.8rem 0;
+    font-size: 0.95rem;
+    border-bottom: 1px solid rgba(255, 253, 249, 0.1);
+  }
+
+  .cabecera__usuario {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 0;
+  }
+
+  .cabecera__salir {
+    margin-top: 0.6rem;
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+  }
+}
+
+/* ==========================================================================
+   Catalogo y filtros
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .saludo__linea {
+    margin-bottom: 1.75rem;
+  }
+
+  .filtros {
+    padding: 0.9rem;
+    gap: 0.85rem;
+  }
+
+  .filtros__campo,
+  .filtros__grupo {
+    /* En escritorio los filtros comparten fila; en telefono cada uno ocupa el ancho para
+       que los chips de talla y color no queden en una columna de 9rem. */
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .catalogo__cabecera {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .filtros-activos {
+    margin-top: -0.5rem;
+  }
+
+  .chip,
+  .swatch {
+    font-size: 0.78rem;
+  }
+
+  /* El nombre del color duplica el ancho de cada pastilla y a este ancho entran cuatro
+     tonos por fila en vez de ocho. El color se ve, que es lo que importa. */
+  .swatch__nombre {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .swatch {
+    padding: 0.4rem;
+  }
+
+  .swatch--mas {
+    padding: 0.3rem 0.7rem;
+  }
+}

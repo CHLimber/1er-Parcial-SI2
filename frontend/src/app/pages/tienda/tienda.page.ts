@@ -16,7 +16,7 @@ import { ProductoCard } from '../../shared/catalogo/producto-card';
   standalone: true,
   imports: [FormsModule, ProductoCard, RouterLink],
   templateUrl: './tienda.page.html',
-  styleUrl: './tienda.page.css',
+  styleUrls: ['./tienda.page.css', '../../shared/responsive.css'],
 })
 export class TiendaPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
@@ -30,6 +30,16 @@ export class TiendaPage implements OnInit, OnDestroy {
   protected readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
   protected readonly itemsEnReserva = this.reservaCarrito.cantidadTotal;
   protected readonly itemsEnCarrito = this.carritoService.cantidadItems;
+
+  /**
+   * Menu de la cabecera en telefono y tablet: los seis enlaces de la clienta no entran en
+   * una fila, asi que abajo de 64rem se pliegan detras del boton hamburguesa (ver
+   * `tienda.page.css`). En escritorio el boton no se muestra y esta bandera no hace nada.
+   */
+  protected readonly menuAbierto = signal(false);
+
+  /** Prendas pendientes (bolsa de reserva + carrito): el punto del boton cuando esta cerrado. */
+  protected readonly itemsPendientes = computed(() => this.itemsEnReserva() + this.itemsEnCarrito());
 
   protected readonly productos = signal<ProductoOut[]>([]);
   protected readonly cargandoCatalogo = signal(true);
@@ -183,6 +193,16 @@ export class TiendaPage implements OnInit, OnDestroy {
     this.temporadaId = '';
     this.mostrarTodosLosColores.set(false);
     this.buscar();
+  }
+
+  protected alternarMenu(): void {
+    this.menuAbierto.set(!this.menuAbierto());
+  }
+
+  /** Al navegar el componente se destruye, pero el menu tambien se cierra al tocar un enlace
+   * para que la transicion no se vea con el panel todavia desplegado. */
+  protected cerrarMenu(): void {
+    this.menuAbierto.set(false);
   }
 
   protected cerrarSesion(): void {

@@ -13,7 +13,7 @@ import { interpretarError } from '../../shared/errores';
   standalone: true,
   imports: [RouterLink],
   templateUrl: './producto-detalle.page.html',
-  styleUrl: './producto-detalle.page.css',
+  styleUrls: ['./producto-detalle.page.css', '../../shared/responsive.css'],
 })
 export class ProductoDetallePage implements OnInit {
   private readonly route = inject(ActivatedRoute);

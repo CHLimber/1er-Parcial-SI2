@@ -118,3 +118,65 @@
   color: var(--ink-soft);
   max-width: 46rem;
 }
+
+/* ==========================================================================
+   Responsive del panel de gestion
+   --------------------------------------------------------------------------
+   La navegacion tiene hasta nueve secciones (un ADMIN las ve todas). Con `flex-wrap`
+   en un telefono se apilan en tres o cuatro lineas y, como la barra es sticky, se comen
+   media pantalla en cada scroll. Abajo de 64rem pasa a ser una tira que se desliza en
+   horizontal: ocupa siempre el alto de una sola fila.
+   ========================================================================== */
+
+@media (max-width: 64rem) {
+  .nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* La barra de scroll horizontal taparia el subrayado de la seccion activa. */
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav__enlace {
+    white-space: nowrap;
+    flex: none;
+  }
+
+  .cabecera__acciones {
+    gap: 0.9rem;
+  }
+}
+
+@media (max-width: 48rem) {
+  .cabecera {
+    padding: 0.85rem 1.1rem;
+  }
+
+  .cabecera__marca {
+    font-size: 1.15rem;
+  }
+
+  .cabecera__usuario {
+    /* El nombre completo mas el rol no entran al lado de "Ir a la tienda" y "Cerrar
+       sesion"; ocupa su propia linea arriba de los dos enlaces. */
+    width: 100%;
+    order: -1;
+  }
+
+  .nav {
+    padding: 0 0.6rem;
+  }
+
+  .nav__enlace {
+    padding: 0.8rem 0.7rem;
+    font-size: 0.82rem;
+  }
+
+  .contenido {
+    padding: 1.1rem 1rem 2rem;
+  }
+}

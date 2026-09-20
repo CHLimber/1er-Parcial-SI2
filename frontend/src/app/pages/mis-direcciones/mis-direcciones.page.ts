@@ -26,7 +26,7 @@ import { MapaPunto } from '../../shared/mapa/mapa-punto';
   standalone: true,
   imports: [FormsModule, RouterLink, MapaPunto],
   templateUrl: './mis-direcciones.page.html',
-  styleUrl: './mis-direcciones.page.css',
+  styleUrls: ['./mis-direcciones.page.css', '../../shared/responsive.css'],
 })
 export class MisDireccionesPage implements OnInit {
   private readonly direccionesService = inject(DireccionesService);

@@ -127,3 +127,21 @@ tfoot td {
   border-top: 2px solid var(--paper-line);
   border-bottom: none;
 }
+
+@media (max-width: 48rem) {
+  .buscador {
+    flex-wrap: wrap;
+  }
+
+  .buscador__campo {
+    flex: 1 1 100%;
+  }
+
+  .buscador .boton {
+    flex: 1;
+  }
+
+  .resultados {
+    max-height: 12rem;
+  }
+}

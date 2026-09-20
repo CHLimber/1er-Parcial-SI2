@@ -272,3 +272,25 @@
 .envio__evento-fecha {
   font-family: var(--font-mono);
 }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .envio {
+    padding: 1rem;
+  }
+
+  /* Los cuatro pasos del seguimiento entran igual en 360px bajando la tipografia: son
+     una palabra cada uno y apilarlos perderia la linea de tiempo. */
+  .linea__paso {
+    font-size: 0.68rem;
+    text-align: center;
+  }
+
+  .confirmacion__items,
+  .totales {
+    padding: 0.85rem 1rem;
+  }
+}

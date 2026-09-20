@@ -1,0 +1,189 @@
+/*
+ * Reglas responsive compartidas por las pantallas de cliente: las que arman su propia
+ * `.cabecera` en vez de colgar de `panel-shell` (tienda, producto-detalle, carrito,
+ * reservar, mis-*, compra, asistente, caja, atender-reservas).
+ *
+ * Se incluye al FINAL de los `styleUrls` de cada pagina, no al principio como
+ * `panel/panel-comun.css`: aca casi todo son media queries que tienen que ganarle a la
+ * declaracion base del archivo de la pagina, y con la misma especificidad gana el ultimo
+ * que se declara. Angular lo scopea a cada componente, asi que los selectores que una
+ * pagina no usa simplemente no aplican.
+ *
+ * Breakpoints (ver el bloque responsive de `src/styles.css`): 64rem, 48rem, 30rem.
+ */
+
+/* ==========================================================================
+   Tablet en horizontal
+   ========================================================================== */
+
+@media (max-width: 64rem) {
+  /* Las cabeceras son una fila sola de enlaces: a este ancho ya no entran todos y hay
+     que dejarlas caer a una segunda linea en vez de comprimirlas hasta lo ilegible. */
+  .cabecera {
+    flex-wrap: wrap;
+    row-gap: 0.6rem;
+  }
+
+  .cabecera__acciones {
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+}
+
+/* ==========================================================================
+   Tablet en vertical / telefono grande
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .cabecera {
+    padding: 0.85rem 1.1rem;
+  }
+
+  .cabecera__marca {
+    font-size: 1.15rem;
+  }
+
+  .cabecera__acciones {
+    /* Alineado a la izquierda cuando baja a su propia linea: centrado o a la derecha
+       queda desprolijo contra el margen de la marca. */
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .titulo,
+  .saludo {
+    /* Los titulares usan `clamp(_, 4vw, _)` y 4vw en un telefono es demasiado chico. */
+    font-size: clamp(1.6rem, 7vw, 2.2rem);
+  }
+
+  /* Grilla del catalogo y de las recomendaciones: tarjetas mas chicas y menos aire. */
+  .grilla {
+    grid-template-columns: repeat(auto-fill, minmax(min(11rem, 100%), 1fr));
+    gap: 1rem;
+  }
+
+  /* Botoneras: que envuelvan en vez de desbordar. */
+  .acciones,
+  .metodos,
+  .pasarelas,
+  .formulario__acciones,
+  .confirmacion__acciones,
+  .reserva-accion__botones {
+    flex-wrap: wrap;
+  }
+
+  .metodo,
+  .pasarela {
+    /* `flex: 1` con tres metodos de pago deja botones de 5rem con el texto partido. */
+    flex: 1 1 8rem;
+  }
+}
+
+/* ==========================================================================
+   Telefono
+   ========================================================================== */
+
+@media (max-width: 30rem) {
+  .cabecera {
+    padding: 0.75rem 1rem;
+  }
+
+  .cabecera__acciones {
+    gap: 0.4rem 0.9rem;
+    font-size: 0.82rem;
+  }
+
+  .grilla {
+    /* Dos columnas fijas: con `auto-fill` una tarjeta suelta se estira a todo el ancho
+       y rompe la proporcion 3/4 de la foto. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  /*
+   * Filas de item (carrito, bolsa de reserva, ticket de caja). En escritorio son una
+   * fila flex: foto | datos | cantidad | subtotal | quitar. En un telefono no entran,
+   * asi que pasan a una grilla de 2 filas con la foto ocupando las dos.
+   *
+   * Cada hijo lleva fila y columna explicitas a proposito: la foto es opcional
+   * (`@if (item.imagen_url)`) y con colocacion automatica su ausencia correria todo
+   * lo demas un lugar.
+   */
+  .carrito__item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+  }
+
+  .carrito__imagen {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .carrito__info {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .carrito__quitar {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .carrito__cantidad {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .carrito__subtotal {
+    grid-column: 3;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .ticket__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+  }
+
+  .ticket__info {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .ticket__quitar {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .ticket__cantidad,
+  .ticket__cantidad-input {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .ticket__subtotal {
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  /* El boton principal de cada formulario ocupa el ancho: es el objetivo de la pantalla
+     y a 1.3rem de padding queda como un boton chico perdido a la izquierda. */
+  .formulario > .boton,
+  .formulario__acciones > .boton,
+  .confirmacion__acciones > .boton {
+    width: 100%;
+    text-align: center;
+    align-self: stretch;
+  }
+}

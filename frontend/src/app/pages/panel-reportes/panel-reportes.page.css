@@ -170,3 +170,77 @@
     opacity: 0.6;
   }
 }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 64rem) {
+  /* Las solapas del submenu son siete y no entran; misma tira deslizable que la
+     navegacion de `panel-shell`. */
+  .submenu {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .submenu::-webkit-scrollbar {
+    display: none;
+  }
+
+  .submenu__item {
+    white-space: nowrap;
+    flex: none;
+  }
+}
+
+@media (max-width: 48rem) {
+  .kpis {
+    /* Dos KPI por fila: con `minmax(13rem, ...)` a 360px entraba uno solo y la tira de
+       indicadores ocupaba una pantalla entera. */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+
+  .kpi {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .kpi__valor {
+    font-size: 1.25rem;
+  }
+
+  /* Chart.js redibuja con `ResizeObserver`, asi que alcanza con cambiarle el alto al
+     contenedor: a 18rem en vertical el grafico queda casi cuadrado y aplasta las
+     etiquetas del eje X. */
+  .grafico {
+    height: 14rem;
+  }
+
+  .grafico--alto {
+    height: 18rem;
+  }
+
+  .ia-chat {
+    max-height: 16rem;
+  }
+
+  .ia-mensaje {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 30rem) {
+  .kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .exportar > .boton {
+    flex: 1 1 100%;
+  }
+
+  .ia-form__campo {
+    flex: 1 1 100%;
+  }
+}

@@ -15,7 +15,7 @@ import { SucursalesService } from '../../core/sucursales/sucursales.service';
   standalone: true,
   imports: [FormsModule, RouterLink, DatePipe],
   templateUrl: './reservar.page.html',
-  styleUrl: './reservar.page.css',
+  styleUrls: ['./reservar.page.css', '../../shared/responsive.css'],
 })
 export class ReservarPage implements OnInit {
   private readonly reservaCarrito = inject(ReservaCarritoService);

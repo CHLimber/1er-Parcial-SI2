@@ -176,3 +176,16 @@
   gap: 0.85rem;
   margin-top: 1rem;
 }
+
+@media (max-width: 48rem) {
+  .detalle-auditoria {
+    /* Vive adentro de una celda de la tabla, que arriba de 48rem se desliza en
+       horizontal: sin tope se estira con el texto mas largo del jsonb. */
+    max-width: 30rem;
+  }
+
+  .paginacion {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+}

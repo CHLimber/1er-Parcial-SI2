@@ -2,19 +2,39 @@
   <header class="cabecera">
     <span class="cabecera__marca">FashionStore</span>
 
-    <div class="cabecera__cuenta">
+    <!-- Hamburguesa: solo se muestra abajo de 64rem, donde los enlaces se pliegan (ver CSS). -->
+    <button
+      type="button"
+      class="cabecera__menu"
+      [class.cabecera__menu--abierto]="menuAbierto()"
+      [attr.aria-expanded]="menuAbierto()"
+      [attr.aria-label]="menuAbierto() ? 'Cerrar el menú' : 'Abrir el menú'"
+      aria-controls="menu-tienda"
+      (click)="alternarMenu()"
+    >
+      <span class="cabecera__menu-barras" aria-hidden="true"></span>
+      @if (!menuAbierto() && itemsPendientes() > 0) {
+        <span class="cabecera__menu-punto" aria-hidden="true"></span>
+      }
+    </button>
+
+    <div
+      id="menu-tienda"
+      class="cabecera__cuenta"
+      [class.cabecera__cuenta--abierto]="menuAbierto()"
+    >
       @if (!esStaff()) {
-        <a class="cabecera__reserva" routerLink="/reservar">
+        <a class="cabecera__reserva" routerLink="/reservar" (click)="cerrarMenu()">
           Mi reserva
           @if (itemsEnReserva() > 0) {
             <span class="cabecera__contador">{{ itemsEnReserva() }}</span>
           }
         </a>
-        <a class="cabecera__reserva" routerLink="/mis-reservas">Mis reservas</a>
-        <a class="cabecera__reserva" routerLink="/mis-compras">Mis compras</a>
-        <a class="cabecera__reserva" routerLink="/mis-direcciones">Mis direcciones</a>
-        <a class="cabecera__reserva" routerLink="/asistente">Asistente</a>
-        <a class="cabecera__reserva" routerLink="/carrito">
+        <a class="cabecera__reserva" routerLink="/mis-reservas" (click)="cerrarMenu()">Mis reservas</a>
+        <a class="cabecera__reserva" routerLink="/mis-compras" (click)="cerrarMenu()">Mis compras</a>
+        <a class="cabecera__reserva" routerLink="/mis-direcciones" (click)="cerrarMenu()">Mis direcciones</a>
+        <a class="cabecera__reserva" routerLink="/asistente" (click)="cerrarMenu()">Asistente</a>
+        <a class="cabecera__reserva" routerLink="/carrito" (click)="cerrarMenu()">
           Carrito
           @if (itemsEnCarrito() > 0) {
             <span class="cabecera__contador">{{ itemsEnCarrito() }}</span>
@@ -22,7 +42,7 @@
         </a>
       }
       @if (esStaff()) {
-        <a class="cabecera__reserva" routerLink="/panel">Panel de gestión</a>
+        <a class="cabecera__reserva" routerLink="/panel" (click)="cerrarMenu()">Panel de gestión</a>
       }
       @if (usuario(); as u) {
         <span class="cabecera__usuario">
