@@ -267,3 +267,50 @@
   color: var(--ink-soft);
   margin: 0;
 }
+
+/* ==========================================================================
+   Responsive
+   --------------------------------------------------------------------------
+   La caja se usa en el mostrador, casi siempre en una pantalla grande, pero tambien en
+   la tablet del local: lo que se cuida aca es que el ticket y los metodos de pago
+   sigan siendo tocables con el dedo.
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .contenido {
+    gap: 1.1rem;
+  }
+
+  .formulario,
+  .comprobante {
+    padding: 1rem;
+  }
+
+  .pos__busqueda {
+    flex-wrap: wrap;
+  }
+
+  .pos__busqueda input {
+    flex: 1 1 100%;
+  }
+
+  .pos__busqueda .boton {
+    flex: 1;
+  }
+}
+
+@media (max-width: 30rem) {
+  .resumen {
+    /* Pegado a la derecha en una columna angosta los importes quedan colgando; a lo
+       ancho del panel se leen alineados con el resto del ticket. */
+    align-self: stretch;
+  }
+
+  .metodos {
+    flex-wrap: wrap;
+  }
+
+  .metodo {
+    flex: 1 1 8rem;
+  }
+}

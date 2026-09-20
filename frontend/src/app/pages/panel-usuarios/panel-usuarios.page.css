@@ -114,3 +114,32 @@
 .matriz-permisos__sin-uso {
   color: var(--ink-soft);
 }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .solapas {
+    flex-wrap: wrap;
+  }
+
+  .solapa {
+    flex: 1 1 8rem;
+  }
+
+  /*
+   * La matriz de permisos tiene una columna por rol (seis con el seed) mas la del
+   * permiso. Apilarla como tarjetas perderia justamente lo unico que importa aca, que es
+   * comparar roles de un vistazo, asi que se desliza en horizontal dentro de
+   * `.tabla-envoltorio` con la primera columna un poco mas angosta.
+   */
+  .matriz-permisos {
+    min-width: 30rem;
+  }
+
+  .matriz-permisos th:first-child,
+  .matriz-permisos td:first-child {
+    width: 8.5rem;
+  }
+}

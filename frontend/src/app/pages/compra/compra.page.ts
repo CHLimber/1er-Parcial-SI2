@@ -22,7 +22,7 @@ const ORDEN_ENVIO: EstadoEnvio[] = ['PENDIENTE', 'DESPACHADO', 'ENTREGADO'];
   standalone: true,
   imports: [RouterLink, DatePipe],
   templateUrl: './compra.page.html',
-  styleUrl: './compra.page.css',
+  styleUrls: ['./compra.page.css', '../../shared/responsive.css'],
 })
 export class CompraPage implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);

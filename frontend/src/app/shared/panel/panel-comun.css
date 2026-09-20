@@ -347,3 +347,69 @@
   vertical-align: -1px;
   margin-right: 0.3rem;
 }
+
+/* ==========================================================================
+   Responsive
+   --------------------------------------------------------------------------
+   El criterio en el panel es no inventar layouts nuevos por pantalla: las tablas de
+   gestion tienen demasiadas columnas para apilarlas como tarjetas, asi que siguen
+   siendo tablas y se deslizan en horizontal adentro de `.tabla-envoltorio`. Lo que si
+   cambia es todo lo de alrededor: formularios a una columna, botoneras que envuelven y
+   menos aire en los paneles.
+   ========================================================================== */
+
+.tabla-envoltorio {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 48rem) {
+  .panel {
+    padding: 0.9rem;
+  }
+
+  .panel__titulo {
+    font-size: 1.1rem;
+  }
+
+  .rejilla {
+    /* `minmax(11rem, ...)` mete dos columnas de 11rem en un telefono de 360px y los
+       campos quedan mas angostos que su propia etiqueta. */
+    grid-template-columns: 1fr;
+  }
+
+  .barra {
+    align-items: stretch;
+  }
+
+  .barra__espacio {
+    /* Solo existe para empujar los botones a la derecha; apilado no tiene sentido. */
+    display: none;
+  }
+
+  .tabla-envoltorio {
+    /* Se sale del padding del panel para aprovechar todo el ancho de la pantalla. */
+    margin: 0 -0.9rem;
+    padding: 0 0.9rem;
+  }
+
+  .tabla {
+    /* Fuerza el scroll horizontal en vez de que el navegador comprima las columnas
+       hasta partir cada palabra en una letra por linea. */
+    min-width: 34rem;
+  }
+
+  .tabla__acciones {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 30rem) {
+  .barra > .boton,
+  .acciones > .boton {
+    flex: 1 1 100%;
+  }
+
+  .formulario .boton {
+    width: 100%;
+  }
+}

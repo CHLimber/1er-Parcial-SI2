@@ -29,7 +29,7 @@ import { SucursalesService } from '../../core/sucursales/sucursales.service';
   standalone: true,
   imports: [FormsModule, RouterLink],
   templateUrl: './carrito.page.html',
-  styleUrl: './carrito.page.css',
+  styleUrls: ['./carrito.page.css', '../../shared/responsive.css'],
 })
 export class CarritoPage implements OnInit, OnDestroy {
   private readonly carritoService = inject(CarritoService);

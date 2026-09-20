@@ -22,7 +22,7 @@ interface MensajeVista extends MensajeChat {
   standalone: true,
   imports: [FormsModule, ProductoCard, RouterLink, MarkdownPipe],
   templateUrl: './asistente.page.html',
-  styleUrl: './asistente.page.css',
+  styleUrls: ['./asistente.page.css', '../../shared/responsive.css'],
 })
 export class AsistentePage implements OnDestroy {
   private readonly servicio = inject(AsistenteService);

@@ -386,3 +386,38 @@
   color: var(--ink);
   margin: 0;
 }
+
+/* ==========================================================================
+   Responsive
+   --------------------------------------------------------------------------
+   La cola de reservas y la ficha ya se apilan a 60rem (arriba). Lo de aca es el
+   telefono: es la pantalla que el encargado mira parado en el vestidor.
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .detalle {
+    padding: 1rem;
+    min-height: 0;
+  }
+
+  .items__fila {
+    flex-wrap: wrap;
+    gap: 0.4rem 0.8rem;
+  }
+
+  /* `min-width: 12rem` en los dos deja el nombre y el motivo peleando por una fila de
+     360px; apilados cada uno usa el ancho completo. */
+  .preparar__nombre,
+  .preparar__motivo {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .metodos {
+    flex-wrap: wrap;
+  }
+
+  .metodo {
+    flex: 1 1 8rem;
+  }
+}

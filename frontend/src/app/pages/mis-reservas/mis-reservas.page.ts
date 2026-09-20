@@ -13,7 +13,7 @@ const ESTADOS_CONVERTIBLES = ['PENDIENTE', 'CONFIRMADA', 'PREPARADA', 'CLIENTE_P
   standalone: true,
   imports: [RouterLink, DatePipe],
   templateUrl: './mis-reservas.page.html',
-  styleUrl: './mis-reservas.page.css',
+  styleUrls: ['./mis-reservas.page.css', '../../shared/responsive.css'],
 })
 export class MisReservasPage implements OnInit {
   private readonly reservasService = inject(ReservasService);

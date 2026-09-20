@@ -81,3 +81,63 @@ a {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ==========================================================================
+   Responsive: fundamentos globales
+   --------------------------------------------------------------------------
+   Los breakpoints del proyecto (en rem, para que acompanien el zoom del navegador):
+
+     64rem (1024px) -- tablet en horizontal / notebook chica
+     48rem  (768px) -- tablet en vertical / telefono grande
+     30rem  (480px) -- telefono
+
+   Cada pantalla afina lo suyo en su propio CSS; aca va solo lo que aplica a todo:
+   tipografia, medios que no se desbordan, campos que no disparan el zoom de iOS y
+   areas de toque usables con el dedo. Las reglas de tipo (button, input, ...) llegan
+   igual adentro de los componentes: la encapsulacion de Angular scopea el CSS del
+   componente, no el global.
+   ========================================================================== */
+
+html {
+  /* Safari en iOS agranda el texto al rotar a horizontal si no se lo frena. */
+  -webkit-text-size-adjust: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+/* Un SKU, un mail o una URL larga no tienen donde cortar y estiran la fila entera. */
+body {
+  overflow-wrap: break-word;
+}
+
+@media (max-width: 48rem) {
+  /* Safari en iOS hace zoom al enfocar un campo con tipografia menor a 16px y despues
+     deja la pagina corrida. Con 16px justos no hace nada. */
+  input,
+  select,
+  textarea {
+    font-size: max(1rem, 16px);
+  }
+}
+
+@media (pointer: coarse) {
+  /* Con el dedo no hay precision de mouse: piso de ~40px de alto para lo que se toca.
+     Es `min-height` y no `height` para no romper los botones que ya son mas altos. */
+  button,
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  a[class*='boton'] {
+    min-height: 2.5rem;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+}

@@ -14,7 +14,7 @@ import { VentasService } from '../../core/ventas/ventas.service';
   standalone: true,
   imports: [RouterLink, DatePipe],
   templateUrl: './mis-compras.page.html',
-  styleUrl: './mis-compras.page.css',
+  styleUrls: ['./mis-compras.page.css', '../../shared/responsive.css'],
 })
 export class MisComprasPage implements OnInit {
   private readonly ventasService = inject(VentasService);

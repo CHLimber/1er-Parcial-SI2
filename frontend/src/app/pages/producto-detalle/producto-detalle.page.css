@@ -362,3 +362,38 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 48rem) {
+  .detalle {
+    gap: 1.25rem;
+  }
+
+  .detalle__imagen-cont {
+    /* En una columna sola la foto a 3/4 del ancho de la pantalla ocupa mas de un alto
+       de ventana y el selector de talla queda debajo del pliegue. */
+    max-width: 20rem;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .sucursal {
+    flex-wrap: wrap;
+    gap: 0.4rem 0.8rem;
+  }
+
+  .disponibilidad {
+    margin-top: 1.25rem;
+    padding-top: 1.1rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .selector__color {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .reserva-accion__botones > .boton {
+    flex: 1 1 100%;
+  }
+}

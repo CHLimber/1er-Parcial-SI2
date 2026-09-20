@@ -1355,6 +1355,43 @@
       en Railway es el signing secret del endpoint creado en el dashboard de
       Stripe. Son distintos y sin el correcto el webhook rechaza la firma.
 
+[3.5] [HECHO 2026-09-20] La web no era responsive: solo 7 de 25 hojas de estilo
+      tenian media queries y varias pantallas se desbordaban en telefono.
+      Breakpoints del proyecto (en rem, documentados arriba del bloque responsive de
+      src/styles.css): 64rem tablet horizontal, 48rem tablet vertical / telefono
+      grande, 30rem telefono.
+
+      QUE SE HIZO:
+        - src/styles.css: fundamentos globales -- `-webkit-text-size-adjust`, medios
+          con `max-width: 100%`, campos a 16px abajo de 48rem (sin eso Safari en iOS
+          hace zoom al enfocar) y piso de 2.5rem de alto para lo que se toca con
+          `@media (pointer: coarse)`.
+        - src/app/shared/responsive.css (NUEVO): lo que se repite en las pantallas de
+          cliente (cabeceras que envuelven, grilla del catalogo a 2 columnas, filas de
+          item del carrito/bolsa/ticket que pasan a grilla de 2 filas, botoneras).
+          Se incluye al FINAL de los styleUrls de cada pagina -- al reves que
+          panel/panel-comun.css -- porque son media queries que tienen que ganarle a
+          la declaracion base del archivo de la pagina.
+        - tienda: los 6 enlaces de la clienta se pliegan abajo de 64rem detras de un
+          boton hamburguesa (signal `menuAbierto` en tienda.page.ts, panel absoluto
+          para no empujar el catalogo). Con el menu cerrado, un punto avisa que hay
+          prendas en la bolsa o el carrito.
+        - panel: la navegacion (hasta 9 secciones) y el submenu de reportes pasan a
+          ser tiras deslizables en horizontal en vez de apilarse en 3 lineas; las
+          tablas siguen siendo tablas y se deslizan adentro de .tabla-envoltorio
+          (apilarlas como tarjetas perderia la comparacion entre roles/columnas).
+        - angular.json: el budget anyComponentStyle paso de 4kB/8kB a 10kB/16kB. El
+          de 4kB ya lo superaban 8 hojas ANTES de este cambio (eran warnings
+          preexistentes) y tienda.page.css quedaba a 0.6kB del error.
+
+      PROBADO: `npm run build` sin warnings y `ng test` en verde. Medido con Chrome
+      headless (la app en un iframe de ancho fijo, porque --window-size no baja de
+      ~500px): las 17 rutas a 390px y 768px no tienen scroll horizontal. Lo unico
+      que queda con scroll propio es la tira de navegacion del panel, a proposito.
+      NO probado con datos reales: el backend no estaba levantado, asi que el
+      catalogo, el carrito y las tablas se vieron vacios. Falta mirar con productos
+      cargados la grilla de 2 columnas y las filas de item del carrito.
+
 -------------------------------------------------------------------------------
  4. ESPECIFICO DE LA APP MOVIL
 -------------------------------------------------------------------------------

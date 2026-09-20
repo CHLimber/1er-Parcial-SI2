@@ -302,3 +302,48 @@
   color: var(--ink);
   border: 1px solid var(--paper-line);
 }
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .titulo-fila {
+    gap: 0.75rem;
+    margin-bottom: 1.1rem;
+  }
+
+  .lista {
+    /* Una direccion por fila: partida en dos columnas de 17rem la calle se corta. */
+    grid-template-columns: 1fr;
+  }
+
+  .campos {
+    grid-template-columns: 1fr;
+  }
+
+  /* Leaflet necesita un alto explicito del padre y el `ResizeObserver` de `mapa-punto`
+     se encarga del `invalidateSize()`; aca solo se achica para que el pin y los campos
+     del formulario entren juntos en pantalla. */
+  .mapa {
+    height: 14rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .buscador input {
+    flex: 1 1 100%;
+  }
+
+  .buscador .boton {
+    flex: 1;
+  }
+
+  .formulario__acciones > .boton {
+    flex: 1 1 100%;
+  }
+
+  .tarjeta {
+    padding: 0.9rem 1rem;
+  }
+}

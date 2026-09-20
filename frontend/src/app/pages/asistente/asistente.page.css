@@ -1,6 +1,11 @@
+/* El chat ocupa exactamente el alto de la ventana menos la cabecera. Se resuelve con
+   flex y no con `calc(100dvh - 4.5rem)`: la cabecera cambia de alto segun el ancho (ver
+   el bloque responsive del final) y con la resta fija el formulario quedaba tapado o
+   sobraba una franja de scroll. */
 :host {
-  display: block;
-  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
   background: var(--paper);
 }
 
@@ -37,10 +42,14 @@
 .chat {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  /* Sin esto el hijo con `overflow-y: auto` no se encoge y empuja el formulario fuera
+     de la pantalla: el minimo por defecto de un item flex es su contenido. */
+  min-height: 0;
+  width: 100%;
   max-width: 44rem;
   margin: 0 auto;
   padding: clamp(1.25rem, 4vw, 2rem);
-  height: calc(100dvh - 4.5rem);
 }
 
 .chat__mensajes {
@@ -236,5 +245,49 @@
   }
   50% {
     opacity: 0.6;
+  }
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  .cabecera {
+    padding: 0.85rem 1.1rem;
+    gap: 0.85rem;
+  }
+
+  .cabecera__titulo {
+    font-size: 1.05rem;
+  }
+
+  .chat {
+    padding: 1rem;
+  }
+
+  .burbuja {
+    max-width: 92%;
+  }
+
+  .burbuja__productos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 30rem) {
+  /* El campo pasa a ocupar la fila entera y el microfono con el boton de enviar quedan
+     abajo: los tres juntos dejaban un input de 6rem donde no entra ni una frase. */
+  .chat__form {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .chat__form input {
+    flex: 1 1 100%;
+  }
+
+  .chat__form button:not(.chat__mic) {
+    flex: 1;
   }
 }

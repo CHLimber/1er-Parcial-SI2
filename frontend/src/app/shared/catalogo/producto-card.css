@@ -96,3 +96,33 @@
   font-weight: 600;
   color: var(--gold);
 }
+
+/* Telefono: la tarjeta entra de a dos por fila (ver `.grilla` en shared/responsive.css),
+   asi que baja el padding y la tipografia para que el nombre de la prenda no ocupe
+   tres renglones. El recuadro de la foto usa los mismos margenes negativos que el
+   padding del host: si uno cambia, el otro tambien. */
+@media (max-width: 30rem) {
+  :host {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .prenda__imagen-cont {
+    margin: -0.75rem -0.75rem 0.5rem;
+  }
+
+  .prenda__nombre {
+    font-size: 0.92rem;
+  }
+
+  .prenda__marca,
+  .prenda__precio {
+    font-size: 0.85rem;
+  }
+
+  :host(:hover) {
+    /* El hover con desplazamiento no aporta nada en tactil y se queda pegado despues
+       de tocar la tarjeta. */
+    transform: none;
+  }
+}

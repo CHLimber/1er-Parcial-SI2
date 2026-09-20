@@ -316,3 +316,28 @@
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 48rem) {
+  .contenido {
+    gap: 1.5rem;
+  }
+
+  .carrito__item {
+    padding: 0.7rem 0.8rem;
+  }
+
+  .confirmacion {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 30rem) {
+  .carrito__cantidad input {
+    width: 4rem;
+  }
+
+  .confirmacion__acciones {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
