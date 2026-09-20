@@ -48,6 +48,8 @@ dependencies:
   flutter_stripe: ^14.0.0
   flutter_markdown_plus: ^1.0.12
   speech_to_text: ^7.3.0
+  model_viewer_plus: ^1.10.0
+  share_plus: ^13.3.0
 
 dev_dependencies:
   flutter_test:

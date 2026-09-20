@@ -510,6 +510,119 @@
           google_mlkit_pose_detection compilan de verdad contra Android),
           `flutter analyze` sin issues, `flutter test` 3/3.
 
+      [2.8.1] [HECHO 2026-09-19] El nivel 2 NO ANDABA: el boton "VER EN 3D /
+      PROBAR EN TU ESPACIO" no hacia absolutamente nada al tocarlo. Tres causas
+      encadenadas, las tres verificadas contra el emulador y el backend reales.
+
+        1. PAQUETE EQUIVOCADO EN EL INTENT (la causa del "no pasa nada").
+           `producto_detalle_pagina.dart` armaba el intent de Scene Viewer con
+           `package=com.google.ar.core`. Ese paquete solo atiende `mode=ar_only`;
+           la actividad que abre el visor es
+           `com.google.android.googlequicksearchbox/.ViewerLauncher`. Comprobado:
+
+             cmd package resolve-activity ... com.google.ar.core              -> No activity found
+             cmd package resolve-activity ... com.google.android.googlequicksearchbox -> .ViewerLauncher
+
+           Con `ar_preferred` + `ar.core` el intent no resolvia nada y
+           `launchUrl` volvia sin abrir nada. La doc de Scene Viewer lo dice:
+           `ar.core` es para ar_only, `googlequicksearchbox` para
+           ar_preferred/3d_preferred.
+
+        2. SCENE VIEWER EXIGE HTTPS para el `file=`, y es otra app: no hereda
+           `network_security_config.xml` ni puede alcanzar el `10.0.2.2:8081` del
+           Docker local. En debug el modelo nunca le iba a cargar.
+
+        3. CORS EN /media (el que dejaba el visor en blanco despues de arreglar
+           lo anterior). El visor embebido pide el GLB con `fetch` desde el
+           WebView, cuyo origen es `http://127.0.0.1:<puerto aleatorio>`, y
+           StaticFiles no manda `Access-Control-Allow-Origin`:
+
+             CONSOLE: Access to fetch at 'http://10.0.2.2:8081/media/ar/bot-004-ar.glb'
+             from origin 'http://127.0.0.1:42429' has been blocked by CORS policy
+
+      ARREGLO (movil + backend):
+        - movil/lib/paginas/visor_3d_pagina.dart (NUEVO): visor 3D embebido con
+          `model_viewer_plus` (dependencia nueva; arrastra `webview_flutter`).
+          Es `<model-viewer>` de Google adentro de un WebView, con
+          `arScale: fixed` (los GLB ya estan a escala real, ver 2.8) y
+          `arPlacement: floor`. El 3D se ve SIEMPRE, sin ARCore y sin servicios
+          de Google; la RA queda como extra que el propio model-viewer ofrece
+          solo donde se puede. Motivo de fondo: el telefono de prueba es un
+          **Huawei nova 9, que no tiene GMS** -- ahi Scene Viewer no existe y
+          delegarle todo el CU era dejar el caso de uso muerto en ese equipo.
+        - El boton del detalle ya no es `Platform.isAndroid`: el visor embebido
+          tambien corre en iOS (lo que iOS no tiene sigue siendo el USDZ para
+          Quick Look, no el 3D).
+        - El intent de Scene Viewer sobrevive como respaldo manual en el AppBar
+          del visor (solo Android), ya con el package correcto.
+        - core/config.dart: `resolverUrlModeloAr()` reescribe la URL del GLB a
+          `Config.apiUrlProduccion` cuando no es HTTPS, que es lo que necesita un
+          visor externo. El visor propio no lo precisa (el WebView es nuestro).
+        - AndroidManifest.xml: `<package com.google.android.googlequicksearchbox>`
+          agregado a `<queries>` (sin eso, package visibility en Android 11+).
+        - backend/app/main.py: `/media` se monta envuelto en `CORSMiddleware` con
+          `allow_origins=["*"]` y solo GET/HEAD. Son archivos publicos que se
+          piden sin token; la API sigue con su lista blanca y allow_credentials.
+          OJO: **hay que redesplegar el backend de Railway**, si no el APK de
+          release muestra el visor en blanco por el mismo CORS.
+        - vestidor_virtual_pagina.dart (nivel 1, de paso): el espejado ahora
+          depende de `lensDirection == front` en vez de aplicarse siempre, asi
+          un equipo sin camara frontal no ve la prenda cruzada.
+
+      VERIFICADO EN EL EMULADOR (Pixel_10a) CON CAPTURAS:
+        - `/media/ar/bot-004-ar.glb` devuelve `access-control-allow-origin: *`
+          (hubo que `docker compose up --build backend`: el codigo va dentro de
+          la imagen, un `restart` no alcanza).
+        - Detalle de la Bota Texana -> "VER EN 3D" -> la bota se ve girando
+          dentro de la app, con el boton de RA de model-viewer.
+        - El boton de RA abre `googlequicksearchbox/.ViewerLauncher` (antes: nada).
+        - Scene Viewer con `mode=3d_preferred` y el GLB de Railway por HTTPS
+          renderiza la bota correctamente.
+        - `flutter analyze` limpio, `flutter test` 3/3, `flutter build apk --debug` OK.
+
+      [2.8.2] [HECHO 2026-09-19] NIVEL 1 mejorado y PROBADO CON UNA PERSONA
+      DELANTE (era lo que quedaba pendiente de 2.8). Se probo en el emulador
+      con la webcam de la laptop; la prenda queda anclada sobre los hombros y
+      sigue a la persona al moverse.
+        - SUAVIZADO: media exponencial de paso adaptativo sobre los landmarks.
+          Sin esto la prenda vibra con la persona quieta (la deteccion salta
+          unos pixeles por frame). Quieta se planta, en movimiento responde.
+        - AJUSTE AL TORSO: la escala vertical ahora sale de la distancia
+          hombros->caderas detectada contra hombros->cintura del PNG, acotada
+          entre 0.75x y 1.45x del ancho. Antes habia un solo factor de escala y
+          a un torso largo la prenda le quedaba corta. **El anclaje `cintura`,
+          que estaba medido pero sin usar, ahora si se usa.**
+        - CONFIANZA: se descartan landmarks con likelihood < 0.45 y hacen falta
+          8 frames seguidos sin pose para borrar la prenda. Verificado en vivo:
+          con la persona cortada en el borde del cuadro deja de dibujar en vez
+          de poner la prenda en cualquier lado.
+        - ENCUADRE: la pose se mapea contra la caja REAL de la vista previa
+          (contain centrado), no contra el lienzo entero. El emulador con una
+          webcam apaisada deja franjas negras adentro del AspectRatio y sin
+          esto la prenda caia corrida. Se encontro probandolo, no en teoria.
+        - ESPEJO: el boton de la barra ya no intercambia hombros (eso ahora se
+          resuelve solo, asignando cada hombro por su posicion en pantalla):
+          invierte el espejo de las COORDENADAS. El emulador entrega el buffer
+          de la webcam ya espejado, y ahi la prenda aparecia del lado opuesto
+          del cuerpo -- que es justo lo que el boton viejo no podia arreglar.
+        - FOTO + COMPARTIR (`share_plus`, dependencia nueva): saca la foto y
+          vuelve a componer la prenda encima. No se puede capturar la pantalla:
+          la vista previa es una textura y sale negra en un RepaintBoundary.
+          Probado en el emulador, abre el selector de compartir con el PNG.
+        - Tambien: cambio de camara frontal/trasera y slider de ajuste fino de
+          tamano (los anclajes estan medidos sobre una talla M).
+        - `flutter analyze` limpio, `flutter test` 3/3, APK debug OK.
+
+      COMO INSTALAR ARCORE EN EL EMULADOR (es opcional, el visor 3D no lo pide):
+          curl -L -o arcore.apk https://github.com/google-ar/arcore-android-sdk/releases/download/1.56.0/Google_Play_Services_for_AR_1.56.0_x86_for_emulator.apk
+          adb install -r -t arcore.apk
+        Ya instalado en el AVD de esta maquina. La sesion de RA arranca
+        (`ar_runtime_loader` en logcat, sin errores) pero `adb screencap` no
+        captura la capa de camara del emulador, asi que la RA en si quedo SIN
+        VERIFICAR VISUALMENTE. En el nova 9 no se va a poder probar nunca: sin
+        GMS no hay ARCore. Para validar la RA de verdad hace falta un Android
+        con servicios de Google en la lista de equipos certificados.
+
 [2.9] [HECHO 2026-09-13] Catalogo de demostracion: ya son 40 productos en 9
       categorias (Faldas/Sandalias/Zapatos nuevas), 6 marcas, 9 destacados
       repartidos entre categorias y temporadas. Cargado en

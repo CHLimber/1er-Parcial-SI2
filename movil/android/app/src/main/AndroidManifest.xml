@@ -57,7 +57,13 @@
             <data android:scheme="https"/>
         </intent>
         <!-- CU16 nivel 2: Google Scene Viewer (AR_MODELO) se abre por url_launcher con un
-             intent://. Sin esto, canLaunchUrl() da false en Android 11+ (package visibility). -->
+             intent://. Sin esto, canLaunchUrl() da false en Android 11+ (package visibility).
+             Scene Viewer NO vive en com.google.ar.core (ese paquete solo atiende
+             mode=ar_only): la actividad que abre el visor es
+             com.google.android.googlequicksearchbox/.ViewerLauncher. Se declaran los dos
+             porque `<model-viewer>` tambien consulta ar.core para saber si ofrecer el
+             boton de RA. -->
+        <package android:name="com.google.android.googlequicksearchbox"/>
         <package android:name="com.google.ar.core"/>
         <intent>
             <action android:name="android.intent.action.VIEW"/>

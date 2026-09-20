@@ -66,7 +66,22 @@ if _media_semilla.exists():
 mimetypes.add_type("model/gltf-binary", ".glb")
 mimetypes.add_type("model/vnd.usdz+zip", ".usdz")
 
-app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
+# /media va con CORS abierto, aparte del CORSMiddleware de la API. Son archivos publicos
+# (fotos de catalogo y modelos 3D) que se piden sin token, y el visor 3D de CU16 los trae con
+# `fetch` desde el WebView de la app movil, cuyo origen es un `http://127.0.0.1:<puerto
+# aleatorio>` que no se puede listar en CORS_ORIGINS. Sin esta cabecera el navegador descarta
+# el GLB y el visor queda en blanco. Se envuelve solo el StaticFiles, asi la API sigue con su
+# lista blanca de origenes y con allow_credentials.
+app.mount(
+    "/media",
+    CORSMiddleware(
+        StaticFiles(directory=settings.media_dir),
+        allow_origins=["*"],
+        allow_methods=["GET", "HEAD"],
+        allow_headers=["*"],
+    ),
+    name="media",
+)
 
 app.include_router(usuarios_router)
 app.include_router(catalogo_router)
