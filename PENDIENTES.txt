@@ -1174,6 +1174,47 @@
       real (ni local ni Railway) en esta sesion, solo se revisó a mano.
 
 -------------------------------------------------------------------------------
+
+[2.17] [HECHO 2026-09-19] CU20: se saca la UI del panel de despacho (web y movil), no solo
+      la nocion de repartidor propio (2.16). Motivo: el dueño del proyecto aclaro que ni
+      siquiera el "marcar DESPACHADO/ENTREGADO/FALLIDO a mano" tiene sentido, porque el
+      delivery es un servicio externo que FashionStore no opera ni supervisa paso a paso
+      -- esa pantalla no cumplia ninguna funcion real todavia.
+
+      SE SACO (solo capa de presentacion):
+      - Web: pages/panel-envios/ completo, la ruta 'envios' dentro de /panel en
+        app.routes.ts, la entrada "Envíos" en shared/panel/panel-shell.ts, y la seccion
+        "panel de despacho" (listar/resumen/detalle/cambiarEstado + baseAdmin) de
+        core/envios/envios.service.ts. De envios.models.ts se sacaron los DTOs admin-only
+        (EnvioAdminOut, ItemEnvioOut, EventoAdminOut, EnvioAdminDetalleOut, ResumenEnviosOut).
+      - Movil: paginas/panel_envios_pagina.dart completo, la ruta '/panel/envios' y su
+        entrada en _permisosPorRuta en rutas.dart, el acceso "Envios a domicilio" en
+        cuenta_pagina.dart y el acceso "Envios" en panel_pagina.dart. De
+        core/envios/envios_service.dart se saco la seccion admin (listar/resumen/detalle/
+        cambiarEstado); de envios_models.dart los mismos DTOs admin-only que en web mas
+        transicionesEnvio (solo lo usaba esa pantalla).
+
+      NO SE TOCO (lo sigue usando el checkout y el seguimiento de la clienta):
+      - Backend: envios/admin_router.py, admin_schemas.py y su include_router en main.py
+        quedan intactos y montados (por si mas adelante conviene engancharlos a un webhook
+        del courier externo en vez de borrarlos), asi como envios/router.py, servicio.py,
+        schemas.py, app/core/ruteo.py, la tabla envio/envio_evento, tg_envio_historial y
+        fn_cotizar_envio(). Los permisos envios.leer/envios.actualizar siguen sembrados en
+        03_datos_iniciales.sql (sin UI que los pida, pero la API los sigue exigiendo).
+      - Web/movil: EnviosService.cotizar/misEnvios/envioDeVenta, EnvioOut/EnvioEventoOut/
+        CotizacionIn/CotizacionOut/EstadoEnvio, etiquetaEstadoEnvio (movil) y todo
+        direcciones/ (independiente, no dependia de envios).
+
+      PENDIENTE ABIERTO: como en 2.16, con el panel de despacho afuera no hay ningun
+      mecanismo (ni humano ni automatico) que mueva estado_envio de PENDIENTE en adelante.
+      Si en algun momento el servicio de courier expone un webhook o hay que reactivar un
+      cambio manual, admin_router.py ya tiene la validacion de transiciones lista para
+      reusar -- no hubo que escribirla de nuevo. No se corrio `ng build`/`flutter analyze`
+      en esta sesion para confirmar que no quedaron referencias sueltas; se verifico a mano
+      con grep que ningun archivo restante menciona PanelEnviosPage/Pagina, los DTOs admin
+      eliminados ni panel-envios/panel_envios.
+
+-------------------------------------------------------------------------------
  3. DEUDA TECNICA
 -------------------------------------------------------------------------------
 

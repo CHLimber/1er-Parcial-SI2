@@ -1,5 +1,5 @@
 <header class="cabecera">
-  <a class="cabecera__marca" routerLink="/panel">FashionStore · Gestión</a>
+  <a class="cabecera__marca" [routerLink]="inicio()">FashionStore · Gestión</a>
 
   <div class="cabecera__acciones">
     @if (auth.usuario(); as u) {
@@ -18,7 +18,6 @@
     <a
       class="nav__enlace"
       routerLinkActive="nav__enlace--activo"
-      [routerLinkActiveOptions]="{ exact: entrada.ruta === '/panel' }"
       [routerLink]="entrada.ruta"
     >
       {{ entrada.etiqueta }}

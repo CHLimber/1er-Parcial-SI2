@@ -14,7 +14,6 @@ import 'paginas/mis_direcciones_pagina.dart';
 import 'paginas/mis_reservas_pagina.dart';
 import 'paginas/pago_simulado_pagina.dart';
 import 'paginas/panel_catalogo_pagina.dart';
-import 'paginas/panel_envios_pagina.dart';
 import 'paginas/panel_pagina.dart';
 import 'paginas/panel_proveedores_pagina.dart';
 import 'paginas/panel_recepciones_pagina.dart';
@@ -63,7 +62,6 @@ const Map<String, List<String>> _permisosPorRuta = {
     'usuarios.eliminar',
     'roles.leer',
   ],
-  '/panel/envios': ['envios.leer', 'envios.actualizar'],
 };
 
 GoRouter construirRouter(AuthService auth) {
@@ -168,10 +166,6 @@ GoRouter construirRouter(AuthService auth) {
       GoRoute(
         path: '/panel/usuarios',
         builder: (contexto, estado) => const PanelUsuariosPagina(),
-      ),
-      GoRoute(
-        path: '/panel/envios',
-        builder: (contexto, estado) => const PanelEnviosPagina(),
       ),
     ],
   );

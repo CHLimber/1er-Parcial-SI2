@@ -73,13 +73,6 @@ class PanelPagina extends StatelessWidget {
           'roles.leer',
         ],
       ),
-      _AccesoPanel(
-        ruta: '/panel/envios',
-        icono: Icons.delivery_dining_outlined,
-        titulo: 'Envios',
-        detalle: 'CU20 · Pedidos a domicilio y hoja de ruta',
-        permisos: const ['envios.leer', 'envios.actualizar'],
-      ),
     ];
 
     final habilitados = accesos.where((a) => auth.tienePermiso(a.permisos)).toList();

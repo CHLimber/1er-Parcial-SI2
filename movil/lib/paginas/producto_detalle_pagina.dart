@@ -31,7 +31,8 @@ class ProductoDetallePagina extends StatefulWidget {
 
 class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
   ProductoDetalleOut? _producto;
-  VarianteOut? _variante;
+  String? _tallaSeleccionada;
+  String? _colorSeleccionado;
   bool _cargando = true;
   bool _agregando = false;
   bool _colorElegidoManualmente = false;
@@ -55,15 +56,42 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
     return null;
   }
 
-  /// Reordena las variantes para que el color de catalogo aparezca primero,
-  /// preservando el orden relativo del resto. Espejo del reordenamiento que
-  /// hace `colores()` en la web.
-  List<VarianteOut> _ordenarVariantes(ProductoDetalleOut producto) {
+  /// Tallas unicas entre las variantes, en orden de aparicion. Espejo de
+  /// `tallas()` en la web -- separar talla y color en dos selectores evita
+  /// mostrar todas las combinaciones (hasta una decena) en una sola lista.
+  List<String> _tallas(ProductoDetalleOut producto) {
+    final vistas = <String>{};
+    final lista = <String>[];
+    for (final v in producto.variantes) {
+      if (vistas.add(v.talla)) lista.add(v.talla);
+    }
+    return lista;
+  }
+
+  /// Colores unicos (con su hex) reordenados para que el color de catalogo
+  /// aparezca primero, preservando el orden relativo del resto. Espejo de
+  /// `colores()` en la web.
+  List<_ColorOpcion> _colores(ProductoDetalleOut producto) {
+    final vistos = <String, String>{};
+    for (final v in producto.variantes) {
+      vistos.putIfAbsent(v.color, () => v.codigoHex);
+    }
+    final lista = vistos.entries.map((e) => _ColorOpcion(e.key, e.value)).toList();
     final colorCatalogo = _colorDeCatalogo(producto);
-    if (colorCatalogo == null) return producto.variantes;
-    final delCatalogo = producto.variantes.where((v) => v.color == colorCatalogo);
-    final resto = producto.variantes.where((v) => v.color != colorCatalogo);
-    return [...delCatalogo, ...resto];
+    if (colorCatalogo == null) return lista;
+    final indice = lista.indexWhere((c) => c.nombre == colorCatalogo);
+    if (indice <= 0) return lista;
+    final principal = lista.removeAt(indice);
+    return [principal, ...lista];
+  }
+
+  /// Variante que corresponde a la talla y color elegidos, o null si esa
+  /// combinacion no existe (no todas las tallas vienen en todos los colores).
+  VarianteOut? _varianteSeleccionada(ProductoDetalleOut producto) {
+    for (final v in producto.variantes) {
+      if (v.talla == _tallaSeleccionada && v.color == _colorSeleccionado) return v;
+    }
+    return null;
   }
 
   /// Imagen mostrada: la de catalogo mientras no se elija color a mano; si se
@@ -73,7 +101,10 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
     final preview = _previsualizacionGaleria;
     if (preview != null) return preview.url;
     if (!_colorElegidoManualmente) return producto.imagenUrl;
-    return _variante?.imagenUrl ?? producto.imagenUrl;
+    for (final v in producto.variantes) {
+      if (v.color == _colorSeleccionado && v.imagenUrl != null) return v.imagenUrl;
+    }
+    return producto.imagenUrl;
   }
 
   /// Colores con foto de catalogo (`galeria`) que todavia no tienen una
@@ -103,12 +134,14 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
       setState(() {
         _producto = producto;
         final colorCatalogo = _colorDeCatalogo(producto);
-        _variante = producto.variantes.isEmpty
+        final varianteInicial = producto.variantes.isEmpty
             ? null
             : producto.variantes.firstWhere(
                 (v) => v.color == colorCatalogo,
                 orElse: () => producto.variantes.first,
               );
+        _tallaSeleccionada = varianteInicial?.talla;
+        _colorSeleccionado = varianteInicial?.color;
         _colorElegidoManualmente = false;
         _previsualizacionGaleria = null;
         _cargando = false;
@@ -124,7 +157,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
 
   void _agregarABolsaDeReserva() {
     final producto = _producto;
-    final variante = _variante;
+    final variante = producto == null ? null : _varianteSeleccionada(producto);
     if (producto == null || variante == null) return;
 
     context.read<ReservaCarritoService>().agregar(
@@ -180,7 +213,8 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
   }
 
   Future<void> _agregarAlCarrito() async {
-    final variante = _variante;
+    final producto = _producto;
+    final variante = producto == null ? null : _varianteSeleccionada(producto);
     if (variante == null) return;
 
     setState(() => _agregando = true);
@@ -199,6 +233,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
   @override
   Widget build(BuildContext context) {
     final producto = _producto;
+    final variante = producto == null ? null : _varianteSeleccionada(producto);
 
     return Scaffold(
       appBar: AppBar(title: Text(producto?.nombre ?? 'Prenda')),
@@ -224,7 +259,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
                   Titular(producto.nombre, tamano: 26, mayusculas: false),
                   const SizedBox(height: 10),
                   Text(
-                    formatearPrecio(_variante?.precio ?? producto.precioBase),
+                    formatearPrecio(variante?.precio ?? producto.precioBase),
                     style: fuenteDisplay(fontSize: 24, color: Paleta.flameOscuro),
                   ),
                   if (producto.descripcion != null) ...[
@@ -238,20 +273,34 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
                   if (producto.material != null) FilaDato('Material', producto.material!),
                   if (producto.genero != null) FilaDato('Genero', producto.genero!),
                   FilaDato('Codigo', producto.codigo),
-                  const SizedBox(height: 22),
-                  const EtiquetaDato('Elige talla y color'),
-                  const SizedBox(height: 10),
                   if (producto.variantes.isEmpty)
-                    const Text(
-                      'Esta prenda todavia no tiene variantes cargadas.',
-                      style: TextStyle(color: Paleta.inkSuave),
-                    )
-                  else
+                    ...[
+                      const SizedBox(height: 22),
+                      const EtiquetaDato('Elige talla y color'),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Esta prenda todavia no tiene variantes cargadas.',
+                        style: TextStyle(color: Paleta.inkSuave),
+                      ),
+                    ]
+                  else ...[
+                    const SizedBox(height: 22),
+                    const EtiquetaDato('Talla'),
+                    const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _ordenarVariantes(producto).map(_chipVariante).toList(),
+                      children: _tallas(producto).map(_botonTalla).toList(),
                     ),
+                    const SizedBox(height: 18),
+                    const EtiquetaDato('Color'),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _colores(producto).map(_botonColor).toList(),
+                    ),
+                  ],
                   if (_coloresGaleria(producto).isNotEmpty) ...[
                     const SizedBox(height: 18),
                     const EtiquetaDato('Mas colores (solo referencia, sin stock)'),
@@ -263,10 +312,17 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
                     ),
                   ],
                   const SizedBox(height: 22),
-                  if (_variante != null) _disponibilidad(_variante!),
+                  if (producto.variantes.isNotEmpty)
+                    if (variante != null)
+                      _disponibilidad(variante)
+                    else
+                      const Text(
+                        'Esa combinacion de talla y color no existe.',
+                        style: TextStyle(color: Paleta.inkSuave),
+                      ),
                   const SizedBox(height: 26),
                   ElevatedButton.icon(
-                    onPressed: (_variante == null || _agregando) ? null : _agregarAlCarrito,
+                    onPressed: (variante == null || _agregando) ? null : _agregarAlCarrito,
                     icon: _agregando
                         ? const SizedBox(
                             height: 16,
@@ -278,7 +334,7 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    onPressed: _variante == null ? null : _agregarABolsaDeReserva,
+                    onPressed: variante == null ? null : _agregarABolsaDeReserva,
                     icon: const Icon(Icons.checkroom_outlined),
                     label: const Text('RESERVAR PARA PROBAR EN TIENDA'),
                   ),
@@ -329,25 +385,35 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
     ];
   }
 
-  Widget _chipVariante(VarianteOut variante) {
-    final seleccionada = _variante?.id == variante.id;
-    final agotada = variante.totalDisponible <= 0;
+  Widget _botonTalla(String talla) {
+    final seleccionada = _tallaSeleccionada == talla;
+
+    return ChoiceChip(
+      selected: seleccionada,
+      onSelected: (_) => setState(() => _tallaSeleccionada = talla),
+      selectedColor: Paleta.flame.withValues(alpha: 0.18),
+      label: Text(
+        talla,
+        style: TextStyle(fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w500),
+      ),
+    );
+  }
+
+  Widget _botonColor(_ColorOpcion color) {
+    final seleccionada = _colorSeleccionado == color.nombre;
 
     return ChoiceChip(
       selected: seleccionada,
       onSelected: (_) => setState(() {
-        _variante = variante;
+        _colorSeleccionado = color.nombre;
         _colorElegidoManualmente = true;
         _previsualizacionGaleria = null;
       }),
       selectedColor: Paleta.flame.withValues(alpha: 0.18),
-      avatar: CircleAvatar(radius: 8, backgroundColor: colorDesdeHex(variante.codigoHex)),
+      avatar: CircleAvatar(radius: 8, backgroundColor: colorDesdeHex(color.codigoHex)),
       label: Text(
-        '${variante.talla} · ${variante.color}${agotada ? " (agotada)" : ""}',
-        style: TextStyle(
-          decoration: agotada ? TextDecoration.lineThrough : null,
-          fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w500,
-        ),
+        color.nombre,
+        style: TextStyle(fontWeight: seleccionada ? FontWeight.w700 : FontWeight.w500),
       ),
     );
   }
@@ -418,4 +484,13 @@ class _ProductoDetallePaginaState extends State<ProductoDetallePagina> {
           ],
         ),
       );
+}
+
+/// Un color disponible entre las variantes de la prenda, con su hex para el
+/// swatch del selector.
+class _ColorOpcion {
+  const _ColorOpcion(this.nombre, this.codigoHex);
+
+  final String nombre;
+  final String codigoHex;
 }

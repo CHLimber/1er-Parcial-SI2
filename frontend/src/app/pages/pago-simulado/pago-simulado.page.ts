@@ -17,10 +17,10 @@ export class PagoSimuladoPage implements OnInit {
   private readonly ventasService = inject(VentasService);
   private readonly pagosService = inject(PagosService);
 
-  protected readonly venta = signal<VentaOut | null>(null);
+  protected readonly ventaStripe = signal<VentaOut | null>(null);
   protected readonly cargando = signal(true);
   protected readonly noEncontrada = signal(false);
-  protected readonly procesando = signal(false);
+  protected readonly errorConfirmando = signal(false);
 
   private ventaId = '';
 
@@ -37,12 +37,17 @@ export class PagoSimuladoPage implements OnInit {
   private cargarVenta(): void {
     this.ventasService.obtenerVenta(this.ventaId).subscribe({
       next: (venta) => {
-        this.venta.set(venta);
-        this.cargando.set(false);
         if (venta.pago?.estado !== 'PENDIENTE') {
           // ya se resolvio (por ejemplo, se reintento el checkout): saltar directo a la confirmacion
           this.router.navigateByUrl(`/compra/${this.ventaId}`);
+          return;
         }
+        if (venta.pago?.pasarela === 'STRIPE') {
+          this.ventaStripe.set(venta);
+          this.cargando.set(false);
+          return;
+        }
+        this.confirmarPago(venta);
       },
       error: () => {
         this.noEncontrada.set(true);
@@ -51,20 +56,19 @@ export class PagoSimuladoPage implements OnInit {
     });
   }
 
-  protected simularPago(resultado: 'APROBADO' | 'RECHAZADO'): void {
-    const venta = this.venta();
-    if (!venta?.pago?.pasarela || !venta.pago.id_transaccion) return;
-
-    this.procesando.set(true);
+  private confirmarPago(venta: VentaOut): void {
+    if (!venta.pago?.pasarela || !venta.pago.id_transaccion) {
+      this.errorConfirmando.set(true);
+      this.cargando.set(false);
+      return;
+    }
     this.pagosService
-      .simularWebhook(venta.pago.pasarela, venta.pago.id_transaccion, resultado)
+      .simularWebhook(venta.pago.pasarela, venta.pago.id_transaccion, 'APROBADO')
       .subscribe({
-        next: () => {
-          this.procesando.set(false);
-          this.router.navigateByUrl(`/compra/${this.ventaId}`);
-        },
+        next: () => this.router.navigateByUrl(`/compra/${this.ventaId}`),
         error: () => {
-          this.procesando.set(false);
+          this.errorConfirmando.set(true);
+          this.cargando.set(false);
         },
       });
   }

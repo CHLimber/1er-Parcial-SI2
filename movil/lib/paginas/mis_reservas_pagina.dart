@@ -28,6 +28,16 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
   void initState() {
     super.initState();
     _cargar();
+    // Esta pantalla vive en el IndexedStack de la barra inferior y no se reconstruye
+    // sola al volver a la pestana: sin este listener, una reserva confirmada desde
+    // /reservar no aparecia hasta un refresh manual.
+    reservasService.actualizaciones.addListener(_cargar);
+  }
+
+  @override
+  void dispose() {
+    reservasService.actualizaciones.removeListener(_cargar);
+    super.dispose();
   }
 
   Future<void> _cargar() async {
