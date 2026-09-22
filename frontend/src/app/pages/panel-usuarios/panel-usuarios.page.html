@@ -159,7 +159,7 @@
               <div class="campo">
                 <label for="nueva-password">Nueva contraseña</label>
                 <input id="nueva-password" type="text" formControlName="password" />
-                <p class="campo__ayuda">Mínimo 8 caracteres, con una mayúscula, una minúscula y un número.</p>
+                <app-lista-requisitos-password [password]="formPassword.controls.password.value" />
               </div>
 
               @if (errorFormulario()) {
@@ -218,10 +218,10 @@
                   <div class="campo">
                     <label for="password">Contraseña inicial</label>
                     <input id="password" type="text" formControlName="password" />
-                    <p class="campo__ayuda">Mínimo 8 caracteres, con una mayúscula, una minúscula y un número.</p>
-                    @if (formStaff.controls.password.touched && formStaff.controls.password.invalid) {
-                      <p class="error">Ingresá una contraseña de al menos 8 caracteres.</p>
+                    @if (formStaff.controls.password.touched && formStaff.controls.password.hasError('required')) {
+                      <p class="error">Ingresá una contraseña.</p>
                     }
+                    <app-lista-requisitos-password [password]="formStaff.controls.password.value" />
                   </div>
                 }
 

@@ -220,6 +220,79 @@ void mostrarAviso(BuildContext context, String mensaje, {bool esError = false}) 
     );
 }
 
+// --- Politica de contrasena (CU02/CU13) --------------------------------------------
+//
+// Espejo manual de REGLAS_PASSWORD en backend/app/modules/usuarios/politica_password.py
+// (y de frontend/src/app/shared/validacion-password.ts). Si se cambia una regla ahi, hay
+// que tocar esta lista tambien.
+
+class ReglaPassword {
+  const ReglaPassword(this.etiqueta, this.cumple);
+
+  final String etiqueta;
+  final bool cumple;
+}
+
+List<ReglaPassword> reglasPassword(String valor) => [
+      ReglaPassword('Al menos 8 caracteres', valor.length >= 8),
+      ReglaPassword('Una letra minuscula', RegExp(r'[a-z]').hasMatch(valor)),
+      ReglaPassword('Una letra mayuscula', RegExp(r'[A-Z]').hasMatch(valor)),
+      ReglaPassword('Un numero', RegExp(r'\d').hasMatch(valor)),
+      ReglaPassword('Un caracter especial (!@#\$%^&*...)', RegExp(r'[^\w\s]').hasMatch(valor)),
+    ];
+
+/// Validador para `TextFormField.validator`. Se usa en el registro (CU02) y en el alta/
+/// reset de personal (CU13).
+String? validarPassword(String? valor) {
+  final texto = valor ?? '';
+  final faltantes = reglasPassword(texto).where((regla) => !regla.cumple).map((regla) => regla.etiqueta);
+  if (faltantes.isEmpty) return null;
+  return 'Falta: ${faltantes.join(', ')}';
+}
+
+/// Checklist en vivo de la politica de contrasena: hay que envolver el `TextFormField`
+/// en un `StatefulBuilder` (o equivalente) y pasarle `onChanged: (_) => actualizar(() {})`
+/// para que se repinte con cada tecla.
+class ListaRequisitosPassword extends StatelessWidget {
+  const ListaRequisitosPassword({super.key, required this.password});
+
+  final String password;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: reglasPassword(password)
+              .map(
+                (regla) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        regla.cumple ? Icons.check_circle : Icons.cancel_outlined,
+                        size: 15,
+                        color: regla.cumple ? Paleta.verde : Paleta.rojo,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        regla.etiqueta,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: regla.cumple ? Paleta.inkSuave : Paleta.rojo,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              .toList(),
+        ),
+      );
+}
+
 Future<bool> confirmar(
   BuildContext context, {
   required String titulo,

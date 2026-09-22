@@ -224,13 +224,11 @@ class _PestanaUsuariosState extends State<_PestanaUsuarios> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: password,
-                      decoration: const InputDecoration(
-                        labelText: 'Contrasena inicial',
-                        helperText: 'Minimo 8, con mayuscula, minuscula y numero',
-                        helperMaxLines: 2,
-                      ),
-                      validator: _validarPassword,
+                      decoration: const InputDecoration(labelText: 'Contrasena inicial'),
+                      onChanged: (_) => actualizar(() {}),
+                      validator: validarPassword,
                     ),
+                    ListaRequisitosPassword(password: password.text),
                   ],
                   const SizedBox(height: 12),
                   TextFormField(
@@ -448,33 +446,39 @@ class _PestanaUsuariosState extends State<_PestanaUsuarios> {
 
     final guardado = await showDialog<bool>(
       context: context,
-      builder: (contexto) => AlertDialog(
-        backgroundColor: Paleta.blanco,
-        title: const Text('Restablecer contrasena'),
-        content: Form(
-          key: formulario,
-          child: TextFormField(
-            controller: password,
-            decoration: InputDecoration(
-              labelText: 'Nueva contrasena para ${usuario.nombre}',
-              helperText: 'Minimo 8, con mayuscula, minuscula y numero',
-              helperMaxLines: 2,
+      builder: (contexto) => StatefulBuilder(
+        builder: (contexto, actualizar) => AlertDialog(
+          backgroundColor: Paleta.blanco,
+          title: const Text('Restablecer contrasena'),
+          content: Form(
+            key: formulario,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: password,
+                  decoration: InputDecoration(labelText: 'Nueva contrasena para ${usuario.nombre}'),
+                  onChanged: (_) => actualizar(() {}),
+                  validator: validarPassword,
+                ),
+                ListaRequisitosPassword(password: password.text),
+              ],
             ),
-            validator: _validarPassword,
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(contexto, false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formulario.currentState!.validate()) Navigator.pop(contexto, true);
+              },
+              child: const Text('Restablecer'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(contexto, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (formulario.currentState!.validate()) Navigator.pop(contexto, true);
-            },
-            child: const Text('Restablecer'),
-          ),
-        ],
       ),
     );
 
@@ -672,15 +676,6 @@ class _PestanaUsuariosState extends State<_PestanaUsuarios> {
           ],
         ),
       );
-}
-
-String? _validarPassword(String? valor) {
-  final texto = valor ?? '';
-  if (texto.length < 8) return 'Debe tener al menos 8 caracteres';
-  if (!RegExp(r'[a-z]').hasMatch(texto)) return 'Debe tener al menos una letra minuscula';
-  if (!RegExp(r'[A-Z]').hasMatch(texto)) return 'Debe tener al menos una letra mayuscula';
-  if (!RegExp(r'\d').hasMatch(texto)) return 'Debe tener al menos un numero';
-  return null;
 }
 
 // --- Roles y permisos ------------------------------------------------------

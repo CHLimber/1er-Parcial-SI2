@@ -14,7 +14,9 @@ import {
 } from '../../core/usuarios/usuarios-admin.models';
 import { UsuariosAdminService } from '../../core/usuarios/usuarios-admin.service';
 import { interpretarError } from '../../shared/errores';
+import { ListaRequisitosPassword } from '../../shared/lista-requisitos-password/lista-requisitos-password';
 import { PanelShell } from '../../shared/panel/panel-shell';
+import { passwordSeguraValidator } from '../../shared/validacion-password';
 
 type AccionCrud = 'leer' | 'crear' | 'actualizar' | 'eliminar';
 
@@ -49,7 +51,7 @@ interface FilaMatriz {
 @Component({
   selector: 'app-panel-usuarios-page',
   standalone: true,
-  imports: [PanelShell, ReactiveFormsModule],
+  imports: [PanelShell, ReactiveFormsModule, ListaRequisitosPassword],
   templateUrl: './panel-usuarios.page.html',
   styleUrls: ['../../shared/panel/panel-comun.css', './panel-usuarios.page.css'],
 })
@@ -111,7 +113,7 @@ export class PanelUsuariosPage implements OnInit {
   });
 
   protected readonly formPassword = this.fb.nonNullable.group({
-    password: ['', [Validators.required, Validators.minLength(8)]],
+    password: ['', [Validators.required, passwordSeguraValidator]],
   });
   protected readonly passwordAbierto = signal<UsuarioAdminOut | null>(null);
 
@@ -200,7 +202,7 @@ export class PanelUsuariosPage implements OnInit {
       ci: '',
       fecha_ingreso: '',
     });
-    this.formStaff.controls.password.setValidators([Validators.required, Validators.minLength(8)]);
+    this.formStaff.controls.password.setValidators([Validators.required, passwordSeguraValidator]);
     this.formStaff.controls.password.updateValueAndValidity();
     this.formularioAbierto.set(true);
   }

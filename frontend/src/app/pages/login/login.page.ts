@@ -52,8 +52,14 @@ export class LoginPage {
   }
 
   private interpretarError(error: HttpErrorResponse): string {
-    if (error.status === 401) return 'Correo o contraseña incorrectos.';
     if (error.status === 0) return 'No se pudo conectar con el servidor. Verificá tu conexión.';
+    // 401 (credenciales invalidas) y 429 (cuenta bloqueada por intentos) traen en `detail`
+    // el mensaje puntual del backend, con los intentos restantes o los minutos de bloqueo.
+    const detalle = error.error?.detail;
+    if ((error.status === 401 || error.status === 429) && typeof detalle === 'string') {
+      return detalle;
+    }
+    if (error.status === 401) return 'Correo o contraseña incorrectos.';
     return 'Ocurrió un error inesperado. Intentá de nuevo.';
   }
 }

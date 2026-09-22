@@ -1,3 +1,6 @@
+import math
+from datetime import datetime, timezone
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -8,6 +11,21 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.modules.usuarios.schemas import LoginRequest, RegistroRequest, TokenResponse, UsuarioOut
 
 router = APIRouter(prefix="/auth", tags=["usuarios"])
+
+_MAX_INTENTOS_DEFECTO = 5
+_BLOQUEO_MINUTOS_DEFECTO = 15
+
+
+async def _politica_intentos(conn: asyncpg.Connection) -> tuple[int, int]:
+    """Intentos maximos y minutos de bloqueo, parametrizables sin redesplegar (tabla
+    `configuracion`, mismo patron que `reserva_horas_vigencia`)."""
+    filas = await conn.fetch(
+        "SELECT clave, valor FROM configuracion WHERE clave IN ('login_max_intentos', 'login_bloqueo_minutos')"
+    )
+    valores = {fila["clave"]: fila["valor"] for fila in filas}
+    max_intentos = int(valores.get("login_max_intentos", _MAX_INTENTOS_DEFECTO))
+    bloqueo_minutos = int(valores.get("login_bloqueo_minutos", _BLOQUEO_MINUTOS_DEFECTO))
+    return max_intentos, bloqueo_minutos
 
 
 @router.post("/registro", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -70,7 +88,7 @@ async def login(
     row = await conn.fetchrow(
         """
         SELECT u.id, u.email, u.password_hash, u.nombre, u.apellido, u.tipo,
-               u.activo, r.nombre AS rol, e.cargo
+               u.activo, u.intentos_fallidos, u.bloqueado_hasta, r.nombre AS rol, e.cargo
         FROM usuario u
         LEFT JOIN rol r      ON r.id = u.rol_id
         LEFT JOIN empleado e ON e.usuario_id = u.id AND e.activo
@@ -85,10 +103,57 @@ async def login(
 
     if row is None or not row["activo"]:
         raise credenciales_invalidas
-    if not verify_password(body.password, row["password_hash"]):
-        raise credenciales_invalidas
 
-    await conn.execute("UPDATE usuario SET ultimo_acceso = now() WHERE id = $1", row["id"])
+    ahora = datetime.now(timezone.utc)
+    if row["bloqueado_hasta"] is not None and row["bloqueado_hasta"] > ahora:
+        minutos_restantes = math.ceil((row["bloqueado_hasta"] - ahora).total_seconds() / 60)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Cuenta bloqueada por demasiados intentos fallidos. "
+                f"Volve a intentar en {minutos_restantes} minuto(s)."
+            ),
+        )
+
+    if not verify_password(body.password, row["password_hash"]):
+        max_intentos, bloqueo_minutos = await _politica_intentos(conn)
+        intentos = row["intentos_fallidos"] + 1
+
+        if intentos >= max_intentos:
+            await conn.execute(
+                """
+                UPDATE usuario
+                   SET intentos_fallidos = 0,
+                       bloqueado_hasta   = now() + make_interval(mins => $2)
+                 WHERE id = $1
+                """,
+                row["id"],
+                bloqueo_minutos,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Demasiados intentos fallidos. Tu cuenta quedo bloqueada por "
+                    f"{bloqueo_minutos} minuto(s)."
+                ),
+            )
+
+        await conn.execute(
+            "UPDATE usuario SET intentos_fallidos = $2 WHERE id = $1", row["id"], intentos
+        )
+        restantes = max_intentos - intentos
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=(
+                f"Email o contrasena invalidos. Te queda(n) {restantes} intento(s) "
+                "antes de que se bloquee la cuenta."
+            ),
+        )
+
+    await conn.execute(
+        "UPDATE usuario SET ultimo_acceso = now(), intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1",
+        row["id"],
+    )
     await registrar_auditoria(
         conn,
         usuario_id=row["id"],

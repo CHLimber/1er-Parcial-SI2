@@ -2314,4 +2314,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('delivery_precio_km',     '3.5', 'Bs por kilometro de ruta entre la sucursal y el domicilio'),
     ('delivery_costo_minimo',  '10',  'Piso de la tarifa de delivery en Bs'),
     ('delivery_radio_km',      '12',  'Radio maximo de reparto de una sucursal, en km'),
-    ('delivery_gratis_desde',  '800', 'Monto de compra en Bs desde el que el envio es gratis');
+    ('delivery_gratis_desde',  '800', 'Monto de compra en Bs desde el que el envio es gratis'),
+    -- Login: los lee POST /auth/login antes de bloquear una cuenta por contrasenas
+    -- incorrectas consecutivas (usuario.intentos_fallidos / bloqueado_hasta).
+    ('login_max_intentos',     '5',   'Intentos fallidos de login permitidos antes de bloquear la cuenta'),
+    ('login_bloqueo_minutos',  '15',  'Minutos que la cuenta queda bloqueada tras superar login_max_intentos');

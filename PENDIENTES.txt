@@ -1580,6 +1580,68 @@
       con grep que ningun archivo restante menciona PanelEnviosPage/Pagina, los DTOs admin
       eliminados ni panel-envios/panel_envios.
 
+[2.18] [HECHO 2026-09-22] Politica de contrasena unificada + intentos maximos de login:
+      backend + web + movil, PROBADO EN VIVO contra Docker local.
+
+      POLITICA DE CONTRASENA: antes habia 3 copias casi identicas de la regla (minuscula
+      + mayuscula + numero, sin caracter especial) en usuarios/schemas.py, admin_schemas.py
+      y el espejo a mano en registro_pagina.dart -- panel-usuarios web ni siquiera la
+      aplicaba (solo Validators.minLength(8)). Se centralizo en
+      backend/app/modules/usuarios/politica_password.py (`REGLAS_PASSWORD`, 5 reglas:
+      longitud >= 8, minuscula, mayuscula, numero, caracter especial) y lo importan
+      schemas.py (CU02) y admin_schemas.py (StaffIn y PasswordIn, CU13); sigue siendo un
+      espejo manual en frontend/src/app/shared/validacion-password.ts y en
+      movil/lib/compartido/widgets.dart (reglasPassword/validarPassword) porque el
+      checklist en vivo tiene que evaluarse en el cliente sin golpear la API en cada tecla
+      -- si se cambia una regla hay que tocar las 3 copias (estan cruzadas en comentarios).
+      CHECKLIST EN VIVO (lo que se pidio: "que muestre cuales cumple y cuales no"):
+        - Web: `shared/lista-requisitos-password/` (componente standalone chico, input
+          `password`), usado en pages/registro y en los dos formularios de contrasena de
+          pages/panel-usuarios (alta de personal y "Restablecer contrasena").
+        - Movil: `ListaRequisitosPassword` en compartido/widgets.dart, usado en
+          registro_pagina.dart y en los dos dialogos de panel_usuarios_pagina.dart (alta
+          de personal en el BottomSheet, reset en el AlertDialog -- este ultimo no tenia
+          StatefulBuilder, se le agrego uno para que el checklist se repinte con cada tecla).
+      PROBADO: POST /auth/registro con "abcdefgh" devuelve 422 con las 3 reglas que
+      faltan en el mensaje; con "Abcdef1!" da 201. POST /admin/usuarios/{id}/password
+      con password debil tambien rechaza (mismo validador, PasswordIn).
+
+      INTENTOS MAXIMOS DE LOGIN: se agregaron `usuario.intentos_fallidos` (SMALLINT,
+      default 0) y `usuario.bloqueado_hasta` (TIMESTAMPTZ) en 01_schema.sql, y dos
+      parametros en `configuracion` (mismo patron que reserva_horas_vigencia):
+      `login_max_intentos` (5) y `login_bloqueo_minutos` (15) -- cambiables sin
+      redesplegar. POST /auth/login (usuarios/router.py): si `bloqueado_hasta` sigue en
+      el futuro, 429 antes de mirar la contrasena (incluso si es la correcta); si la
+      contrasena es incorrecta y el intento llega al maximo, pone `bloqueado_hasta = now()
+      + bloqueo_minutos` y resetea `intentos_fallidos` a 0 (asi el contador arranca de
+      nuevo cuando se cumple el bloqueo); si no llega al maximo, 401 con cuantos intentos
+      quedan. Un login exitoso resetea ambas columnas. No se audita el intento fallido
+      (la bitacora de CU19 es de acciones de gestion, no de intentos de login) ni se
+      distingue "usuario no existe" de "contrasena incorrecta" mas que antes -- el 401
+      generico sigue siendo el mismo para ambos casos, solo cambia cuando SI existe el
+      usuario y la contrasena esta mal.
+      FRONTEND: pages/login/login.page.ts tenia su propio interpretarError (a proposito,
+      no el shared/errores.ts: ese trata 401 como "sesion expirada", que no aplica al
+      login) pero ignoraba el `detail` del backend y mostraba un mensaje generico fijo;
+      ahora lo extrae para 401 y 429, que es como aparecen los intentos restantes y los
+      minutos de bloqueo. El movil no necesito cambios: `core/errores.dart` ya extraia
+      `detail` como string para cualquier status code.
+      PROBADO EN VIVO: 5 intentos con password incorrecta contra un usuario real devuelven
+      "Te queda(n) N intento(s)..." decreciente y en el 5to bloquea 429 "quedo bloqueada
+      por 15 minuto(s)"; con la cuenta bloqueada, la password CORRECTA tambien devuelve
+      429; tras poner `bloqueado_hasta = NULL` a mano (simula que paso el tiempo), el
+      login correcto entra y deja `intentos_fallidos = 0`.
+      MIGRACION RAILWAY: db/reparaciones/login_intentos_maximos.sql (columnas +
+      configuracion, idempotente) -- sin correrla, CUALQUIER login en Railway responde 500
+      "column u.intentos_fallidos does not exist" porque el SELECT del login las pide
+      siempre. Bloqueante para el deploy actual hasta que se corra.
+      FALTA: ni web ni movil tienen una pantalla de "cambiar mi propia contrasena" (solo
+      CU13 resetea la de otro usuario desde el panel), asi que el checklist no se aplico
+      ahi. Si se agrega esa pantalla en el futuro, reusar
+      `passwordSeguraValidator`/`ListaRequisitosPassword` (web,
+      shared/validacion-password.ts) o `validarPassword`/`ListaRequisitosPassword` (movil,
+      compartido/widgets.dart) en vez de escribir la regla de nuevo.
+
 -------------------------------------------------------------------------------
  3. DEUDA TECNICA
 -------------------------------------------------------------------------------

@@ -91,6 +91,12 @@ CREATE TABLE usuario (
     email_verificado BOOLEAN      NOT NULL DEFAULT FALSE,
     activo           BOOLEAN      NOT NULL DEFAULT TRUE,
     ultimo_acceso    TIMESTAMPTZ,
+    -- intentos maximos de login: intentos_fallidos cuenta contrasenas incorrectas
+    -- consecutivas y se resetea en un login exitoso o al bloquear (bloqueado_hasta).
+    -- Los umbrales (cuantos intentos, cuantos minutos) viven en `configuracion`
+    -- (login_max_intentos / login_bloqueo_minutos), no hardcodeados en Python.
+    intentos_fallidos SMALLINT    NOT NULL DEFAULT 0,
+    bloqueado_hasta  TIMESTAMPTZ,
     creado_en        TIMESTAMPTZ  NOT NULL DEFAULT now(),
     -- un STAFF sin rol no puede hacer nada; un CLIENTE no debe tener rol operativo
     CONSTRAINT ck_usuario_rol CHECK (

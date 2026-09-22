@@ -4,6 +4,8 @@ import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Va
 import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { ListaRequisitosPassword } from '../../shared/lista-requisitos-password/lista-requisitos-password';
+import { passwordSeguraValidator } from '../../shared/validacion-password';
 
 function passwordsIgualesValidator(control: AbstractControl): ValidationErrors | null {
   const password = control.get('password')?.value;
@@ -11,19 +13,10 @@ function passwordsIgualesValidator(control: AbstractControl): ValidationErrors |
   return password === confirmarPassword ? null : { passwordsDistintos: true };
 }
 
-function passwordSeguraValidator(control: AbstractControl): ValidationErrors | null {
-  const valor: string = control.value ?? '';
-  const errores: ValidationErrors = {};
-  if (!/[a-z]/.test(valor)) errores['faltaMinuscula'] = true;
-  if (!/[A-Z]/.test(valor)) errores['faltaMayuscula'] = true;
-  if (!/\d/.test(valor)) errores['faltaNumero'] = true;
-  return Object.keys(errores).length ? errores : null;
-}
-
 @Component({
   selector: 'app-registro-page',
   standalone: true,
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, ListaRequisitosPassword],
   templateUrl: './registro.page.html',
   styleUrl: './registro.page.css',
 })
@@ -43,7 +36,7 @@ export class RegistroPage {
       email: ['', [Validators.required, Validators.email]],
       telefono: [''],
       fechaNacimiento: [''],
-      password: ['', [Validators.required, Validators.minLength(8), passwordSeguraValidator]],
+      password: ['', [Validators.required, passwordSeguraValidator]],
       confirmarPassword: ['', [Validators.required]],
       aceptaMarketing: [false],
     },

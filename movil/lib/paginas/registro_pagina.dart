@@ -41,16 +41,6 @@ class _RegistroPaginaState extends State<RegistroPagina> {
     super.dispose();
   }
 
-  /// Misma regla que `RegistroRequest.password_segura` en el backend.
-  String? _validarPassword(String? valor) {
-    final texto = valor ?? '';
-    if (texto.length < 8) return 'Debe tener al menos 8 caracteres';
-    if (!RegExp(r'[a-z]').hasMatch(texto)) return 'Debe tener al menos una letra minuscula';
-    if (!RegExp(r'[A-Z]').hasMatch(texto)) return 'Debe tener al menos una letra mayuscula';
-    if (!RegExp(r'\d').hasMatch(texto)) return 'Debe tener al menos un numero';
-    return null;
-  }
-
   Future<void> _elegirFecha() async {
     final hoy = DateTime.now();
     final elegida = await showDatePicker(
@@ -183,8 +173,6 @@ class _RegistroPaginaState extends State<RegistroPagina> {
                       obscureText: _ocultarPassword,
                       decoration: InputDecoration(
                         labelText: 'Contrasena',
-                        helperText: 'Minimo 8 caracteres, con mayuscula, minuscula y numero',
-                        helperMaxLines: 2,
                         suffixIcon: IconButton(
                           icon: Icon(
                             _ocultarPassword
@@ -194,8 +182,10 @@ class _RegistroPaginaState extends State<RegistroPagina> {
                           onPressed: () => setState(() => _ocultarPassword = !_ocultarPassword),
                         ),
                       ),
-                      validator: _validarPassword,
+                      onChanged: (_) => setState(() {}),
+                      validator: validarPassword,
                     ),
+                    ListaRequisitosPassword(password: _password.text),
                     const SizedBox(height: 14),
                     TextFormField(
                       controller: _repetirPassword,

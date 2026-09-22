@@ -105,22 +105,10 @@
               {{ mostrarPassword() ? 'Ocultar' : 'Mostrar' }}
             </button>
           </div>
-          <p class="campo__ayuda">Mínimo 8 caracteres, con una mayúscula, una minúscula y un número.</p>
-          @if (form.controls.password.touched && form.controls.password.invalid) {
-            <p class="campo__error">
-              @if (form.controls.password.hasError('required')) {
-                Ingresá una contraseña.
-              } @else if (form.controls.password.hasError('minlength')) {
-                Debe tener al menos 8 caracteres.
-              } @else if (form.controls.password.hasError('faltaMayuscula')) {
-                Debe incluir al menos una mayúscula.
-              } @else if (form.controls.password.hasError('faltaMinuscula')) {
-                Debe incluir al menos una minúscula.
-              } @else if (form.controls.password.hasError('faltaNumero')) {
-                Debe incluir al menos un número.
-              }
-            </p>
+          @if (form.controls.password.touched && form.controls.password.hasError('required')) {
+            <p class="campo__error">Ingresá una contraseña.</p>
           }
+          <app-lista-requisitos-password [password]="form.controls.password.value" />
         </div>
 
         <div class="campo">
