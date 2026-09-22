@@ -8,61 +8,159 @@
  1. BLOQUEANTE EN LA NUBE (Railway)
 -------------------------------------------------------------------------------
 
-[1.1] La matriz de permisos de CU13 esta vacia en la base de Railway.
-      ESTADO   : diagnosticado, arreglo escrito y validado, FALTA APLICARLO.
-      SINTOMA  : el login funciona y el catalogo carga, pero todo CU09-CU13
-                 responde 403 "Tu rol no tiene permiso para esta operacion",
-                 incluso con admin@fashionstore.bo.
-      EVIDENCIA: POST /auth/login devuelve rol "ADMIN" con permisos: []
-                 403 en /admin/usuarios, /admin/roles, /admin/permisos,
-                 /recepciones, /proveedores, /admin/sucursales.
-      CAUSA    : las tablas permiso / rol_permiso quedaron sin poblar
-                 (03_datos_iniciales.sql aplicado a medias).
-      AFECTA   : la web y la app movil por igual; la API autoriza por codigo de
-                 permiso, asi que ningun rol puede hacer gestion.
-      ARREGLO  : db/reparaciones/permisos_cu13.sql (idempotente, no toca
-                 usuarios/catalogo/inventario). Ya probado contra la base local:
-                 corre sin insertar nada y deja los conteos intactos.
+[1.1] [RESUELTO, verificado 2026-09-21] La matriz de permisos de CU13 estaba
+      vacia en la base de Railway.
+      Reverificado en vivo contra https://backend-production-765b9.up.railway.app:
+      POST /auth/login con admin@fashionstore.bo ahora devuelve 34 permisos
+      (auditoria.leer, caja.*, catalogo.*, envios.*, inventario.*, proveedores.*,
+      recepciones.*, reportes.leer, reservas.*, roles.*, sucursales.*, usuarios.*,
+      ventas.*); GET /admin/usuarios, /recepciones y /proveedores devuelven 200
+      (antes 403). No se sabe si se corrio permisos_cu13.sql o si el seed se
+      reaplico completo -- lo que importa es que el sintoma ya no esta. Dejar
+      el script en db/reparaciones/ por si otro entorno lo necesita.
 
-                   cd fashionstore
-                   docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" \
-                     -v ON_ERROR_STOP=1 < db/reparaciones/permisos_cu13.sql
-
-                 Debe imprimir: ADMIN 19, ENCARGADO 11, ALMACEN 7, CAJERO 4,
-                 VENDEDOR 3. Despues hay que volver a iniciar sesion (o tocar
-                 "actualizar permisos" en la app): el JWT no lleva los permisos,
-                 pero la sesion guardada si, y queda vieja hasta refrescarla.
-      FALTA     : el DATABASE_PUBLIC_URL del servicio Postgres de Railway
-                 (pestana Variables; la publica, no DATABASE_URL).
-
-[1.2] Verificar el resto del seed en Railway despues de 1.1.
-      No se pudo comprobar cuantos usuarios/sucursales/recepciones tiene la base
-      de la nube porque esos endpoints devuelven 403 por el punto anterior. Lo
-      unico confirmado es que existen admin@fashionstore.bo, cliente@fashionstore.bo
-      y 6 productos de catalogo. Repetir el conteo cuando 1.1 este aplicado.
+[1.2] [VERIFICADO 2026-09-21, ya no bloqueado por 1.1] Conteo del seed en Railway:
+      7 usuarios, 3 sucursales, 0 recepciones -- coincide con lo esperado
+      (CLAUDE.md: admin + cliente + 5 STAFF = 7; 3 sucursales seed;
+      03_datos_iniciales.sql no inserta ninguna fila en `recepcion`, asi que 0
+      no es un hueco). Catalogo (6 productos) ya estaba confirmado antes.
 
 -------------------------------------------------------------------------------
  2. ALCANCE DE LOS CU QUE QUEDO INCOMPLETO
 -------------------------------------------------------------------------------
 
-[2.1] CU10 "Gestionar Catalogo (incluye promociones)": las promociones NO se
-      gestionan en ningun lado.
-      El backend solo las consume: /ventas/checkout valida el codigo de cupon
-      contra la tabla promocion y el webhook devuelve el uso si el pago falla.
-      No hay alta/baja/edicion de promociones ni en la API, ni en la web, ni en
-      el movil. Falta: admin_router de promociones + pantalla en panel-catalogo
-      (web) + pestana en panel_catalogo_pagina.dart (movil).
+[2.1] [HECHO 2026-09-21, solo backend] CU10 "Gestionar Catalogo (incluye
+      promociones)": alta/baja/edicion de promociones.
+      Antes el backend solo las consumia: /ventas/checkout validaba el codigo
+      de cupon contra la tabla promocion y el webhook devolvia el uso si el
+      pago fallaba, pero no habia forma de dar de alta o editar una promocion
+      desde la aplicacion (solo por seed SQL).
+      No se creo un modulo nuevo: se agrego al mismo
+      app/modules/catalogo/admin_router.py y admin_schemas.py (CU10 ya incluye
+      "promociones" en su propio titulo, y no hay permiso `promociones.*`
+      sembrado -- reusa `catalogo.leer/crear/actualizar/eliminar`, mismos
+      `puede_ver/puede_crear/puede_actualizar/puede_cambiar_estado` que ya
+      existian en el archivo). Cuatro endpoints bajo /admin/catalogo/promociones,
+      mismo patron que categorias (list/crear/actualizar/PATCH estado, sin
+      DELETE fisico -- desactivar es el "eliminar"):
+        - GET  /admin/catalogo/promociones (?activa=true|false)
+        - POST /admin/catalogo/promociones
+        - PUT  /admin/catalogo/promociones/{id}
+        - PATCH /admin/catalogo/promociones/{id}/estado
+      `_validar_promocion()` corta con 422 legible antes de que lleguen los
+      CHECK crudos de Postgres (ck_promo_alcance / ck_promo_fechas,
+      db/01_schema.sql): tipo/alcance validos, fecha_fin >= fecha_inicio,
+      alcance TODO sin categoria/temporada, CATEGORIA con categoria y sin
+      temporada, TEMPORADA con temporada y sin categoria. Se sumo ademas
+      valor<=100 para tipo PORCENTAJE -- no es un CHECK de la base, pero sin
+      ese tope `_aplicar_cupon` (ventas/router.py) podria devolver un
+      descuento mayor al subtotal. codigo_cupon se normaliza a mayusculas
+      antes de guardar (mismo criterio que ventas/router.py al leerlo).
+      registrar_auditoria en las tres escrituras (entidad="promocion"), mismo
+      patron dual que categorias/marcas.
+      PROBADO con curl contra Postgres real (Docker local, sin down -v): las 3
+      promociones del seed se listan bien; alta con alcance CATEGORIA valida
+      (categoria resuelta por nombre en la respuesta via JOIN); 422 en las 4
+      combinaciones invalidas (TODO+categoria, porcentaje>100, fecha_fin <
+      fecha_inicio, categoria_id inexistente/FK); 409 por codigo_cupon
+      duplicado (case-insensitive, gracias a la normalizacion); edicion
+      (valor y uso_maximo) y PATCH estado (activa->false) reflejados al toque;
+      filtro ?activa=false; 200/403 correctos por permiso (VENDEDOR lee pero
+      no crea, CLIENTE 403 total); 404 en un id inexistente; 3 filas nuevas en
+      `auditoria` (CREAR/ACTUALIZAR/ELIMINAR) con datos_antes/datos_despues
+      completos. La promocion de prueba quedo desactivada (no se borro nada
+      de la tabla, soft-delete como el resto del modulo).
+      [HECHO 2026-09-21, web] Pestana "Promociones" agregada dentro de
+      panel-catalogo.page.ts/html (tercera solapa, junto a "Prendas" y
+      "Categorias y marcas"): tabla con filtro de estado + formulario
+      (crear/editar, alcance condicional muestra el select de categoria o
+      temporada segun corresponda) en `core/catalogo/catalogo-admin.models.ts`
+      /`.service.ts`, mismo patron que categorias/marcas del mismo archivo.
+      FALTA: pestana en panel_catalogo_pagina.dart (movil) -- a proposito,
+      mismo criterio que siempre: web primero.
 
-[2.2] CU07: falta el cierre de caja.
-      /caja/abrir crea la sesion, pero no existe ningun endpoint para cerrarla
-      ni para el arqueo. Una sesion ABIERTA queda abierta para siempre, lo que
-      ademas bloquea esa caja para otro cajero.
+[2.2] [HECHO 2026-09-21] CU07: cierre de caja.
+      La tabla sesion_caja (db/01_schema.sql) ya traia todo lo necesario desde
+      el diseno original -- cerrada_en, monto_sistema, monto_declarado y
+      `diferencia` (columna GENERATED = monto_declarado - monto_sistema) --
+      solo faltaba el endpoint. El permiso `caja.actualizar` tambien ya estaba
+      sembrado para CAJERO con la descripcion literal "Cerrar una sesion de
+      caja"; el endpoint nuevo sigue usando `get_cajero_actual` (por cargo, no
+      por ese permiso) para no mezclar los dos mecanismos de auth dentro del
+      mismo router -- migrar caja/router.py entero a requiere_permiso() queda
+      para [3.1].
+      Dos endpoints nuevos en app/modules/caja/router.py:
+        - GET /caja/arqueo: foto de la sesion abierta ANTES de declarar el
+          cierre. monto_sistema = monto_inicial + SUM(pago.monto) de las
+          ventas de esa sesion con metodo EFECTIVO y pago.estado='APROBADO'
+          (TARJETA/QR/TRANSFERENCIA/PASARELA no tocan el cajon fisico). Suma
+          `por_metodo` (dict) y `total_ventas` (todos los metodos) para que el
+          cajero tenga contexto completo, no solo el numero que le importa al
+          cajon.
+        - POST /caja/cerrar: `UPDATE sesion_caja SET estado='CERRADA',
+          cerrada_en=now(), monto_sistema = monto_inicial +
+          fn_total_efectivo_sesion(sc.id), monto_declarado=...
+          WHERE estado='ABIERTA'`; `diferencia` la calcula Postgres solo. Si
+          la sesion ya se habia cerrado entre el chequeo y el UPDATE (doble
+          click, dos pestanias) el UPDATE no afecta filas y se responde 409 en
+          vez de devolver un cierre fantasma. (Version revisada en [2.6.1]:
+          la primera version recalculaba el arqueo con una lectura previa al
+          UPDATE, dejando una ventana de carrera; ahora fn_total_efectivo_sesion
+          -- funcion nueva en db/02_logica.sql -- corre DENTRO del UPDATE, sin
+          ventana entre leer y escribir.)
+      PROBADO con curl contra Postgres real (Docker local, sin down -v): con
+      una sesion real que ya tenia monto_inicial=5000 (quedo abierta de una
+      sesion de trabajo anterior -- sirvio de paso para confirmar que el
+      "queda abierta para siempre" del bug era real), se registraron 2 ventas
+      POS (Bs 180.69 EFECTIVO, Bs 180.69 TARJETA): el arqueo dio
+      monto_sistema=5180.69 (5000 + solo el efectivo), total_ventas=361.38,
+      por_metodo correcto. Cierre declarando 5175 -> diferencia=-5.69 en la
+      respuesta. Confirmado que la caja se libera: `GET /caja/cajas` volvio a
+      mostrar `tiene_sesion_abierta:false`, se pudo abrir una sesion nueva en
+      la misma caja y cerrarla de nuevo (diferencia=0 con monto exacto).
+      Intentar cerrar sin sesion abierta -> 409 "No tenes una sesion de caja
+      abierta"; cerrar dos veces seguidas -> el segundo intento tambien 409.
 
-[2.3] CU04 E2: nadie llama a fn_expirar_reservas().
-      La funcion existe en db/02_logica.sql y libera el stock comprometido por
-      reservas vencidas, pero el backend no tiene el job periodico (APScheduler
-      o cron) que la invoque. Hoy la unica forma de liberar una reserva vencida
-      es que un Encargado la marque "no se presento" a mano desde CU08.
+      [HECHO 2026-09-21, web] UI en pages/caja/: boton "Cerrar caja" en la
+      cabecera (visible con sesion abierta) muestra el arqueo (por metodo,
+      monto en sistema) y un campo para declarar el monto contado; al
+      confirmar llama a POST /caja/cerrar y muestra la diferencia. Probado
+      con curl contra Postgres real (abrir sesion Bs500, arqueo sin ventas
+      da monto_sistema=500, cerrar declarando 500 -> diferencia=0, la caja
+      vuelve a figurar libre). FALTA: movil/lib/paginas/caja_pagina.dart (CU07
+      ya existe ahi para vender) todavia no tiene el boton de cierre -- se
+      agrego al backend despues de que esa pantalla se escribio.
+
+[2.3] [HECHO 2026-09-21] CU04 E2: job periodico que llama a fn_expirar_reservas().
+      Antes nadie la invocaba y la unica forma de liberar una reserva vencida era
+      que un Encargado la marcara "no se presento" a mano desde CU08.
+      Se opto por un loop de asyncio dentro del propio proceso de FastAPI (NO
+      APScheduler ni cron externo, para no sumar una dependencia nueva ni un
+      segundo proceso en Docker) -- app/core/jobs.py::job_expirar_reservas()
+      corre `SELECT fn_expirar_reservas()` cada
+      settings.expirar_reservas_intervalo_segundos (default 120s, configurable
+      por env var EXPIRAR_RESERVAS_INTERVALO_SEGUNDOS), tomando una conexion del
+      pool global (app/core/db.py suma get_pool() como accesor publico, antes
+      solo se usaba _pool internamente). Nunca tumba el backend: una excepcion
+      en un ciclo se loguea y se reintenta en el siguiente, salvo
+      asyncio.CancelledError (que se re-lanza para que el shutdown limpio
+      funcione). app/main.py arranca la tarea con asyncio.create_task() dentro
+      del lifespan, justo despues de connect_pool(), y la cancela + espera antes
+      de disconnect_pool() al apagar.
+      De paso, se agrego `ENV PYTHONUNBUFFERED=1` a backend/Dockerfile: sin eso
+      los print() (los nuevos de jobs.py y los preexistentes de db.py) se
+      bufferean en bloques de 4KB adentro del contenedor y tardan en aparecer en
+      `docker compose logs` -- se detecto probando esto mismo en vivo.
+      PROBADO contra Postgres real (`docker compose up -d --build`, sin down -v
+      porque no se toco ningun .sql): al arrancar, el job encontro y libero 3
+      reservas vencidas que habian quedado de sesiones anteriores (cantidad_reservada
+      volvio a 0, estado paso a EXPIRADA). Prueba controlada aparte: se inserto
+      una reserva con expira_en en el pasado directo por SQL, se confirmo que el
+      trigger tg_reserva_compromete_stock subio cantidad_reservada, se espero el
+      siguiente ciclo (`docker compose logs -f` en vivo) y el job la expiro sola
+      -- log "job_expirar_reservas: 1 reserva(s) liberada(s) por vencimiento",
+      cantidad_reservada de vuelta a 0, reserva en EXPIRADA. Reservas de prueba
+      borradas despues (DELETE, sin dejar basura en la base de desarrollo).
 
 [2.4] [HECHO 2026-09-18] Entrega a DOMICILIO: cerrado por CU20 (ver 2.12).
       Era: CheckoutIn aceptaba entrega=DOMICILIO + direccion_id pero no habia
@@ -311,12 +409,167 @@
       `type: [string, null]` se puede dejar si no se combina con `enum`, pero
       convendria alinearlo al mismo patron por consistencia).
 
-[2.6] Ajustes manuales de stock: idem.
-      El permiso inventario.ajustar esta asignado a ADMIN, ENCARGADO y ALMACEN,
-      y fn_mover_inventario() acepta ajustes, pero no hay endpoint que los
-      registre. Segun CLAUDE.md, un ajuste es la unica forma de corregir una
-      recepcion ya confirmada (el kardex es append-only), asi que hoy esa
-      correccion no se puede hacer desde la aplicacion.
+[2.6] [HECHO 2026-09-21] Ajustes manuales de stock: backend.
+      El permiso ya sembrado se llama `inventario.actualizar` (no
+      `inventario.ajustar` como decia esta entrada -- corregido aca), asignado
+      a ADMIN, ENCARGADO y ALMACEN junto con `inventario.leer`; CAJERO y
+      VENDEDOR solo tienen `inventario.leer`. fn_mover_inventario() ya aceptaba
+      el tipo AJUSTE desde que se escribio, pero ningun endpoint lo disparaba.
+      Modulo nuevo app/modules/inventario/ (prefix /inventario, sin cara
+      publica, mismo criterio que recepciones/proveedores -- ver CLAUDE.md),
+      tres endpoints:
+        - GET /inventario/variantes (permiso leer O actualizar): buscador por
+          SKU/codigo de barras/nombre con el saldo actual de una sucursal
+          destino, mismo patron que recepciones.buscar_variantes.
+        - GET /inventario/{variante_id}/kardex (permiso leer O actualizar):
+          historial de movimiento_inventario para esa variante+sucursal.
+        - POST /inventario/ajustes (permiso actualizar): llama a
+          `SELECT fn_mover_inventario($1,$2,'AJUSTE',$3,$4,NULL,NULL,$5)` (sin
+          documento_tipo/documento_id, a diferencia de venta/reserva/recepcion
+          un ajuste manual no nace de otro registro -- el usuario que lo hizo
+          ya queda en el movimiento) y ademas llama a registrar_auditoria
+          (entidad="inventario", entidad_id=variante_id), mismo patron dual
+          kardex+auditoria que ya usa recepciones.confirmar_recepcion.
+      OJO IMPORTANTE descubierto al implementar (y CORREGIDO el mismo dia en
+      una revision posterior, ver [2.6.1]): fn_mover_inventario() trata AJUSTE
+      como el saldo FISICO ABSOLUTO nuevo, no como un delta (linea
+      `cantidad_fisica = p_cantidad`), y la funcion exige `p_cantidad > 0` al
+      principio -- hoy NO se puede dejar una variante en 0 unidades por esta
+      via. Se valida con `Field(gt=0)` en el schema (AjusteIn) para devolver un
+      422 claro en vez de una excepcion cruda de Postgres. Si en algun momento
+      hace falta poner una variante en 0 stock, hay que decidir ahi si se
+      relaja el CHECK o se usa otro tipo de movimiento.
+      Mismo scoping por sucursal que recepciones.py (`_sucursal_visible`): un
+      ADMIN (permiso sucursales.actualizar) ve y ajusta cualquier sucursal, el
+      resto solo la suya.
+      PROBADO con curl contra Postgres real (Docker local, sin down -v porque
+      no se toco ningun .sql): busqueda de variantes por texto; ajuste real
+      28->25 unidades con motivo, movimiento_id devuelto y el kardex mostrando
+      el asiento AJUSTE encadenado con los movimientos previos de
+      RESERVA/LIBERACION de la misma variante; fila en `auditoria` con
+      datos_antes/datos_despues parseados correctos; 403 para VENDEDOR
+      (solo inventario.leer) intentando ajustar; 200 para el mismo VENDEDOR
+      buscando (inventario.leer alcanza); 403 para un CLIENTE; 403 para
+      ENCARGADO de La Paz ajustando stock de Santa Cruz ("Esa sucursal no es
+      la tuya"); 422 con cantidad_fisica_nueva=0; 422 con variante_id
+      inexistente (ForeignKeyViolationError atrapada). Se revirtio el ajuste
+      de prueba con otro ajuste (28 de vuelta), no se borro nada del kardex.
+
+      [HECHO 2026-09-21, web] Pantalla nueva pages/panel-inventario/ (ruta
+      /panel/inventario, entrada de menu nueva en panel-shell.ts), mismo
+      criterio que panel-recepciones: buscador de variante + panel con el
+      stock actual, el kardex y el formulario de ajuste (motivo obligatorio).
+      Con sucursales.actualizar aparece un selector de sucursal (como
+      recepciones); sin ese permiso el backend resuelve sola la sucursal del
+      staff -- UsuarioOut no la expone, no hace falta pedirla en el frontend.
+      core/inventario/inventario.models.ts/.service.ts nuevos, espejo del
+      modulo backend. Probado con curl contra Postgres real: busqueda,
+      ajuste 15->17->15 (revertido) con el kardex reflejando ambos
+      movimientos encadenados. `ng build` limpio. FALTA: pantalla propia en
+      movil (no existe todavia) -- a proposito, web primero.
+
+      [2.6.1] [HECHO 2026-09-21] Revision de codigo (/code-review + /simplify,
+      4 agentes en paralelo: reuse/simplification/efficiency/altitude) sobre
+      todo lo de esta sesion ([2.1], [2.2], [2.3], [2.6]), a pedido explicito
+      del usuario ("busca mejoras, y limpia codigo y comentarios"). Todo
+      reprobado en vivo contra Postgres real despues de cada cambio.
+
+      BUGS REALES encontrados por /code-review y corregidos:
+        1. caja/_calcular_arqueo: `cantidad_ventas` contaba TODAS las ventas
+           de la sesion (`COUNT(*) FROM venta`), mientras que `por_metodo`/
+           `total_ventas` solo sumaban pagos APROBADOS -- podian desalinearse.
+           Se unifico el filtro en una sola consulta.
+        2. inventario/registrar_ajuste: la respuesta usaba
+           movimiento_inventario.saldo_anterior/saldo_nuevo tal cual, pero
+           fn_mover_inventario calculaba esas columnas como DISPONIBLE
+           (fisico - reservado) para CUALQUIER tipo de movimiento, AJUSTE
+           incluido -- con unidades reservadas, el numero mostrado no
+           coincidia con `cantidad_fisica_nueva` que el usuario acababa de
+           ingresar. Corregido en la RAIZ (ver punto siguiente), no con un
+           parche en el router.
+        3. caja/cerrar_sesion: `_calcular_arqueo` se llamaba ANTES del
+           UPDATE de cierre (lectura y escritura separadas) -- una venta de
+           POS registrada justo en esa ventana quedaba afuera del cierre.
+
+      ALTITUDE (el hallazgo mas importante): el reviewer de altitude cuestiono
+      que el bug 2 se hubiera parchado en el router (re-leer cantidad_fisica
+      aparte) en vez de arreglar fn_mover_inventario, notando ademas que el
+      parche quedaba INCOMPLETO -- GET /inventario/{id}/kardex (endpoint
+      nuevo de esta misma sesion) seguia devolviendo los numeros
+      equivocados sin corregir, con solo un comentario de advertencia en el
+      schema. Se re-evaluo la premisa original ("no tocar la funcion SQL que
+      funciona bien para su unico uso actual") y NO se sostuvo: AJUSTE no
+      tenia ningun caller antes de esta sesion, asi que no habia riesgo de
+      romper un flujo existente. Se corrigio fn_mover_inventario en
+      db/02_logica.sql: para AJUSTE, saldo_anterior/saldo_nuevo ahora se
+      calculan de cantidad_fisica cruda, no de disponible (el resto de los
+      tipos -- ENTRADA/SALIDA/RESERVA/LIBERACION/etc. -- siguen igual que
+      antes, sin cambio de comportamiento). Aplicado DIRECTO contra la base
+      corriendo (`CREATE OR REPLACE FUNCTION` via psql, sin `down -v`: no es
+      destructivo, y asi no se perdia el resto de datos de la sesion). Con la
+      raiz arreglada, inventario/router.py se simplifico de vuelta a confiar
+      en el kardex directamente (se saco el pre-SELECT de cantidad_fisica y
+      el comentario "OJO" largo que lo justificaba).
+
+      Tambien por altitude: se extrajo `fn_total_efectivo_sesion(sesion_id)`
+      (db/02_logica.sql) para que la regla "cuanto EFECTIVO se cobro en una
+      sesion" viva en un solo lugar reusable (mismo idioma que v_disponibilidad)
+      en vez de repetir la misma sub-consulta en dos endpoints de caja/router.py.
+
+      BUG NUEVO introducido por una "mejora" mal aplicada, encontrado por
+      testing propio (no por los agentes): el reviewer de efficiency sugirio
+      fusionar dos consultas de inventario/registrar_ajuste en una sola
+      (`SELECT ... FROM movimiento_inventario WHERE id = fn_mover_inventario(...)`)
+      para ahorrar un viaje de red. Se aplico y el endpoint empezo a tirar 500
+      ("NoneType no subscriptable"): en Postgres, la fila que una funcion
+      inserta como efecto secundario NO es visible para el propio FROM de la
+      MISMA sentencia que la invoco (el snapshot de la consulta se fija antes
+      de correr la funcion) -- probado en vivo, confirmado con un SELECT
+      directo por psql antes de tocar el codigo de nuevo. Revertido a dos
+      consultas separadas (`fetchval` para llamar la funcion, `fetchrow`
+      aparte para leer el movimiento). Leccion: una sugerencia de un agente de
+      revision, por mas razonable que suene, se prueba contra la base real
+      antes de darla por buena -- no alcanza con que "compile".
+
+      SIMPLIFICACION aplicada (agente de simplification):
+        - catalogo/admin_router.py: `_error422(detalle)` reemplaza 7
+          `raise HTTPException(422, ...)` repetidos en `_validar_promocion`.
+        - `crear_promocion`/`actualizar_promocion` (11 parametros posicionales
+          y el mismo manejo de UniqueViolationError/ForeignKeyViolationError
+          duplicados) se unificaron en `_guardar_promocion(conn, staff, body,
+          promocion_id=None)`, INSERT si el id es None, UPDATE si no. Se
+          preservo el orden original a proposito: `antes = _obtener_promocion`
+          corre ANTES de `_validar_promocion`, asi que editar un id inexistente
+          sigue dando 404 y no 422 (probado explicitamente con un body que
+          pasa las validaciones de Pydantic pero fallaria la validacion
+          semantica, para no confundir el resultado con un 422 de otro tipo).
+
+      SKIPS (con motivo, no se aplicaron a proposito):
+        - Reuse: 0 hallazgos reales (el agente reviso `_sucursal_visible`
+          duplicado entre inventario/recepciones/reportes/envios y confirmo
+          que es el patron ya establecido del proyecto, no una violacion).
+        - Efficiency: releer la promocion completa despues de un INSERT/UPDATE
+          (`_obtener_promocion`) y en `cambiar_estado_promocion` (para leer
+          solo `.activa`) se podrian ahorrar con RETURNING/una consulta mas
+          chica, pero es EXACTAMENTE el mismo patron que ya usan
+          `crear_categoria`/`cambiar_estado_categoria` en el mismo archivo --
+          cambiarlo solo en promociones rompia la consistencia del archivo
+          por una lectura extra de una PK indexada, en un endpoint de bajo
+          trafico. No se toco.
+        - Simplification: un comentario aclaratorio para el fallback de 3
+          pasos en `_resolver_sucursal` (inventario/router.py) -- el propio
+          agente lo marco como baja prioridad.
+
+      PROBADO de nuevo despues de cada cambio contra Postgres real: ajuste con
+      unidades reservadas (28 fisico / 3 reservado -> ajustar a 30 devuelve
+      28->30, no 25->27 que hubiera sido lo viejo), caja arqueo+cierre con
+      2 ventas de metodos distintos (monto_sistema/diferencia correctos),
+      CRUD de promociones completo (crear/editar/desactivar) incluyendo el
+      caso 404-antes-que-422. Datos de prueba de esta ronda tambien limpiados
+      (reservas de prueba liberadas con LIBERACION antes de borrarlas -- NO
+      con un DELETE crudo, que fue justamente el error que dejo un compromiso
+      de stock fantasma en un paso intermedio de esta misma verificacion y
+      hubo que corregir aparte).
 
 [2.7] Tablas del esquema sin ningun uso en el backend (0 referencias):
       traspaso, devolucion. Estan en db/01_schema.sql pero ningun modulo las toca.
@@ -1425,10 +1678,19 @@
                 `pi_...` con client_secret (antes del deploy, el mismo request
                 devolvia `cs_test_...` y client_secret vacio), y en el emulador el
                 PaymentSheet nativo abre dentro de la app con "Pay BOB338.89".
-      FALTA   : agregar al webhook del Dashboard de Stripe los eventos
-                `payment_intent.succeeded` y `payment_intent.canceled` (ver la nota
-                de Stripe en RAILWAY.md): sin ellos el cobro del movil sale pero la
-                venta se queda PENDIENTE. Es configuracion en Stripe, no codigo.
+      FALTA   : [REVISADO 2026-09-21, mas grave de lo que decia esta entrada]
+                se consulto GET /v1/webhook_endpoints a la API de Stripe con la
+                STRIPE_SECRET_KEY de backend/.env (test mode) y la cuenta NO
+                TIENE NINGUN webhook endpoint registrado en el Dashboard -- no
+                es que falten 2 eventos en uno existente, es que nunca se creo
+                el endpoint que dice RAILWAY.md (Stripe Dashboard -> Developers
+                -> Webhooks -> Add endpoint -> https://<backend-railway>/pagos/
+                webhook/stripe, eventos checkout.session.completed,
+                checkout.session.async_payment_succeeded/failed/expired,
+                payment_intent.succeeded, payment_intent.canceled). Mientras
+                esto no se cree, NINGUN pago real contra Railway (ni WEB ni
+                MOVIL) confirma solo: la venta queda PENDIENTE para siempre.
+                Es configuracion en Stripe, no codigo.
       NOTA    : no tenia nada que ver con el telefono (Huawei) ni con el APK.
 
 [4.8] [RESUELTO 2026-09-19] Un checkout pendiente no se podia retomar desde el otro canal.

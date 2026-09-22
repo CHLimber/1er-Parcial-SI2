@@ -12,6 +12,8 @@ import {
   ProductoAdminDetalleOut,
   ProductoAdminOut,
   ProductoIn,
+  PromocionAdminOut,
+  PromocionIn,
   ReferenciasOut,
   VarianteAdminOut,
   VarianteIn,
@@ -106,5 +108,23 @@ export class CatalogoAdminService {
 
   crearMarca(nombre: string, logoUrl: string | null): Observable<MarcaAdminOut> {
     return this.http.post<MarcaAdminOut>(`${this.base}/marcas`, { nombre, logo_url: logoUrl });
+  }
+
+  listarPromociones(activa?: boolean | null): Observable<PromocionAdminOut[]> {
+    let params = new HttpParams();
+    if (activa !== null && activa !== undefined) params = params.set('activa', activa);
+    return this.http.get<PromocionAdminOut[]>(`${this.base}/promociones`, { params });
+  }
+
+  crearPromocion(datos: PromocionIn): Observable<PromocionAdminOut> {
+    return this.http.post<PromocionAdminOut>(`${this.base}/promociones`, datos);
+  }
+
+  actualizarPromocion(id: string, datos: PromocionIn): Observable<PromocionAdminOut> {
+    return this.http.put<PromocionAdminOut>(`${this.base}/promociones/${id}`, datos);
+  }
+
+  cambiarEstadoPromocion(id: string, activa: boolean): Observable<PromocionAdminOut> {
+    return this.http.patch<PromocionAdminOut>(`${this.base}/promociones/${id}/estado`, { activa });
   }
 }

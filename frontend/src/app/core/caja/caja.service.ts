@@ -3,7 +3,15 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { AbrirSesionIn, CajaOut, SesionCajaOut, VarianteBusquedaOut } from './caja.models';
+import {
+  AbrirSesionIn,
+  ArqueoOut,
+  CajaOut,
+  CerrarSesionIn,
+  SesionCajaOut,
+  SesionCerradaOut,
+  VarianteBusquedaOut,
+} from './caja.models';
 
 @Injectable({ providedIn: 'root' })
 export class CajaService {
@@ -25,5 +33,13 @@ export class CajaService {
   buscarVariante(codigo: string): Observable<VarianteBusquedaOut> {
     const params = new HttpParams().set('codigo', codigo);
     return this.http.get<VarianteBusquedaOut>(`${this.base}/buscar-variante`, { params });
+  }
+
+  obtenerArqueo(): Observable<ArqueoOut> {
+    return this.http.get<ArqueoOut>(`${this.base}/arqueo`);
+  }
+
+  cerrarSesion(datos: CerrarSesionIn): Observable<SesionCerradaOut> {
+    return this.http.post<SesionCerradaOut>(`${this.base}/cerrar`, datos);
   }
 }

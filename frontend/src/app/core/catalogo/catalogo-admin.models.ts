@@ -155,3 +155,41 @@ export interface ReferenciasOut {
   colores: ColorOut[];
   generos: string[];
 }
+
+/** CU10 - Promociones (PENDIENTES.txt 2.1). */
+export interface PromocionIn {
+  nombre: string;
+  codigo_cupon: string;
+  tipo: string;
+  valor: number;
+  alcance: string;
+  categoria_id: string | null;
+  temporada_id: string | null;
+  monto_minimo: number | null;
+  fecha_inicio: string;
+  fecha_fin: string;
+  uso_maximo: number | null;
+}
+
+export interface PromocionEstadoIn {
+  activa: boolean;
+}
+
+export interface PromocionAdminOut {
+  id: string;
+  nombre: string;
+  codigo_cupon: string;
+  tipo: string;
+  valor: number;
+  alcance: string;
+  categoria_id: string | null;
+  categoria: string | null;
+  temporada_id: string | null;
+  temporada: string | null;
+  monto_minimo: number | null;
+  fecha_inicio: string;
+  fecha_fin: string;
+  uso_maximo: number | null;
+  usos_actuales: number;
+  activa: boolean;
+}

@@ -1,0 +1,173 @@
+<app-panel-shell
+  titulo="Inventario"
+  bajada="Ajustá el stock físico cuando el conteo no coincide con el sistema. Cada ajuste queda en el kardex, no se puede editar ni borrar."
+>
+  <div class="barra">
+    @if (eligeSucursal) {
+      <div class="campo">
+        <label for="sucursal">Sucursal</label>
+        <select
+          id="sucursal"
+          [value]="sucursalId"
+          (change)="sucursalId = $any($event.target).value; cambiarSucursal()"
+        >
+          @for (sucursal of sucursales(); track sucursal.id) {
+            <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
+          }
+        </select>
+      </div>
+    }
+
+    <div class="campo" style="flex: 1">
+      <label for="termino">Buscar prenda</label>
+      <input
+        id="termino"
+        type="search"
+        placeholder="SKU, código de barras o nombre"
+        [(ngModel)]="termino"
+        name="termino"
+        (keyup.enter)="buscar()"
+      />
+    </div>
+
+    <button type="button" class="boton boton--secundario" [disabled]="buscando()" (click)="buscar()">
+      {{ buscando() ? 'Buscando…' : 'Buscar' }}
+    </button>
+  </div>
+
+  @if (errorBusqueda()) {
+    <p class="error" role="alert">{{ errorBusqueda() }}</p>
+  }
+
+  <div class="columnas columnas--detalle">
+    <section class="panel">
+      <h2 class="panel__titulo">Resultados ({{ resultados().length }})</h2>
+
+      @if (resultados().length === 0) {
+        <p class="estado">Buscá una prenda por SKU, código de barras o nombre para ver su stock.</p>
+      } @else {
+        <ul class="lista">
+          @for (variante of resultados(); track variante.id) {
+            <li>
+              <button
+                type="button"
+                class="tarjeta"
+                [class.tarjeta--activa]="elegida()?.id === variante.id"
+                (click)="elegir(variante)"
+              >
+                <span class="tarjeta__numero mono">{{ variante.sku }}</span>
+                <span class="tarjeta__proveedor">{{ variante.producto }}</span>
+                <span class="tarjeta__meta">
+                  <span class="punto" [style.background]="variante.codigo_hex"></span>
+                  {{ variante.talla }} · {{ variante.color }} · {{ variante.sucursal }}
+                </span>
+                <span class="tarjeta__meta">
+                  Físico {{ variante.cantidad_fisica }} · Reservado {{ variante.cantidad_reservada }} ·
+                  Disponible {{ variante.disponible }}
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      @if (elegida(); as variante) {
+        <div class="ficha">
+          <h2 class="panel__titulo">{{ variante.producto }}</h2>
+          <p class="estado">
+            <span class="mono">{{ variante.sku }}</span> · {{ variante.talla }} · {{ variante.color }} ·
+            {{ variante.sucursal }}
+          </p>
+          <p class="estado">
+            Físico actual <strong>{{ variante.cantidad_fisica }}</strong> · Reservado
+            <strong>{{ variante.cantidad_reservada }}</strong> · Disponible
+            <strong>{{ variante.disponible }}</strong>
+          </p>
+
+          @if (aviso()) {
+            <p class="exito">{{ aviso() }}</p>
+          }
+
+          @if (puedeAjustar) {
+            <h3 class="subtitulo">Registrar ajuste</h3>
+            <div class="rejilla">
+              <div class="campo">
+                <label for="cantidad-nueva">Cantidad física nueva</label>
+                <input
+                  id="cantidad-nueva"
+                  type="number"
+                  min="1"
+                  [(ngModel)]="cantidadNueva"
+                  name="cantidad-nueva"
+                />
+              </div>
+              <div class="campo">
+                <label for="motivo">Motivo del ajuste</label>
+                <input
+                  id="motivo"
+                  type="text"
+                  placeholder="Conteo físico, prenda dañada, robo…"
+                  [(ngModel)]="motivo"
+                  name="motivo"
+                />
+              </div>
+            </div>
+
+            @if (errorAjuste()) {
+              <p class="error" role="alert">{{ errorAjuste() }}</p>
+            }
+
+            <div class="acciones">
+              <button type="button" class="boton" [disabled]="guardando()" (click)="guardarAjuste()">
+                {{ guardando() ? 'Guardando…' : 'Guardar ajuste' }}
+              </button>
+              <button type="button" class="boton boton--secundario" (click)="limpiarSeleccion()">
+                Cancelar
+              </button>
+            </div>
+          }
+
+          <h3 class="subtitulo">Kardex</h3>
+          @if (cargandoKardex()) {
+            <p class="estado">Cargando movimientos…</p>
+          } @else if (kardex().length === 0) {
+            <p class="estado">Sin movimientos registrados para esta variante en esta sucursal.</p>
+          } @else {
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Tipo</th>
+                    <th class="tabla__numero">Cantidad</th>
+                    <th class="tabla__numero">Saldo anterior</th>
+                    <th class="tabla__numero">Saldo nuevo</th>
+                    <th>Motivo</th>
+                    <th>Usuario</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (movimiento of kardex(); track movimiento.id) {
+                    <tr>
+                      <td class="mono">{{ movimiento.fecha | date: 'short' }}</td>
+                      <td>{{ etiquetaMovimiento(movimiento.tipo) }}</td>
+                      <td class="tabla__numero">{{ movimiento.cantidad }}</td>
+                      <td class="tabla__numero">{{ movimiento.saldo_anterior }}</td>
+                      <td class="tabla__numero">{{ movimiento.saldo_nuevo }}</td>
+                      <td>{{ movimiento.motivo ?? '—' }}</td>
+                      <td>{{ movimiento.usuario ?? '—' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="estado">Elegí una prenda de los resultados para ver su kardex y ajustarla.</p>
+      }
+    </section>
+  </div>
+</app-panel-shell>

@@ -1,6 +1,7 @@
+import asyncio
 import mimetypes
 import shutil
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.db import connect_pool, disconnect_pool
+from app.core.jobs import job_expirar_reservas
 from app.modules.asistente.router import router as asistente_router
 from app.modules.auditoria.router import router as auditoria_router
 from app.modules.caja.router import router as caja_router
@@ -18,6 +20,7 @@ from app.modules.catalogo.router import router as catalogo_router
 from app.modules.direcciones.router import router as direcciones_router
 from app.modules.envios.admin_router import router as envios_admin_router
 from app.modules.envios.router import router as envios_router
+from app.modules.inventario.router import router as inventario_router
 from app.modules.pagos.router import router as pagos_router
 from app.modules.proveedores.router import router as proveedores_router
 from app.modules.recepciones.router import router as recepciones_router
@@ -34,7 +37,13 @@ from app.modules.ventas.router import router as ventas_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_pool()
+    tarea_expirar_reservas = asyncio.create_task(
+        job_expirar_reservas(settings.expirar_reservas_intervalo_segundos)
+    )
     yield
+    tarea_expirar_reservas.cancel()
+    with suppress(asyncio.CancelledError):
+        await tarea_expirar_reservas
     await disconnect_pool()
 
 
@@ -93,6 +102,7 @@ app.include_router(pagos_router)
 app.include_router(caja_router)
 app.include_router(proveedores_router)
 app.include_router(recepciones_router)
+app.include_router(inventario_router)
 app.include_router(catalogo_admin_router)
 app.include_router(sucursales_admin_router)
 app.include_router(usuarios_admin_router)

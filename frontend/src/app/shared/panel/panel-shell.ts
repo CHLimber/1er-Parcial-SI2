@@ -26,6 +26,11 @@ const ENTRADAS_PANEL: EntradaNav[] = [
     visible: (auth) => auth.tienePermiso('recepciones.leer', 'recepciones.crear'),
   },
   {
+    ruta: '/panel/inventario',
+    etiqueta: 'Inventario',
+    visible: (auth) => auth.tienePermiso('inventario.leer', 'inventario.actualizar'),
+  },
+  {
     ruta: '/panel/proveedores',
     etiqueta: 'Proveedores',
     visible: (auth) =>

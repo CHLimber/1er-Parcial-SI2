@@ -8,6 +8,8 @@ import {
   ProductoAdminDetalleOut,
   ProductoAdminOut,
   ProductoIn,
+  PromocionAdminOut,
+  PromocionIn,
   ReferenciasOut,
   VarianteAdminOut,
   VarianteIn,
@@ -37,7 +39,7 @@ export class PanelCatalogoPage implements OnInit {
     'catalogo.eliminar',
   );
 
-  protected solapa: 'prendas' | 'clasificacion' = 'prendas';
+  protected solapa: 'prendas' | 'clasificacion' | 'promociones' = 'prendas';
   protected readonly vista = signal<Vista>('lista');
 
   protected readonly cargando = signal(true);
@@ -63,6 +65,13 @@ export class PanelCatalogoPage implements OnInit {
   protected readonly categoriaEditada = signal<CategoriaAdminOut | null>(null);
   protected readonly errorCategoria = signal<string | null>(null);
   protected readonly errorMarca = signal<string | null>(null);
+
+  // --- promociones ---
+  protected readonly cargandoPromo = signal(false);
+  protected readonly promociones = signal<PromocionAdminOut[]>([]);
+  protected readonly promocionEditada = signal<PromocionAdminOut | null>(null);
+  protected readonly errorPromocion = signal<string | null>(null);
+  protected filtroPromoEstado: '' | 'true' | 'false' = '';
 
   protected readonly colecciones = computed(() => {
     const temporadaId = this.formProducto.controls.temporada_id.value;
@@ -115,6 +124,20 @@ export class PanelCatalogoPage implements OnInit {
   protected readonly formMarca = this.fb.nonNullable.group({
     nombre: ['', [Validators.required, Validators.maxLength(80)]],
     logo_url: [''],
+  });
+
+  protected readonly formPromocion = this.fb.nonNullable.group({
+    nombre: ['', [Validators.required, Validators.maxLength(120)]],
+    codigo_cupon: ['', [Validators.required, Validators.maxLength(40)]],
+    tipo: ['PORCENTAJE', [Validators.required]],
+    valor: [0, [Validators.required, Validators.min(0.01)]],
+    alcance: ['TODO', [Validators.required]],
+    categoria_id: [''],
+    temporada_id: [''],
+    monto_minimo: [null as number | null],
+    fecha_inicio: ['', [Validators.required]],
+    fecha_fin: ['', [Validators.required]],
+    uso_maximo: [null as number | null],
   });
 
   ngOnInit(): void {
@@ -515,6 +538,128 @@ export class PanelCatalogoPage implements OnInit {
       error: (e: HttpErrorResponse) => this.errorCategoria.set(interpretarError(e)),
     });
     this.cargarReferencias();
+  }
+
+  // ------------------------------------------------------------------
+  //  PROMOCIONES
+  // ------------------------------------------------------------------
+
+  protected cargarPromociones(): void {
+    this.cargandoPromo.set(true);
+    this.errorPromocion.set(null);
+    const activa = this.filtroPromoEstado === '' ? null : this.filtroPromoEstado === 'true';
+    this.servicio.listarPromociones(activa).subscribe({
+      next: (promociones) => {
+        this.promociones.set(promociones);
+        this.cargandoPromo.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.errorPromocion.set(interpretarError(e, 'No se pudieron cargar las promociones.'));
+        this.cargandoPromo.set(false);
+      },
+    });
+  }
+
+  protected nuevaPromocion(): void {
+    this.promocionEditada.set(null);
+    this.errorPromocion.set(null);
+    this.formPromocion.reset({
+      nombre: '',
+      codigo_cupon: '',
+      tipo: 'PORCENTAJE',
+      valor: 0,
+      alcance: 'TODO',
+      categoria_id: '',
+      temporada_id: '',
+      monto_minimo: null,
+      fecha_inicio: '',
+      fecha_fin: '',
+      uso_maximo: null,
+    });
+  }
+
+  protected editarPromocion(promocion: PromocionAdminOut): void {
+    this.promocionEditada.set(promocion);
+    this.errorPromocion.set(null);
+    this.formPromocion.reset({
+      nombre: promocion.nombre,
+      codigo_cupon: promocion.codigo_cupon,
+      tipo: promocion.tipo,
+      valor: Number(promocion.valor),
+      alcance: promocion.alcance,
+      categoria_id: promocion.categoria_id ?? '',
+      temporada_id: promocion.temporada_id ?? '',
+      monto_minimo: promocion.monto_minimo === null ? null : Number(promocion.monto_minimo),
+      fecha_inicio: promocion.fecha_inicio,
+      fecha_fin: promocion.fecha_fin,
+      uso_maximo: promocion.uso_maximo,
+    });
+  }
+
+  protected guardarPromocion(): void {
+    if (this.formPromocion.invalid) {
+      this.formPromocion.markAllAsTouched();
+      return;
+    }
+
+    const crudo = this.formPromocion.getRawValue();
+    const datos: PromocionIn = {
+      nombre: crudo.nombre.trim(),
+      codigo_cupon: crudo.codigo_cupon.trim().toUpperCase(),
+      tipo: crudo.tipo,
+      valor: Number(crudo.valor),
+      alcance: crudo.alcance,
+      categoria_id: crudo.alcance === 'CATEGORIA' ? crudo.categoria_id || null : null,
+      temporada_id: crudo.alcance === 'TEMPORADA' ? crudo.temporada_id || null : null,
+      monto_minimo: crudo.monto_minimo === null || crudo.monto_minimo === ('' as unknown)
+        ? null
+        : Number(crudo.monto_minimo),
+      fecha_inicio: crudo.fecha_inicio,
+      fecha_fin: crudo.fecha_fin,
+      uso_maximo: crudo.uso_maximo === null || crudo.uso_maximo === ('' as unknown)
+        ? null
+        : Number(crudo.uso_maximo),
+    };
+
+    this.guardando.set(true);
+    this.errorPromocion.set(null);
+
+    const enEdicion = this.promocionEditada();
+    const peticion = enEdicion
+      ? this.servicio.actualizarPromocion(enEdicion.id, datos)
+      : this.servicio.crearPromocion(datos);
+
+    peticion.subscribe({
+      next: () => {
+        this.guardando.set(false);
+        this.nuevaPromocion();
+        this.cargarPromociones();
+      },
+      error: (e: HttpErrorResponse) => {
+        this.guardando.set(false);
+        this.errorPromocion.set(interpretarError(e));
+      },
+    });
+  }
+
+  protected alternarEstadoPromocion(promocion: PromocionAdminOut): void {
+    this.errorPromocion.set(null);
+    this.servicio.cambiarEstadoPromocion(promocion.id, !promocion.activa).subscribe({
+      next: () => this.cargarPromociones(),
+      error: (e: HttpErrorResponse) => this.errorPromocion.set(interpretarError(e)),
+    });
+  }
+
+  protected etiquetaValorPromocion(promocion: PromocionAdminOut): string {
+    return promocion.tipo === 'PORCENTAJE'
+      ? `${Number(promocion.valor)}%`
+      : this.precio(Number(promocion.valor));
+  }
+
+  protected etiquetaAlcancePromocion(promocion: PromocionAdminOut): string {
+    if (promocion.alcance === 'CATEGORIA') return promocion.categoria ?? 'Categoría';
+    if (promocion.alcance === 'TEMPORADA') return promocion.temporada ?? 'Temporada';
+    return 'Todo el catálogo';
   }
 
   // ------------------------------------------------------------------

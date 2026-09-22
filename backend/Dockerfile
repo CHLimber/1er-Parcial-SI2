@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Sin esto, stdout se bufferea en bloques de 4KB adentro del contenedor (no es una TTY) y los
+# print() de app/core/db.py y app/core/jobs.py tardan en aparecer en `docker compose logs`.
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends gcc \

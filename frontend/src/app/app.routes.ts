@@ -125,6 +125,14 @@ export const routes: Routes = [
         ],
       },
       {
+        path: 'inventario',
+        loadComponent: () =>
+          import('./pages/panel-inventario/panel-inventario.page').then(
+            (m) => m.PanelInventarioPage,
+          ),
+        canActivate: [permisoGuard('inventario.leer', 'inventario.actualizar')],
+      },
+      {
         path: 'proveedores',
         loadComponent: () =>
           import('./pages/panel-proveedores/panel-proveedores.page').then(

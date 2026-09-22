@@ -37,6 +37,9 @@ from app.modules.catalogo.admin_schemas import (
     ProductoAdminDetalleOut,
     ProductoAdminOut,
     ProductoIn,
+    PromocionAdminOut,
+    PromocionEstadoIn,
+    PromocionIn,
     ReferenciasOut,
     TallaOut,
     TemporadaAdminOut,
@@ -824,6 +827,192 @@ async def crear_marca(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe una marca con ese nombre")
     return MarcaAdminOut(**dict(fila))
+
+
+# ---------------------------------------------------------------------
+#  PROMOCIONES (CU10, PENDIENTES.txt 2.1: el backend solo las consumia en el
+#  checkout, no habia alta/baja/edicion en ningun lado)
+# ---------------------------------------------------------------------
+
+TIPOS_PROMOCION = ["PORCENTAJE", "MONTO_FIJO"]
+ALCANCES_PROMOCION = ["TODO", "CATEGORIA", "TEMPORADA"]
+
+SELECT_PROMOCION_ADMIN = """
+SELECT pr.id, pr.nombre, pr.codigo_cupon, pr.tipo::text AS tipo, pr.valor,
+       pr.alcance::text AS alcance, pr.categoria_id, cat.nombre AS categoria,
+       pr.temporada_id, tmp.nombre AS temporada, pr.monto_minimo,
+       pr.fecha_inicio, pr.fecha_fin, pr.uso_maximo, pr.usos_actuales, pr.activa
+FROM promocion pr
+LEFT JOIN categoria cat ON cat.id = pr.categoria_id
+LEFT JOIN temporada tmp ON tmp.id = pr.temporada_id
+"""
+
+
+def _error422(detalle: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detalle)
+
+
+def _validar_promocion(body: PromocionIn) -> None:
+    """Mismo criterio que _validar_genero: se corta con un 422 legible antes de que la excepcion
+    cruda de un CHECK de Postgres (ck_promo_alcance/ck_promo_fechas, db/01_schema.sql) llegue al
+    cliente. valor<=100 para PORCENTAJE no es un CHECK de la base, pero sin este tope
+    _aplicar_cupon (ventas/router.py) podria devolver un descuento mayor al subtotal."""
+    if body.tipo not in TIPOS_PROMOCION:
+        raise _error422(f"Tipo invalido. Valores posibles: {', '.join(TIPOS_PROMOCION)}")
+    if body.alcance not in ALCANCES_PROMOCION:
+        raise _error422(f"Alcance invalido. Valores posibles: {', '.join(ALCANCES_PROMOCION)}")
+    if body.fecha_fin < body.fecha_inicio:
+        raise _error422("La fecha de fin no puede ser anterior a la de inicio")
+    if body.tipo == "PORCENTAJE" and body.valor > 100:
+        raise _error422("Un descuento porcentual no puede superar el 100%")
+    if body.alcance == "TODO" and (body.categoria_id is not None or body.temporada_id is not None):
+        raise _error422("El alcance TODO no lleva categoria ni temporada")
+    if body.alcance == "CATEGORIA" and (body.categoria_id is None or body.temporada_id is not None):
+        raise _error422("El alcance CATEGORIA necesita una categoria y ninguna temporada")
+    if body.alcance == "TEMPORADA" and (body.temporada_id is None or body.categoria_id is not None):
+        raise _error422("El alcance TEMPORADA necesita una temporada y ninguna categoria")
+
+
+async def _obtener_promocion(conn: asyncpg.Connection, promocion_id: UUID) -> PromocionAdminOut:
+    fila = await conn.fetchrow(SELECT_PROMOCION_ADMIN + "WHERE pr.id = $1", promocion_id)
+    if fila is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Promocion no encontrada")
+    return PromocionAdminOut(**dict(fila))
+
+
+@router.get("/promociones", response_model=list[PromocionAdminOut])
+async def listar_promociones(
+    activa: bool | None = Query(default=None),
+    conn: asyncpg.Connection = Depends(get_connection),
+    _staff: dict = Depends(puede_ver),
+) -> list[PromocionAdminOut]:
+    filas = await conn.fetch(
+        SELECT_PROMOCION_ADMIN
+        + "WHERE ($1::boolean IS NULL OR pr.activa = $1) ORDER BY pr.fecha_inicio DESC, pr.nombre",
+        activa,
+    )
+    return [PromocionAdminOut(**dict(fila)) for fila in filas]
+
+
+async def _guardar_promocion(
+    conn: asyncpg.Connection,
+    staff: dict,
+    body: PromocionIn,
+    promocion_id: UUID | None = None,
+) -> UUID:
+    """INSERT si promocion_id es None, UPDATE si no -- comparten validacion, normalizacion del
+    codigo de cupon, auditoria y el manejo de las dos excepciones que puede tirar la base.
+    `antes` se busca ANTES de validar (para que una edicion sobre un id inexistente siga dando
+    404 y no un 422, igual que el resto de las entidades de este archivo)."""
+    antes = await _obtener_promocion(conn, promocion_id) if promocion_id else None
+    _validar_promocion(body)
+    codigo = body.codigo_cupon.strip().upper()
+
+    try:
+        async with conn.transaction():
+            if promocion_id is None:
+                promocion_id = await conn.fetchval(
+                    """
+                    INSERT INTO promocion (nombre, codigo_cupon, tipo, valor, alcance, categoria_id,
+                                           temporada_id, monto_minimo, fecha_inicio, fecha_fin, uso_maximo)
+                    VALUES ($1, $2, $3::tipo_promocion, $4, $5::alcance_promocion, $6, $7, $8, $9, $10, $11)
+                    RETURNING id
+                    """,
+                    body.nombre,
+                    codigo,
+                    body.tipo,
+                    body.valor,
+                    body.alcance,
+                    body.categoria_id,
+                    body.temporada_id,
+                    body.monto_minimo,
+                    body.fecha_inicio,
+                    body.fecha_fin,
+                    body.uso_maximo,
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE promocion
+                       SET nombre = $2, codigo_cupon = $3, tipo = $4::tipo_promocion, valor = $5,
+                           alcance = $6::alcance_promocion, categoria_id = $7, temporada_id = $8,
+                           monto_minimo = $9, fecha_inicio = $10, fecha_fin = $11, uso_maximo = $12
+                     WHERE id = $1
+                    """,
+                    promocion_id,
+                    body.nombre,
+                    codigo,
+                    body.tipo,
+                    body.valor,
+                    body.alcance,
+                    body.categoria_id,
+                    body.temporada_id,
+                    body.monto_minimo,
+                    body.fecha_inicio,
+                    body.fecha_fin,
+                    body.uso_maximo,
+                )
+            await registrar_auditoria(
+                conn,
+                usuario_id=staff["id"],
+                entidad="promocion",
+                entidad_id=promocion_id,
+                accion="CREAR" if antes is None else "ACTUALIZAR",
+                datos_antes=antes.model_dump(mode="json") if antes else None,
+                datos_despues=body.model_dump(mode="json"),
+            )
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Ya existe una promocion con ese codigo de cupon"
+        )
+    except asyncpg.ForeignKeyViolationError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="La categoria o la temporada no existen"
+        )
+    return promocion_id
+
+
+@router.post("/promociones", response_model=PromocionAdminOut, status_code=status.HTTP_201_CREATED)
+async def crear_promocion(
+    body: PromocionIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_crear),
+) -> PromocionAdminOut:
+    nueva_id = await _guardar_promocion(conn, staff, body)
+    return await _obtener_promocion(conn, nueva_id)
+
+
+@router.put("/promociones/{promocion_id}", response_model=PromocionAdminOut)
+async def actualizar_promocion(
+    promocion_id: UUID,
+    body: PromocionIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_actualizar),
+) -> PromocionAdminOut:
+    await _guardar_promocion(conn, staff, body, promocion_id)
+    return await _obtener_promocion(conn, promocion_id)
+
+
+@router.patch("/promociones/{promocion_id}/estado", response_model=PromocionAdminOut)
+async def cambiar_estado_promocion(
+    promocion_id: UUID,
+    body: PromocionEstadoIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_cambiar_estado),
+) -> PromocionAdminOut:
+    antes = await _obtener_promocion(conn, promocion_id)
+    async with conn.transaction():
+        await conn.execute("UPDATE promocion SET activa = $2 WHERE id = $1", promocion_id, body.activa)
+        await registrar_auditoria(
+            conn,
+            usuario_id=staff["id"],
+            entidad="promocion",
+            entidad_id=promocion_id,
+            accion="ACTUALIZAR" if body.activa else "ELIMINAR",
+            datos_antes={"activa": antes.activa},
+            datos_despues={"activa": body.activa},
+        )
+    return await _obtener_promocion(conn, promocion_id)
 
 
 # ---------------------------------------------------------------------

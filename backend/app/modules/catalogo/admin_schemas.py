@@ -181,3 +181,40 @@ class ReferenciasOut(BaseModel):
     tallas: list[TallaOut]
     colores: list[ColorOut]
     generos: list[str]
+
+
+class PromocionIn(BaseModel):
+    nombre: str = Field(min_length=2, max_length=120)
+    codigo_cupon: str = Field(min_length=2, max_length=40)
+    tipo: str
+    valor: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    alcance: str = "TODO"
+    categoria_id: UUID | None = None
+    temporada_id: UUID | None = None
+    monto_minimo: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    fecha_inicio: date
+    fecha_fin: date
+    uso_maximo: int | None = Field(default=None, gt=0)
+
+
+class PromocionEstadoIn(BaseModel):
+    activa: bool
+
+
+class PromocionAdminOut(BaseModel):
+    id: UUID
+    nombre: str
+    codigo_cupon: str
+    tipo: str
+    valor: Decimal
+    alcance: str
+    categoria_id: UUID | None
+    categoria: str | None
+    temporada_id: UUID | None
+    temporada: str | None
+    monto_minimo: Decimal | None
+    fecha_inicio: date
+    fecha_fin: date
+    uso_maximo: int | None
+    usos_actuales: int
+    activa: bool

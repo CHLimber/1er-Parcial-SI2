@@ -5,6 +5,9 @@
       @if (auth.usuario(); as u) {
         <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
       }
+      @if (sesion() && !cerrandoCaja() && !comprobante()) {
+        <button type="button" class="cabecera__salir" (click)="abrirCierreCaja()">Cerrar caja</button>
+      }
       <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
     </div>
   </header>
@@ -86,6 +89,73 @@
         </div>
 
         <button type="button" class="boton" (click)="nuevaVenta()">Nueva venta</button>
+      </section>
+    } @else if (cerrandoCaja()) {
+      <section class="formulario">
+        @if (cierreResultado(); as r) {
+          <h1 class="titulo">Caja cerrada</h1>
+          <p class="comprobante__numero">{{ r.caja_nombre }} · cerrada {{ r.cerrada_en | date: 'short' }}</p>
+
+          <div class="resumen">
+            <p>Monto inicial <strong>{{ formatearPrecio(r.monto_inicial) }}</strong></p>
+            <p>Monto en sistema (efectivo) <strong>{{ formatearPrecio(r.monto_sistema) }}</strong></p>
+            <p>Monto declarado <strong>{{ formatearPrecio(r.monto_declarado) }}</strong></p>
+            <p class="resumen__total">
+              Diferencia
+              <strong>{{ r.diferencia > 0 ? '+' : '' }}{{ formatearPrecio(r.diferencia) }}</strong>
+            </p>
+          </div>
+
+          <button type="button" class="boton" (click)="aceptarCierreCaja()">Aceptar</button>
+        } @else if (cargandoArqueo()) {
+          <p class="estado">Calculando arqueo…</p>
+        } @else if (arqueo(); as a) {
+          <h1 class="titulo">Cerrar caja</h1>
+          <p class="estado">Contá el efectivo del cajón y declarás cuánto hay antes de cerrar la sesión.</p>
+
+          <div class="resumen">
+            <p>Monto inicial <strong>{{ formatearPrecio(a.monto_inicial) }}</strong></p>
+            @for (linea of metodosArqueo(a); track linea.metodo) {
+              <p>{{ linea.metodo }} <strong>{{ formatearPrecio(linea.total) }}</strong></p>
+            }
+            <p>Cantidad de ventas <strong>{{ a.cantidad_ventas }}</strong></p>
+            <p>Total ventas <strong>{{ formatearPrecio(a.total_ventas) }}</strong></p>
+            <p class="resumen__total">
+              Monto en sistema (efectivo) <strong>{{ formatearPrecio(a.monto_sistema) }}</strong>
+            </p>
+          </div>
+
+          <div class="campo">
+            <label for="monto-declarado">Monto contado en el cajón</label>
+            <input
+              id="monto-declarado"
+              type="number"
+              min="0"
+              step="0.01"
+              name="monto-declarado"
+              [(ngModel)]="montoDeclarado"
+            />
+          </div>
+
+          @if (diferenciaPreview() != null) {
+            <p class="estado">
+              Diferencia estimada:
+              <strong>{{ diferenciaPreview()! > 0 ? '+' : '' }}{{ formatearPrecio(diferenciaPreview()!) }}</strong>
+            </p>
+          }
+
+          @if (errorCierre()) {
+            <p class="formulario__error" role="alert">{{ errorCierre() }}</p>
+          }
+
+          <button type="button" class="boton" [disabled]="cerrandoSesion()" (click)="confirmarCierreCaja()">
+            {{ cerrandoSesion() ? 'Cerrando…' : 'Confirmar cierre' }}
+          </button>
+          <button type="button" class="cabecera__salir" (click)="cancelarCierreCaja()">Cancelar</button>
+        } @else if (errorCierre()) {
+          <p class="formulario__error" role="alert">{{ errorCierre() }}</p>
+          <button type="button" class="boton" (click)="cancelarCierreCaja()">Volver</button>
+        }
       </section>
     } @else {
       <section class="pos">

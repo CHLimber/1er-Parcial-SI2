@@ -104,8 +104,17 @@ BEGIN
     WHERE sucursal_id = p_sucursal_id AND variante_id = p_variante_id
     FOR UPDATE;
  
-    v_saldo_previo := v_inv.cantidad_fisica - v_inv.cantidad_reservada;
- 
+    -- AJUSTE fija cantidad_fisica al valor absoluto p_cantidad (un recuento fisico, no un
+    -- delta): el saldo que le importa a quien ajusta es el fisico, no el disponible (que
+    -- ademas resta lo reservado y no coincidiria con el numero que la persona acaba de
+    -- contar). El resto de los tipos siguen trackeando disponible, que es lo correcto para
+    -- ellos -- una RESERVA, por ejemplo, no toca lo fisico.
+    IF p_tipo = 'AJUSTE' THEN
+        v_saldo_previo := v_inv.cantidad_fisica;
+    ELSE
+        v_saldo_previo := v_inv.cantidad_fisica - v_inv.cantidad_reservada;
+    END IF;
+
     CASE p_tipo
         -- movimientos que cambian la existencia fisica
         WHEN 'ENTRADA', 'DEVOLUCION', 'TRASPASO_ENT' THEN
@@ -149,9 +158,13 @@ BEGIN
              WHERE id = v_inv.id;
     END CASE;
  
-    SELECT cantidad_fisica - cantidad_reservada INTO v_saldo_nuevo
-      FROM inventario WHERE id = v_inv.id;
- 
+    IF p_tipo = 'AJUSTE' THEN
+        SELECT cantidad_fisica INTO v_saldo_nuevo FROM inventario WHERE id = v_inv.id;
+    ELSE
+        SELECT cantidad_fisica - cantidad_reservada INTO v_saldo_nuevo
+          FROM inventario WHERE id = v_inv.id;
+    END IF;
+
     INSERT INTO movimiento_inventario (
         sucursal_id, variante_id, tipo, cantidad,
         saldo_anterior, saldo_nuevo, motivo,
@@ -169,7 +182,32 @@ $$;
 COMMENT ON FUNCTION fn_mover_inventario IS
     'Unico punto de escritura del stock. Bloquea la fila con FOR UPDATE para resolver la '
     'concurrencia entre dos clientes que reservan la ultima prenda, y deja el asiento en el kardex.';
- 
+
+
+-- ---------------------------------------------------------------------
+--  CU07 - ARQUEO DE CAJA
+-- ---------------------------------------------------------------------
+
+-- Cuanto efectivo deberia haber en el cajon por las ventas de una sesion (sesion_caja.
+-- monto_inicial + esto = monto_sistema). Solo EFECTIVO: TARJETA/QR/TRANSFERENCIA/PASARELA no
+-- tocan el cajon fisico. STABLE (no escribe nada) para que se pueda llamar tanto desde una
+-- consulta de solo lectura (vista previa del arqueo) como adentro del UPDATE que cierra la
+-- sesion, sin abrir una ventana entre "leer" el total y "escribirlo".
+CREATE OR REPLACE FUNCTION fn_total_efectivo_sesion(p_sesion_id UUID)
+RETURNS NUMERIC(12,2)
+LANGUAGE sql STABLE
+AS $$
+    SELECT COALESCE(SUM(p.monto), 0)
+    FROM pago p
+    JOIN venta v ON v.id = p.venta_id
+    WHERE v.sesion_caja_id = p_sesion_id
+      AND p.estado = 'APROBADO'
+      AND p.metodo = 'EFECTIVO';
+$$;
+
+COMMENT ON FUNCTION fn_total_efectivo_sesion IS
+    'CU07: total EFECTIVO cobrado en una sesion de caja, para el arqueo y el cierre.';
+
  
 -- ---------------------------------------------------------------------
 --  VENTA DESCUENTA STOCK AUTOMATICAMENTE (RF20)

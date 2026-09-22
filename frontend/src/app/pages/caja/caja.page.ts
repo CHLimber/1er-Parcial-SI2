@@ -1,10 +1,17 @@
+import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
-import { CajaOut, SesionCajaOut, VarianteBusquedaOut } from '../../core/caja/caja.models';
+import {
+  ArqueoOut,
+  CajaOut,
+  SesionCajaOut,
+  SesionCerradaOut,
+  VarianteBusquedaOut,
+} from '../../core/caja/caja.models';
 import { CajaService } from '../../core/caja/caja.service';
 import { MetodoPagoPos, VentaPosOut } from '../../core/ventas/ventas.models';
 import { VentasService } from '../../core/ventas/ventas.service';
@@ -18,7 +25,7 @@ interface TicketItem extends VarianteBusquedaOut {
 @Component({
   selector: 'app-caja-page',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, DatePipe],
   templateUrl: './caja.page.html',
   styleUrls: ['./caja.page.css', '../../shared/responsive.css'],
 })
@@ -49,6 +56,14 @@ export class CajaPage implements OnInit {
   protected readonly errorCobro = signal<string | null>(null);
   protected readonly comprobante = signal<VentaPosOut | null>(null);
 
+  protected readonly cerrandoCaja = signal(false);
+  protected readonly arqueo = signal<ArqueoOut | null>(null);
+  protected readonly cargandoArqueo = signal(false);
+  protected montoDeclarado: number | null = null;
+  protected readonly cerrandoSesion = signal(false);
+  protected readonly errorCierre = signal<string | null>(null);
+  protected readonly cierreResultado = signal<SesionCerradaOut | null>(null);
+
   protected readonly subtotal = computed(() =>
     this.ticket().reduce((acc, item) => acc + item.precio * item.cantidad, 0),
   );
@@ -57,6 +72,12 @@ export class CajaPage implements OnInit {
   protected readonly vuelto = computed(() =>
     this.montoRecibido != null ? this.montoRecibido - this.total() : null,
   );
+
+  protected readonly diferenciaPreview = computed(() => {
+    const arqueo = this.arqueo();
+    if (arqueo === null || this.montoDeclarado == null) return null;
+    return this.montoDeclarado - arqueo.monto_sistema;
+  });
 
   ngOnInit(): void {
     this.cargarSesion();
@@ -201,6 +222,69 @@ export class CajaPage implements OnInit {
   protected cerrarSesion(): void {
     this.auth.cerrarSesion();
     this.router.navigateByUrl('/login');
+  }
+
+  protected abrirCierreCaja(): void {
+    this.cerrandoCaja.set(true);
+    this.errorCierre.set(null);
+    this.cierreResultado.set(null);
+    this.montoDeclarado = null;
+    this.cargandoArqueo.set(true);
+    this.cajaService.obtenerArqueo().subscribe({
+      next: (arqueo) => {
+        this.arqueo.set(arqueo);
+        this.cargandoArqueo.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cargandoArqueo.set(false);
+        this.errorCierre.set(
+          error.status === 409
+            ? 'No tenés una sesión de caja abierta.'
+            : 'No se pudo cargar el arqueo. Intentá de nuevo.',
+        );
+      },
+    });
+  }
+
+  protected cancelarCierreCaja(): void {
+    this.cerrandoCaja.set(false);
+    this.arqueo.set(null);
+  }
+
+  protected confirmarCierreCaja(): void {
+    if (this.montoDeclarado == null || this.montoDeclarado < 0) {
+      this.errorCierre.set('Ingresá el monto que contaste en caja.');
+      return;
+    }
+
+    this.cerrandoSesion.set(true);
+    this.errorCierre.set(null);
+    this.cajaService.cerrarSesion({ monto_declarado: this.montoDeclarado }).subscribe({
+      next: (resultado) => {
+        this.cerrandoSesion.set(false);
+        this.cierreResultado.set(resultado);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cerrandoSesion.set(false);
+        this.errorCierre.set(
+          error.status === 409
+            ? 'La sesión ya estaba cerrada.'
+            : 'No se pudo cerrar la caja. Intentá de nuevo.',
+        );
+      },
+    });
+  }
+
+  protected aceptarCierreCaja(): void {
+    this.cerrandoCaja.set(false);
+    this.arqueo.set(null);
+    this.cierreResultado.set(null);
+    this.sesion.set(null);
+    this.cargarCajas();
+  }
+
+  protected metodosArqueo(arqueo: ArqueoOut): { metodo: string; total: number }[] {
+    return Object.entries(arqueo.por_metodo).map(([metodo, total]) => ({ metodo, total }));
   }
 
   protected formatearPrecio(precio: number): string {

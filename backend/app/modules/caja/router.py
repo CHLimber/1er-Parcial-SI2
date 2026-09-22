@@ -5,8 +5,11 @@ from app.core.db import get_connection
 from app.core.deps import get_cajero_actual
 from app.modules.caja.schemas import (
     AbrirSesionIn,
+    ArqueoOut,
     CajaOut,
+    CerrarSesionIn,
     SesionCajaOut,
+    SesionCerradaOut,
     VarianteBusquedaOut,
 )
 
@@ -111,6 +114,93 @@ async def abrir_sesion(
         monto_inicial=float(fila["monto_inicial"]),
         estado=fila["estado"],
     )
+
+
+async def _calcular_arqueo(conn: asyncpg.Connection, sesion: asyncpg.Record) -> ArqueoOut:
+    """Suma los pagos APROBADOS de las ventas atadas a esta sesion, agrupados por metodo. Solo
+    para la vista previa (GET /arqueo): el cierre (POST /cerrar) ya no llama a esto, calcula
+    monto_sistema con fn_total_efectivo_sesion() dentro del propio UPDATE para no dejar una
+    ventana entre "leer" y "escribir" donde una venta nueva quede afuera del cierre.
+    cantidad_ventas usa el mismo filtro (sesion + pago APROBADO) que por_metodo/total_ventas en
+    una sola consulta -- contar TODAS las ventas de la sesion sin ese filtro las desalineaba."""
+    filas = await conn.fetch(
+        """
+        SELECT p.metodo::text AS metodo, COALESCE(SUM(p.monto), 0) AS total,
+               (SELECT COUNT(DISTINCT p2.venta_id)
+                  FROM pago p2 JOIN venta v2 ON v2.id = p2.venta_id
+                 WHERE v2.sesion_caja_id = $1 AND p2.estado = 'APROBADO') AS cantidad_ventas
+        FROM pago p
+        JOIN venta v ON v.id = p.venta_id
+        WHERE v.sesion_caja_id = $1 AND p.estado = 'APROBADO'
+        GROUP BY p.metodo
+        """,
+        sesion["id"],
+    )
+    por_metodo = {fila["metodo"]: float(fila["total"]) for fila in filas}
+    cantidad_ventas = filas[0]["cantidad_ventas"] if filas else 0
+    monto_inicial = float(sesion["monto_inicial"])
+    total_efectivo = por_metodo.get("EFECTIVO", 0.0)
+
+    return ArqueoOut(
+        sesion_id=sesion["id"],
+        monto_inicial=monto_inicial,
+        monto_sistema=monto_inicial + total_efectivo,
+        cantidad_ventas=cantidad_ventas,
+        total_ventas=sum(por_metodo.values()),
+        por_metodo=por_metodo,
+    )
+
+
+@router.get("/arqueo", response_model=ArqueoOut)
+async def arqueo_actual(
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ArqueoOut:
+    sesion = await obtener_sesion_abierta(conn, cajero["usuario_id"])
+    if sesion is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="No tenes una sesion de caja abierta"
+        )
+    return await _calcular_arqueo(conn, sesion)
+
+
+@router.post("/cerrar", response_model=SesionCerradaOut)
+async def cerrar_sesion(
+    body: CerrarSesionIn,
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> SesionCerradaOut:
+    """CU07 (pendiente cerrado): una sesion ABIERTA quedaba abierta para siempre, bloqueando esa
+    caja para otro cajero. El cierre deja monto_sistema (lo calculado) y monto_declarado (lo que
+    el cajero conto), y `diferencia` sale sola porque es una columna GENERATED del esquema.
+    monto_sistema llama a fn_total_efectivo_sesion() DENTRO del propio UPDATE (no con una
+    lectura previa como GET /arqueo) para que no quede una venta de POS afuera del cierre si se
+    registra justo entre "leer" el arqueo y "escribir" el cierre."""
+    sesion = await obtener_sesion_abierta(conn, cajero["usuario_id"])
+    if sesion is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="No tenes una sesion de caja abierta"
+        )
+
+    fila = await conn.fetchrow(
+        """
+        UPDATE sesion_caja sc
+           SET estado = 'CERRADA',
+               cerrada_en = now(),
+               monto_sistema = sc.monto_inicial + fn_total_efectivo_sesion(sc.id),
+               monto_declarado = $2
+         WHERE sc.id = $1 AND sc.estado = 'ABIERTA'
+        RETURNING id, caja_id, abierta_en, cerrada_en, monto_inicial,
+                  monto_sistema, monto_declarado, diferencia, estado
+        """,
+        sesion["id"],
+        body.monto_declarado,
+    )
+    if fila is None:
+        # se cerro entre el chequeo y el UPDATE (doble click, dos pestanias)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La sesion ya esta cerrada")
+
+    return SesionCerradaOut(**dict(fila), caja_nombre=sesion["caja_nombre"])
 
 
 @router.get("/buscar-variante", response_model=VarianteBusquedaOut)

@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     media_dir: str = "media"
     public_base_url: str = "http://localhost:8081"
 
+    # CU04 E2 (app/core/jobs.py): cada cuantos segundos se llama a fn_expirar_reservas()
+    # para liberar el stock comprometido por reservas vencidas. 120s alcanza de sobra frente
+    # a los minutos que dura expira_en; bajarlo no libera "mas rapido" nada real, solo carga
+    # mas seguido al pool.
+    expirar_reservas_intervalo_segundos: int = 120
+
     @property
     def cors_origins(self) -> list[str]:
         texto = _sin_comillas(self.cors_origins_raw.strip())

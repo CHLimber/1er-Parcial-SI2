@@ -19,6 +19,14 @@
     >
       Categorías y marcas
     </button>
+    <button
+      type="button"
+      class="solapa"
+      [class.solapa--activa]="solapa === 'promociones'"
+      (click)="solapa = 'promociones'; cargarPromociones()"
+    >
+      Promociones
+    </button>
   </div>
 
   @if (error()) {
@@ -516,7 +524,7 @@
         }
       }
     }
-  } @else {
+  } @else if (solapa === 'clasificacion') {
     <div class="columnas">
       <section class="panel">
         <h2 class="panel__titulo">Categorías</h2>
@@ -651,6 +659,199 @@
 
               <div class="acciones">
                 <button type="submit" class="boton" [disabled]="guardando()">Agregar marca</button>
+              </div>
+            </form>
+          </section>
+        </aside>
+      }
+    </div>
+  } @else {
+    <div class="barra">
+      <div class="campo">
+        <label for="promo-estado">Estado</label>
+        <select
+          id="promo-estado"
+          [value]="filtroPromoEstado"
+          (change)="filtroPromoEstado = $any($event.target).value; cargarPromociones()"
+        >
+          <option value="">Todas</option>
+          <option value="true">Activas</option>
+          <option value="false">Dadas de baja</option>
+        </select>
+      </div>
+    </div>
+
+    @if (errorPromocion()) {
+      <p class="error" role="alert">{{ errorPromocion() }}</p>
+    }
+
+    <div class="columnas">
+      <section class="panel">
+        <h2 class="panel__titulo">Promociones y cupones</h2>
+
+        @if (cargandoPromo()) {
+          <p class="estado">Cargando promociones…</p>
+        } @else if (promociones().length === 0) {
+          <p class="estado">No hay promociones que coincidan con el filtro.</p>
+        } @else {
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Cupón</th>
+                  <th>Nombre</th>
+                  <th>Alcance</th>
+                  <th class="tabla__numero">Valor</th>
+                  <th>Vigencia</th>
+                  <th class="tabla__numero">Usos</th>
+                  <th>Estado</th>
+                  @if (puedeGestionar) {
+                    <th></th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (promocion of promociones(); track promocion.id) {
+                  <tr [attr.data-inactivo]="!promocion.activa">
+                    <td class="mono">{{ promocion.codigo_cupon }}</td>
+                    <td>{{ promocion.nombre }}</td>
+                    <td>{{ etiquetaAlcancePromocion(promocion) }}</td>
+                    <td class="tabla__numero">{{ etiquetaValorPromocion(promocion) }}</td>
+                    <td class="secundario">{{ promocion.fecha_inicio }} → {{ promocion.fecha_fin }}</td>
+                    <td class="tabla__numero">
+                      {{ promocion.usos_actuales }}{{ promocion.uso_maximo ? ' / ' + promocion.uso_maximo : '' }}
+                    </td>
+                    <td>
+                      <span class="badge" [class.badge--ok]="promocion.activa" [class.badge--baja]="!promocion.activa">
+                        {{ promocion.activa ? 'Activa' : 'Baja' }}
+                      </span>
+                    </td>
+                    @if (puedeGestionar) {
+                      <td>
+                        <div class="tabla__acciones">
+                          <button type="button" class="boton boton--secundario boton--chico" (click)="editarPromocion(promocion)">
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            class="boton boton--chico"
+                            [class.boton--peligro]="promocion.activa"
+                            [class.boton--secundario]="!promocion.activa"
+                            (click)="alternarEstadoPromocion(promocion)"
+                          >
+                            {{ promocion.activa ? 'Baja' : 'Alta' }}
+                          </button>
+                        </div>
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      @if (puedeGestionar) {
+        <aside>
+          <section class="panel">
+            <h2 class="panel__titulo">
+              {{ promocionEditada() ? 'Editar promoción' : 'Nueva promoción' }}
+            </h2>
+
+            <form class="formulario" [formGroup]="formPromocion" (ngSubmit)="guardarPromocion()" novalidate>
+              <div class="campo">
+                <label for="promo-nombre">Nombre</label>
+                <input id="promo-nombre" type="text" formControlName="nombre" />
+              </div>
+
+              <div class="campo">
+                <label for="promo-cupon">Código de cupón</label>
+                <input id="promo-cupon" type="text" formControlName="codigo_cupon" placeholder="VERANO2026" />
+              </div>
+
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="promo-tipo">Tipo</label>
+                  <select id="promo-tipo" formControlName="tipo">
+                    <option value="PORCENTAJE">Porcentaje</option>
+                    <option value="MONTO_FIJO">Monto fijo</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label for="promo-valor">
+                    Valor {{ formPromocion.controls.tipo.value === 'PORCENTAJE' ? '(%)' : '(Bs)' }}
+                  </label>
+                  <input id="promo-valor" type="number" min="0" step="0.01" formControlName="valor" />
+                </div>
+              </div>
+
+              <div class="campo">
+                <label for="promo-alcance">Alcance</label>
+                <select id="promo-alcance" formControlName="alcance">
+                  <option value="TODO">Todo el catálogo</option>
+                  <option value="CATEGORIA">Una categoría</option>
+                  <option value="TEMPORADA">Una temporada</option>
+                </select>
+              </div>
+
+              @if (formPromocion.controls.alcance.value === 'CATEGORIA') {
+                <div class="campo">
+                  <label for="promo-categoria">Categoría</label>
+                  <select id="promo-categoria" formControlName="categoria_id">
+                    @for (categoria of referencias()?.categorias ?? []; track categoria.id) {
+                      <option [value]="categoria.id">{{ categoria.nombre }}</option>
+                    }
+                  </select>
+                </div>
+              }
+
+              @if (formPromocion.controls.alcance.value === 'TEMPORADA') {
+                <div class="campo">
+                  <label for="promo-temporada">Temporada</label>
+                  <select id="promo-temporada" formControlName="temporada_id">
+                    @for (temporada of referencias()?.temporadas ?? []; track temporada.id) {
+                      <option [value]="temporada.id">{{ temporada.nombre }}</option>
+                    }
+                  </select>
+                </div>
+              }
+
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="promo-inicio">Vigencia desde</label>
+                  <input id="promo-inicio" type="date" formControlName="fecha_inicio" />
+                </div>
+                <div class="campo">
+                  <label for="promo-fin">Vigencia hasta</label>
+                  <input id="promo-fin" type="date" formControlName="fecha_fin" />
+                </div>
+              </div>
+
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="promo-monto-minimo">Monto mínimo de compra (Bs)</label>
+                  <input id="promo-monto-minimo" type="number" min="0" step="0.01" formControlName="monto_minimo" />
+                  <p class="campo__ayuda">Vacío = sin mínimo.</p>
+                </div>
+                <div class="campo">
+                  <label for="promo-uso-maximo">Usos máximos</label>
+                  <input id="promo-uso-maximo" type="number" min="1" formControlName="uso_maximo" />
+                  <p class="campo__ayuda">Vacío = sin límite.</p>
+                </div>
+              </div>
+
+              @if (errorPromocion()) {
+                <p class="error" role="alert">{{ errorPromocion() }}</p>
+              }
+
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardando()">
+                  {{ guardando() ? 'Guardando…' : 'Guardar' }}
+                </button>
+                @if (promocionEditada()) {
+                  <button type="button" class="boton boton--secundario" (click)="nuevaPromocion()">Cancelar</button>
+                }
               </div>
             </form>
           </section>

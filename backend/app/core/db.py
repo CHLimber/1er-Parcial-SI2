@@ -29,7 +29,11 @@ async def disconnect_pool() -> None:
         await _pool.close()
 
 
-async def get_connection() -> AsyncGenerator[asyncpg.Connection, None]:
+def get_pool() -> asyncpg.Pool:
     assert _pool is not None, "El pool de conexiones no fue inicializado"
-    async with _pool.acquire() as connection:
+    return _pool
+
+
+async def get_connection() -> AsyncGenerator[asyncpg.Connection, None]:
+    async with get_pool().acquire() as connection:
         yield connection

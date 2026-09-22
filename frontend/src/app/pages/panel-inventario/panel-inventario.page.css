@@ -1,0 +1,64 @@
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--paper-line);
+  border: 1px solid var(--paper-line);
+  max-height: 32rem;
+  overflow-y: auto;
+}
+
+.tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: var(--white);
+  border: none;
+  padding: 0.7rem 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.tarjeta--activa {
+  background: var(--paper);
+  box-shadow: inset 3px 0 0 var(--flame);
+}
+
+.tarjeta__numero {
+  font-size: 0.78rem;
+  color: var(--flame-dark);
+}
+
+.tarjeta__proveedor {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.tarjeta__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.ficha {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.subtitulo {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+}
