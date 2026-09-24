@@ -129,9 +129,8 @@ class RolOut {
       );
 }
 
-/// Cargos posibles de `empleado.cargo` (ENUM del esquema). El ENCARGADO absorbio a ALMACEN y el
-/// CAJERO a VENDEDOR (PENDIENTES 2.19.1.d).
-const List<String> cargosEmpleado = ['ENCARGADO', 'CAJERO'];
+/// Cargos posibles de `empleado.cargo` (ENUM del esquema).
+const List<String> cargosEmpleado = ['ENCARGADO', 'CAJERO', 'VENDEDOR', 'ALMACEN'];
 
 /// CU13: Gestionar Usuarios y Roles. La API autoriza por codigo de permiso, no por rol.
 class UsuariosAdminService {

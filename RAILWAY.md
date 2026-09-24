@@ -199,25 +199,23 @@ Es idempotente y corre despues del paso 5 bis. Al final imprime los conteos de
 `empleados_repartidor`/`rol_repartidor` (tienen que dar 0) y los valores actuales de los enums
 `estado_envio` y `cargo_empleado`.
 
-## 5 quater. Reduccion de actores (2026-09-24)
+## 5 quater. Personal por sucursal y caja del encargado (2026-09-24)
 
-Quedan cuatro actores humanos: Cliente, Administrador, Encargado (absorbe ALMACEN) y Cajero
-(absorbe VENDEDOR). El script pasa los cargos/roles VENDEDOR -> CAJERO y ALMACEN -> ENCARGADO,
-borra esos dos roles, le da al ENCARGADO `caja.*` + `ventas.crear` (CU07/CU08 ahora se autorizan
-por permiso), renombra las cuentas demo `vendedor.scz` -> `cajera.scz` y `almacen.scz` ->
-`encargado.cbba` (Cala Cala), crea `cajera.lapaz` si falta y recrea el enum `cargo_empleado`
-como `('ENCARGADO','CAJERO')`.
+Los cargos VENDEDOR y ALMACEN **se mantienen** (la reduccion de actores se descarto; el viejo
+`reduccion_actores.sql` se borro y no hay que correrlo). Este script le da al ENCARGADO
+`caja.*` + `ventas.crear` (CU07/CU08 ahora se autorizan por permiso, asi puede cubrir la caja),
+actualiza descripciones y crea las cuentas demo `cajera.scz`, `encargado.cbba` (Cala Cala) y
+`cajera.lapaz` si faltan, para que cada sucursal tenga un encargado y un cajero.
 
 ```bash
 cd fashionstore
-docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/reduccion_actores.sql
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/personal_por_sucursal.sql
 ```
 
-Corre despues del paso 5 ter (si la base todavia tiene REPARTIDOR) y es idempotente. Al final
-imprime `roles_viejos 0`, `cargos_actuales {ENCARGADO,CAJERO}`, un encargado y un cajero por
-sucursal y el conteo de permisos por rol (**ADMIN 37, ENCARGADO 19, CAJERO 6** con la matriz del
-seed). Despues: **reiniciar el backend** (el tipo se recreo y asyncpg cachea su OID) y volver a
-iniciar sesion. Si alguna vez se re-corre `permisos_cu13.sql`, volver a correr este.
+Es idempotente. Al final imprime el personal por sucursal y el conteo de permisos por rol
+(**ADMIN 37, ENCARGADO 19, CAJERO 6, ALMACEN 8, VENDEDOR 4** con la matriz del seed, antes de
+devoluciones/traspasos). Despues hay que volver a iniciar sesion. Si alguna vez se re-corre
+`permisos_cu13.sql`, volver a correr este.
 
 ## 5 quinquies. Devoluciones y traspasos entre sucursales (PENDIENTES 2.7)
 
@@ -232,9 +230,9 @@ cd fashionstore
 docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/devoluciones_traspasos.sql
 ```
 
-Es idempotente y corre despues del paso 5 quater. Queda ADMIN 44 / ENCARGADO 26 permisos con la
+Es idempotente y corre despues del paso 5 quater. Queda ADMIN 44 / ENCARGADO 26 (ALMACEN 8, CAJERO 6, VENDEDOR 4) permisos con la
 matriz del seed. Si alguna vez se re-corre `permisos_cu13.sql` (que rearma la matriz del
-ENCARGADO), volver a correr `reduccion_actores.sql` y despues este. Los usuarios tienen que
+ENCARGADO), volver a correr `personal_por_sucursal.sql` y despues este. Los usuarios tienen que
 volver a iniciar sesion (o recargar el panel) para ver las secciones nuevas.
 
 ## 6. Verificacion

@@ -1,7 +1,7 @@
 """Ajustes manuales de stock (PENDIENTES.txt 2.6).
 
 fn_mover_inventario() ya acepta el tipo AJUSTE desde que se escribio (db/02_logica.sql) y el
-permiso inventario.actualizar ya estaba sembrado para ADMIN y ENCARGADO (antes tambien ALMACEN), pero hasta
+permiso inventario.actualizar ya estaba sembrado para ADMIN, ENCARGADO y ALMACEN, pero hasta
 ahora ningun endpoint lo disparaba: era la unica forma de corregir un kardex (append-only, ver
 CLAUDE.md) que la aplicacion no exponia. Este modulo no escribe cantidad_fisica/cantidad_reservada
 directamente en ningun momento -- todo pasa por fn_mover_inventario, igual que recepciones.

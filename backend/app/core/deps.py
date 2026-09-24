@@ -38,7 +38,7 @@ async def get_current_usuario(
 #   - Caja (CU07, /caja/* y /ventas/pos): permiso `caja.crear` (operar la caja: abrir sesion,
 #     cobrar, verificar pagos QR/efectivo, cerrar). Lo tienen CAJERO, ENCARGADO y ADMIN.
 #   - Reservas (CU08, /reservas/sucursal y confirmar/rechazar/preparar/...): permiso
-#     `reservas.actualizar`. Lo tienen ENCARGADO y ADMIN.
+#     `reservas.actualizar`. Lo tienen ENCARGADO, VENDEDOR y ADMIN.
 # Decision: el ADMIN puede operar caja y reservas, pero solo las de la sucursal de su propia
 # fila de empleado (en el seed, Equipetrol). Un ADMIN sin fila de empleado recibe 403: no hay
 # una sucursal "por defecto" sobre la que operar.

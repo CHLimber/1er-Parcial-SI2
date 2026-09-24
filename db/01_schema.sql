@@ -22,9 +22,7 @@ CREATE EXTENSION IF NOT EXISTS unaccent;   -- busqueda del catalogo sin tildes
 CREATE TYPE ciudad_bo         AS ENUM ('SANTA_CRUZ','LA_PAZ','EL_ALTO','COCHABAMBA','SUCRE',
                                        'ORURO','POTOSI','TARIJA','TRINIDAD','COBIJA');
 CREATE TYPE tipo_usuario      AS ENUM ('CLIENTE','STAFF');
--- Actores humanos de tienda (PENDIENTES 2.19.1.d): el ENCARGADO absorbio a ALMACEN y el CAJERO a
--- VENDEDOR. Railway: db/reparaciones/reduccion_actores.sql recrea el tipo sin esos valores.
-CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO');
+CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN');
 CREATE TYPE estado_caja       AS ENUM ('ABIERTA','CERRADA');
 CREATE TYPE tipo_talla        AS ENUM ('LETRA','NUMERO','CALZADO');
 CREATE TYPE tipo_temporada    AS ENUM ('PRIMAVERA_VERANO','OTONO_INVIERNO','ESCOLAR',
@@ -65,7 +63,7 @@ CREATE TABLE rol (
     descripcion VARCHAR(200),
     es_sistema  BOOLEAN      NOT NULL DEFAULT FALSE
 );
-COMMENT ON TABLE rol IS 'ADMIN, ENCARGADO, CAJERO (los del sistema; CU13 puede crear otros). Solo aplica a usuarios STAFF.';
+COMMENT ON TABLE rol IS 'ADMIN, ENCARGADO, CAJERO, VENDEDOR, ALMACEN (los del sistema; CU13 puede crear otros). Solo aplica a usuarios STAFF.';
  
 CREATE TABLE permiso (
     id          SERIAL PRIMARY KEY,

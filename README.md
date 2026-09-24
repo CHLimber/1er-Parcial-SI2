@@ -110,12 +110,15 @@ Password de todos: `demo1234`.
 | cajera.lapaz@fashionstore.bo        | STAFF   | CAJERO — Sopocachi (La Paz)      |
 | encargado.cbba@fashionstore.bo      | STAFF   | ENCARGADO — Cala Cala (Cochabamba) |
 | cajero.cbba@fashionstore.bo         | STAFF   | CAJERO — Cala Cala (Cochabamba)  |
+| vendedor.scz@fashionstore.bo        | STAFF   | VENDEDOR — Equipetrol (Santa Cruz) |
+| almacen.scz@fashionstore.bo         | STAFF   | ALMACEN — Equipetrol (Santa Cruz) |
 | cliente@fashionstore.bo             | CLIENTE | —                                |
 | cliente2@fashionstore.bo            | CLIENTE | —                                |
 
 Actores humanos: Cliente, Administrador, Encargado de sucursal (recepciones, ajustes de stock,
-confirmar/preparar reservas; puede cubrir la caja) y Cajero (venta presencial, cobros,
-verificacion de pagos QR/efectivo, cierre de caja). No hay cargos VENDEDOR ni ALMACEN, y el
+confirmar/preparar reservas; puede cubrir la caja), Cajero (venta presencial, cobros,
+verificacion de pagos QR/efectivo, cierre de caja), Vendedor (atiende reservas en el piso) y
+Almacen (recepciones y ajustes de stock). El
 proveedor no es usuario (sus datos los carga el Administrador en CU11). Caja (CU07) y atencion
 de reservas (CU08) se autorizan por permiso (`caja.crear` / `reservas.actualizar`), no por
 cargo; el ADMIN tambien puede operarlas en su sucursal (Equipetrol).

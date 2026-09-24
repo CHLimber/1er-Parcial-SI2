@@ -1,8 +1,8 @@
 /** Espejo manual de app/modules/usuarios/admin_schemas.py (CU13). */
 
-export type CargoEmpleado = 'ENCARGADO' | 'CAJERO';
+export type CargoEmpleado = 'ENCARGADO' | 'CAJERO' | 'VENDEDOR' | 'ALMACEN';
 
-export const CARGOS: CargoEmpleado[] = ['ENCARGADO', 'CAJERO'];
+export const CARGOS: CargoEmpleado[] = ['ENCARGADO', 'CAJERO', 'VENDEDOR', 'ALMACEN'];
 
 export interface EmpleadoOut {
   sucursal_id: string;

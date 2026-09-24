@@ -1751,11 +1751,16 @@
          Carrito bloqueado (409) mientras haya un pedido EFECTIVO/QR pendiente; checkout
          bloquea carrito y reserva con FOR UPDATE. jobs.py anula pedidos EFECTIVO/QR sin
          informar pasadas configuracion.pago_pendiente_horas_vigencia (48h).
-      [2.19.1.d] Actores: Cliente, Administrador, Encargado (absorbe Almacen, puede cubrir
-         caja), Cajero; secundarios Sistema de pagos, Servicio de IA, delivery externo.
-         cargo_empleado = (ENCARGADO, CAJERO); roles VENDEDOR/ALMACEN y Proveedor-actor
-         eliminados. Seed: cada sucursal con 1 encargado y 1 cajero (vendedor.scz ->
-         cajera.scz, almacen.scz -> encargado.cbba, nueva cajera.lapaz). 3.1: get_cajero_actual
+      [2.19.1.d] REDUCCION DE ACTORES DESCARTADA (2026-09-24, decision del usuario "por si
+         acaso"): se hizo y se revirtio. Siguen los cargos ENCARGADO, CAJERO, VENDEDOR y
+         ALMACEN con sus roles y su matriz original (VENDEDOR: catalogo/inventario leer +
+         reservas.leer/actualizar; ALMACEN: recepciones.* + inventario.actualizar). Lo que SI
+         quedo: el ENCARGADO puede cubrir la caja (caja.* + ventas.crear), el proveedor no es
+         usuario, y el seed deja cada sucursal con 1 encargado y 1 cajero (nuevas cajera.scz,
+         encargado.cbba, cajera.lapaz) ademas de vendedor.scz y almacen.scz en Equipetrol.
+         OJO: como CU08 ahora va por permiso, el VENDEDOR (tiene reservas.actualizar) tambien
+         puede confirmar/rechazar reservas; si solo debe preparar, sacarle ese permiso desde
+         CU13 o partir el permiso. 3.1: get_cajero_actual
          exige 'caja.crear' y get_encargado_actual 'reservas.actualizar' (+ fila de empleado);
          web y movil muestran /caja y /atender-reservas por permiso.
       [2.19.2] POST /reservas/{id}/cancelar para la clienta duenia (PENDIENTE/CONFIRMADA/
@@ -1790,10 +1795,10 @@
          db/reparaciones/consolidado_existencias.sql
          db/reparaciones/pagos_verificacion_caja.sql
          db/reparaciones/expirar_reservas_skip_locked.sql
-         db/reparaciones/reduccion_actores.sql   (despues de cu20_delivery_simplificado.sql;
-                                                  reiniciar el backend y volver a loguearse)
+         db/reparaciones/personal_por_sucursal.sql   (volver a loguearse despues)
          db/reparaciones/devoluciones_traspasos.sql
-         Si se re-corre permisos_cu13.sql, volver a correr reduccion_actores.sql y
+         reduccion_actores.sql se borro: NO correrlo (reduccion descartada, ver 2.19.1.d).
+         Si se re-corre permisos_cu13.sql, volver a correr personal_por_sucursal.sql y
          devoluciones_traspasos.sql. Sin pagos_verificacion_caja.sql el checkout da 500.
 
       QUEDA ABIERTO:
