@@ -7,9 +7,10 @@ import '../core/reservas/reservas_models.dart';
 import '../core/reservas/reservas_service.dart';
 import '../core/tema.dart';
 import 'mis_reservas_pagina.dart' show fechaLegible;
+import 'notificaciones_pagina.dart' show BotonNotificaciones;
 
 /// CU08: Atender Reserva. El Encargado de sucursal recorre la cola del dia:
-/// CONFIRMADA -> preparar -> PREPARADA -> cliente presente -> CLIENTE_PRESENTE ->
+/// PENDIENTE -> confirmar (o rechazar, 2.19.1.a) -> CONFIRMADA -> preparar -> PREPARADA -> cliente presente -> CLIENTE_PRESENTE ->
 /// resolver (lo comprado se vende, el resto libera el compromiso de stock).
 class AtenderReservasPagina extends StatefulWidget {
   const AtenderReservasPagina({super.key});
@@ -20,6 +21,7 @@ class AtenderReservasPagina extends StatefulWidget {
 
 class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
   static const List<String> _estados = [
+    'PENDIENTE',
     'CONFIRMADA',
     'PREPARADA',
     'CLIENTE_PRESENTE',
@@ -361,6 +363,72 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
     }
   }
 
+  /// 2.19.1.a: la sucursal acepta la reserva; el stock ya estaba apartado.
+  Future<void> _confirmarReserva(ReservaStaffOut reserva) async {
+    await _ejecutar(
+      () => reservasService.confirmar(reserva.id),
+      'Reserva confirmada, se le aviso al cliente',
+    );
+  }
+
+  /// 2.19.1.a: la sucursal no puede atenderla. El motivo le llega al cliente.
+  Future<void> _rechazarReserva(ReservaStaffOut reserva) async {
+    final motivo = TextEditingController();
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        backgroundColor: Paleta.blanco,
+        title: Text('Rechazar ${reserva.codigo}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Se libera el stock apartado y se le avisa al cliente con este motivo.',
+              style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: motivo,
+              maxLength: 150,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Motivo',
+                hintText: 'Sin vestidores libres ese dia, etc.',
+                counterText: '',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(contexto, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(contexto, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Paleta.rojo),
+            child: const Text('Rechazar'),
+          ),
+        ],
+      ),
+    );
+
+    final texto = motivo.text.trim();
+    motivo.dispose();
+    if (confirmado != true) return;
+    if (!mounted) return;
+    if (texto.length < 3) {
+      mostrarAviso(context, 'Indica el motivo del rechazo.', esError: true);
+      return;
+    }
+
+    await _ejecutar(
+      () => reservasService.rechazar(reserva.id, texto),
+      'Reserva rechazada y stock liberado',
+    );
+  }
+
   Future<void> _noPresentado(ReservaStaffOut reserva) async {
     final confirmado = await confirmar(
       context,
@@ -392,7 +460,10 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: const Text('Atender reservas'),
-          actions: [IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh))],
+          actions: [
+            const BotonNotificaciones(),
+            IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh)),
+          ],
         ),
         body: Column(
           children: [
@@ -513,6 +584,18 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
 
   List<Widget> _acciones(ReservaStaffOut reserva) {
     switch (reserva.estado) {
+      case 'PENDIENTE':
+        return [
+          ElevatedButton.icon(
+            onPressed: () => _confirmarReserva(reserva),
+            icon: const Icon(Icons.check_circle_outline, size: 18),
+            label: const Text('CONFIRMAR'),
+          ),
+          OutlinedButton(
+            onPressed: () => _rechazarReserva(reserva),
+            child: const Text('RECHAZAR'),
+          ),
+        ];
       case 'CONFIRMADA':
         return [
           ElevatedButton.icon(

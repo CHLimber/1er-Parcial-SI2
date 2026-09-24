@@ -1,21 +1,16 @@
 <div class="pagina">
   <main class="contenido">
     @if (cargando()) {
-      <p class="estado">Confirmando tu pago…</p>
-    } @else if (noEncontrada() || errorConfirmando()) {
+      <p class="estado">Cargando tu pedido…</p>
+    } @else if (noEncontrada() || !venta()) {
       <div class="estado estado--error">
-        <p>
-          {{
-            errorConfirmando()
-              ? 'No pudimos confirmar tu pago. Intentalo nuevamente.'
-              : 'No encontramos ese pedido.'
-          }}
-        </p>
+        <p>No encontramos ese pedido.</p>
         <a class="enlace" routerLink="/carrito">Volver al carrito</a>
       </div>
-    } @else if (ventaStripe(); as v) {
+    } @else {
+      @let v = venta()!;
       <section class="pasarela-card">
-        <span class="pasarela-card__marca">QR</span>
+        <span class="pasarela-card__marca">Pago con QR</span>
 
         <div class="pasarela-card__resumen">
           <span>Pedido</span>
@@ -26,10 +21,48 @@
           <strong>{{ formatearPrecio(v.total) }}</strong>
         </div>
 
-        <p class="pasarela-card__aviso">
-          Este pedido se paga con Stripe, no acá. Volvé al carrito para generar un nuevo intento de pago.
-        </p>
-        <a class="boton" routerLink="/carrito">Volver al carrito</a>
+        @if (v.pago?.pasarela !== 'QR') {
+          <p class="pasarela-card__aviso">
+            Este pedido no se paga con QR. Volvé al carrito para generar un nuevo intento de pago.
+          </p>
+          <a class="boton" routerLink="/carrito">Volver al carrito</a>
+        } @else {
+          <img class="pasarela-card__qr" src="/pago-qr.jpeg" alt="Código QR para pagar el pedido" />
+
+          @if (v.pago?.informado_en) {
+            <p class="pasarela-card__aviso">
+              Ya nos avisaste que pagaste. La sucursal está verificando el depósito; te notificamos
+              cuando lo apruebe. Si te olvidaste de algo, podés actualizar la referencia.
+            </p>
+          } @else {
+            <p class="pasarela-card__aviso">
+              Escaneá el QR desde la app de tu banco y pagá el total exacto. Después tocá
+              <strong>Ya pagué</strong>: la sucursal verifica el depósito y confirma tu pedido.
+            </p>
+          }
+
+          <label class="pasarela-card__campo">
+            <span>Referencia del depósito (opcional)</span>
+            <input
+              type="text"
+              maxlength="200"
+              placeholder="Nro. de operación o nombre del titular"
+              [(ngModel)]="referencia"
+              [disabled]="enviando()"
+            />
+          </label>
+
+          @if (error(); as mensaje) {
+            <p class="pasarela-card__error">{{ mensaje }}</p>
+          }
+
+          <div class="pasarela-card__acciones">
+            <button class="boton" type="button" (click)="informarPago()" [disabled]="enviando()">
+              {{ enviando() ? 'Avisando…' : v.pago?.informado_en ? 'Actualizar referencia' : 'Ya pagué' }}
+            </button>
+            <a class="boton boton--secundario" [routerLink]="['/compra', v.id]">Ver estado del pedido</a>
+          </div>
+        }
       </section>
     }
   </main>

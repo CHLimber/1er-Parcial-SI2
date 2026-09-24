@@ -23,6 +23,7 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
   bool _cargando = true;
   String? _error;
   String? _convirtiendo;
+  String? _cancelando;
 
   @override
   void initState() {
@@ -73,6 +74,33 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
       mostrarAviso(context, interpretarError(error), esError: true);
     } finally {
       if (mounted) setState(() => _convirtiendo = null);
+    }
+  }
+
+  /// 2.19.2: el backend libera el stock y avisa a la sucursal. La lista se recarga
+  /// sola por el listener de `reservasService.actualizaciones`.
+  Future<void> _cancelarReserva(ReservaOut reserva) async {
+    final confirmado = await confirmar(
+      context,
+      titulo: 'Cancelar reserva',
+      mensaje: 'Cancelar la reserva ${reserva.codigo}? Las prendas vuelven a quedar '
+          'disponibles para otros clientes.',
+      textoConfirmar: 'Cancelar reserva',
+      // "Cancelar" al lado de "Cancelar reserva" se leia como la misma accion
+      textoCancelar: 'Volver',
+      destructivo: true,
+    );
+    if (!confirmado || !mounted) return;
+    setState(() => _cancelando = reserva.id);
+    try {
+      await reservasService.cancelar(reserva.id);
+      if (!mounted) return;
+      mostrarAviso(context, 'Reserva ${reserva.codigo} cancelada');
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _cancelando = null);
     }
   }
 
@@ -144,6 +172,7 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
 
   Widget _tarjeta(ReservaOut reserva) {
     final convirtiendo = _convirtiendo == reserva.id;
+    final cancelando = _cancelando == reserva.id;
 
     return TarjetaPanel(
       hijo: Column(
@@ -160,6 +189,14 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
               BadgeEstado(reserva.estado),
             ],
           ),
+          if (reserva.estado == 'PENDIENTE') ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Pendiente de confirmacion de la sucursal. Las prendas ya quedaron apartadas '
+              'para vos mientras tanto.',
+              style: TextStyle(fontSize: 12.5, color: Paleta.gold, height: 1.35),
+            ),
+          ],
           const SizedBox(height: 10),
           FilaDato('Sucursal', reserva.sucursal),
           FilaDato('Visita', '${reserva.fechaVisita} a las ${reserva.horaVisita.substring(0, 5)}'),
@@ -192,7 +229,8 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: convirtiendo ? null : () => _comprarReserva(reserva),
+                onPressed:
+                    convirtiendo || cancelando ? null : () => _comprarReserva(reserva),
                 icon: convirtiendo
                     ? const SizedBox(
                         height: 16,
@@ -201,6 +239,25 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
                       )
                     : const Icon(Icons.shopping_bag_outlined),
                 label: const Text('COMPRAR ESTA RESERVA'),
+              ),
+            ),
+          ],
+          if (reserva.esCancelable) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed:
+                    convirtiendo || cancelando ? null : () => _cancelarReserva(reserva),
+                style: TextButton.styleFrom(foregroundColor: Paleta.rojo),
+                icon: cancelando
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.event_busy_outlined),
+                label: const Text('CANCELAR RESERVA'),
               ),
             ),
           ],

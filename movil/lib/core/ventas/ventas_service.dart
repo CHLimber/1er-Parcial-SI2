@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter_stripe/flutter_stripe.dart';
 
 import '../api.dart';
@@ -64,21 +62,15 @@ class ConfigPagoOut {
       ConfigPagoOut(stripePublishableKey: j['stripe_publishable_key'] as String);
 }
 
-/// CU06. Stripe confirma por webhook firmado desde sus servidores; QR no tiene
-/// sandbox real, asi que la pantalla de pago simulado manda el resultado a mano. El
-/// backend usa `evento_id` como clave de idempotencia (tabla `evento_pasarela`).
+/// CU06. Stripe confirma por webhook firmado desde sus servidores. QR ya no tiene un webhook
+/// que la app pueda disparar (antes la propia clienta "aprobaba" su pago): ahora solo informa
+/// que pago y el cajero de la sucursal lo verifica desde caja (2.19.1.c).
 class PagosService {
-  Future<WebhookOut> simularWebhook(
-    String pasarela,
-    String idTransaccion,
-    String estado,
-  ) async {
-    final respuesta = await api.post('/pagos/webhook/$pasarela', cuerpo: {
-      'evento_id': generarUuidV4(),
-      'id_transaccion': idTransaccion,
-      'estado': estado,
+  Future<InformarPagoOut> informarPagoQr(String ventaId, {String? referencia}) async {
+    final respuesta = await api.post('/pagos/qr/$ventaId/informar', cuerpo: {
+      'referencia': (referencia?.trim().isEmpty ?? true) ? null : referencia!.trim(),
     });
-    return WebhookOut.desdeJson(respuesta as Map<String, dynamic>);
+    return InformarPagoOut.desdeJson(respuesta as Map<String, dynamic>);
   }
 
   Future<ConfigPagoOut> obtenerConfig() async {
@@ -101,16 +93,6 @@ Future<void> asegurarStripeInicializado() async {
   _stripeInicializado = true;
 }
 
-/// UUID v4 aleatorio (el equivalente de `crypto.randomUUID()` del navegador).
-String generarUuidV4() {
-  final azar = Random.secure();
-  final bytes = List<int>.generate(16, (_) => azar.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}'
-      '-${hex.substring(16, 20)}-${hex.substring(20)}';
-}
 
 final ventasService = VentasService();
 final pagosService = PagosService();

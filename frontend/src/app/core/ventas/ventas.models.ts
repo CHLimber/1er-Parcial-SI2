@@ -1,5 +1,6 @@
-/** STRIPE y QR van por pasarela (pago.pasarela); EFECTIVO no tiene pasarela y se aprueba de una
- * en el checkout mismo -- ver CheckoutIn.metodo_pago en el backend. */
+/** STRIPE y QR van por pasarela (pago.pasarela); EFECTIVO no tiene pasarela. QR y EFECTIVO quedan
+ * PENDIENTE hasta que el cajero de la sucursal los aprueba desde caja (2.19.1.b/c) -- ver
+ * CheckoutIn.metodo_pago en el backend. */
 export type Pasarela = 'STRIPE' | 'QR';
 export type MetodoPagoCheckout = Pasarela | 'EFECTIVO';
 export type ModoEntrega = 'RETIRO_SUCURSAL' | 'DOMICILIO';
@@ -53,6 +54,9 @@ export interface PagoOut {
   id_transaccion: string | null;
   creado_en: string;
   confirmado_en: string | null;
+  /** Solo QR: cuándo la clienta avisó "ya pagué" y la referencia que dejó. */
+  informado_en: string | null;
+  referencia_cliente: string | null;
 }
 
 export interface ComprobanteOut {

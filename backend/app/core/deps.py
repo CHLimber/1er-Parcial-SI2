@@ -32,53 +32,66 @@ async def get_current_usuario(
     return {"id": fila["id"], "tipo": fila["tipo"]}
 
 
-async def get_cajero_actual(
-    usuario: dict = Depends(get_current_usuario),
-    conn: asyncpg.Connection = Depends(get_connection),
+# CU07 y CU08 autorizan por PERMISO (PENDIENTES 3.1), igual que el resto del sistema: el cargo
+# ya no decide quien opera. Ademas del permiso exigen una fila activa en `empleado`, porque
+# caja y reservas son operaciones DE UNA SUCURSAL y los routers necesitan su sucursal_id.
+#   - Caja (CU07, /caja/* y /ventas/pos): permiso `caja.crear` (operar la caja: abrir sesion,
+#     cobrar, verificar pagos QR/efectivo, cerrar). Lo tienen CAJERO, ENCARGADO y ADMIN.
+#   - Reservas (CU08, /reservas/sucursal y confirmar/rechazar/preparar/...): permiso
+#     `reservas.actualizar`. Lo tienen ENCARGADO y ADMIN.
+# Decision: el ADMIN puede operar caja y reservas, pero solo las de la sucursal de su propia
+# fila de empleado (en el seed, Equipetrol). Un ADMIN sin fila de empleado recibe 403: no hay
+# una sucursal "por defecto" sobre la que operar.
+# Los destinatarios de notificaciones (reservas/router.py, pagos/servicio.py) se siguen
+# eligiendo por cargo ENCARGADO/CAJERO: eso dice QUIEN es la persona, no QUE puede hacer.
+
+
+async def _empleado_con_permiso(
+    conn: asyncpg.Connection, usuario: dict, codigo: str, detalle: str
 ) -> dict:
-    """CU07: exige que el usuario sea STAFF con cargo CAJERO. No hay middleware de roles/permisos
-    todavia (ver CLAUDE.md), asi que se valida igual que _exigir_cliente en otros routers."""
     if usuario["tipo"] != "STAFF":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detalle)
+
+    if codigo not in await obtener_permisos(conn, usuario["id"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo un cajero puede operar la caja",
+            detail="Tu rol no tiene permiso para esta operacion",
         )
 
     empleado = await conn.fetchrow(
-        "SELECT usuario_id, sucursal_id FROM empleado WHERE usuario_id = $1 AND activo AND cargo = 'CAJERO'",
+        "SELECT usuario_id, sucursal_id FROM empleado WHERE usuario_id = $1 AND activo",
         usuario["id"],
     )
     if empleado is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no tiene el cargo de Cajero",
+            detail="Tu usuario no esta asignado a una sucursal",
         )
 
     return {"usuario_id": empleado["usuario_id"], "sucursal_id": empleado["sucursal_id"]}
+
+
+async def get_cajero_actual(
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> dict:
+    """CU07: STAFF con permiso `caja.crear` y sucursal asignada."""
+    return await _empleado_con_permiso(
+        conn, usuario, "caja.crear", "Solo el personal de caja puede operar la caja"
+    )
 
 
 async def get_encargado_actual(
     usuario: dict = Depends(get_current_usuario),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> dict:
-    """CU08: exige que el usuario sea STAFF con cargo ENCARGADO de una sucursal."""
-    if usuario["tipo"] != "STAFF":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo un encargado de sucursal puede atender reservas",
-        )
-
-    empleado = await conn.fetchrow(
-        "SELECT usuario_id, sucursal_id FROM empleado WHERE usuario_id = $1 AND activo AND cargo = 'ENCARGADO'",
-        usuario["id"],
+    """CU08: STAFF con permiso `reservas.actualizar` y sucursal asignada."""
+    return await _empleado_con_permiso(
+        conn,
+        usuario,
+        "reservas.actualizar",
+        "Solo el encargado de sucursal puede atender reservas",
     )
-    if empleado is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no tiene el cargo de Encargado",
-        )
-
-    return {"usuario_id": empleado["usuario_id"], "sucursal_id": empleado["sucursal_id"]}
 
 
 async def obtener_permisos(conn: asyncpg.Connection, usuario_id) -> list[str]:
@@ -136,7 +149,7 @@ async def get_staff_actual(
 
 def requiere_permiso(*codigos: str):
     """Dependencia de autorizacion por permiso (CU13). Basta con tener uno de los codigos
-    pedidos. Reemplaza a la validacion por cargo que usaban CU07/CU08."""
+    pedidos."""
 
     async def verificar(staff: dict = Depends(get_staff_actual)) -> dict:
         if not any(codigo in staff["permisos"] for codigo in codigos):

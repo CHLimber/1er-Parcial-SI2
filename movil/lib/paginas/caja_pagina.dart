@@ -7,6 +7,7 @@ import '../core/errores.dart';
 import '../core/tema.dart';
 import '../core/ventas/ventas_models.dart';
 import '../core/ventas/ventas_service.dart';
+import 'notificaciones_pagina.dart' show BotonNotificaciones;
 
 /// Linea del ticket que se esta armando en el mostrador.
 class _LineaTicket {
@@ -20,6 +21,10 @@ class _LineaTicket {
 
 /// CU07: Registrar Venta Presencial. El backend exige una sesion de caja ABIERTA
 /// (E1) y valida el cargo CAJERO con `get_cajero_actual`.
+///
+/// 2.19.1.b/c: abajo de todo, "Pagos online por verificar": pedidos web/app en EFECTIVO
+/// (se cobran en caja o al rendir el delivery, y entran al arqueo de la sesion abierta) y en QR
+/// (la clienta informa que pago y el cajero verifica el deposito). Nada de eso se aprueba solo.
 class CajaPagina extends StatefulWidget {
   const CajaPagina({super.key});
 
@@ -45,6 +50,10 @@ class _CajaPaginaState extends State<CajaPagina> {
   bool _abriendo = false;
   String? _error;
 
+  List<PagoPorVerificarOut> _pagosPendientes = [];
+  bool _cargandoPagos = false;
+  String? _pagoEnProceso;
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +71,117 @@ class _CajaPaginaState extends State<CajaPagina> {
 
   double get _subtotal => _ticket.fold(0, (suma, linea) => suma + linea.subtotal);
 
+  Future<void> _cargarPagosPendientes() async {
+    setState(() => _cargandoPagos = true);
+    try {
+      final pagos = await cajaService.listarPagosPendientes();
+      if (!mounted) return;
+      setState(() => _pagosPendientes = pagos);
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _cargandoPagos = false);
+    }
+  }
+
+  Future<void> _aprobarPago(PagoPorVerificarOut pago) async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        backgroundColor: Paleta.blanco,
+        title: Text('Aprobar ${pago.numero}'),
+        content: Text(
+          pago.metodo == 'EFECTIVO'
+              ? 'Confirmas que cobraste ${formatearPrecio(pago.total)} en efectivo? Se descuenta '
+                  'el stock, se emite el comprobante y entra al arqueo de tu caja.'
+              : 'Confirmas que el deposito QR de ${formatearPrecio(pago.total)} esta en la '
+                  'cuenta? Se descuenta el stock y se emite el comprobante.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(contexto, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(contexto, true),
+            child: const Text('Aprobar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    setState(() => _pagoEnProceso = pago.pagoId);
+    try {
+      final resultado = await cajaService.aprobarPago(pago.pagoId);
+      if (!mounted) return;
+      final aprobado = resultado.pagoEstado == 'APROBADO';
+      mostrarAviso(
+        context,
+        aprobado
+            ? 'Pedido ${resultado.numero} aprobado'
+            : 'Pedido ${resultado.numero} anulado (${resultado.pagoEstado}): ${resultado.mensaje}',
+        esError: !aprobado,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _pagoEnProceso = null);
+      await _cargarPagosPendientes();
+    }
+  }
+
+  Future<void> _rechazarPago(PagoPorVerificarOut pago) async {
+    final motivo = TextEditingController();
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        backgroundColor: Paleta.blanco,
+        title: Text('Rechazar ${pago.numero}'),
+        content: TextField(
+          controller: motivo,
+          maxLength: 200,
+          decoration: InputDecoration(
+            labelText: 'Motivo (opcional, lo ve la clienta)',
+            hintText: pago.metodo == 'QR' ? 'No encontramos el deposito' : 'No se presento a pagar',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(contexto, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Paleta.rojo),
+            onPressed: () => Navigator.pop(contexto, true),
+            child: const Text('Rechazar'),
+          ),
+        ],
+      ),
+    );
+    final texto = motivo.text;
+    motivo.dispose();
+    if (confirmado != true || !mounted) return;
+
+    setState(() => _pagoEnProceso = pago.pagoId);
+    try {
+      final resultado = await cajaService.rechazarPago(pago.pagoId, motivo: texto);
+      if (!mounted) return;
+      mostrarAviso(context, 'Pedido ${resultado.numero} rechazado y anulado');
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _pagoEnProceso = null);
+      await _cargarPagosPendientes();
+    }
+  }
+
   Future<void> _cargar() async {
+    // la lista de pagos online no bloquea la pantalla de caja: se carga aparte
+    _cargarPagosPendientes();
     setState(() {
       _cargando = true;
       _error = null;
@@ -217,7 +336,10 @@ class _CajaPaginaState extends State<CajaPagina> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
           title: const Text('Caja'),
-          actions: [IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh))],
+          actions: [
+            const BotonNotificaciones(),
+            IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh)),
+          ],
         ),
         body: VistaAsincrona(
           cargando: _cargando,
@@ -283,8 +405,131 @@ class _CajaPaginaState extends State<CajaPagina> {
                   : const Text('ABRIR SESION DE CAJA'),
             ),
           ],
+          ..._seccionPagosPendientes(),
         ],
       );
+
+  /// 2.19.1.b/c: pedidos online (EFECTIVO / QR) que esperan al cajero.
+  List<Widget> _seccionPagosPendientes() => [
+        const SizedBox(height: 28),
+        Row(
+          children: [
+            const Expanded(child: EtiquetaDato('Pagos online por verificar')),
+            if (_cargandoPagos)
+              const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: _cargarPagosPendientes,
+                icon: const Icon(Icons.refresh, size: 20),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_pagosPendientes.isEmpty)
+          const Text(
+            'No hay pedidos online esperando cobro o verificacion.',
+            style: TextStyle(fontSize: 13, color: Paleta.inkSuave),
+          )
+        else
+          ..._pagosPendientes.map(_tarjetaPagoPendiente),
+      ];
+
+  Widget _tarjetaPagoPendiente(PagoPorVerificarOut pago) {
+    final ocupado = _pagoEnProceso != null;
+    final sinSesion = pago.metodo == 'EFECTIVO' && _sesion == null;
+    final puedeAprobar = !ocupado && !pago.carritoModificado && !sinSesion;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TarjetaPanel(
+        hijo: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(pago.numero, style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+                BadgeEstado(pago.metodo),
+                const SizedBox(width: 8),
+                Text(
+                  formatearPrecio(pago.total),
+                  style: const TextStyle(fontWeight: FontWeight.w800, color: Paleta.flameOscuro),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${pago.cliente} · ${pago.clienteEmail}',
+              style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave),
+            ),
+            Text(
+              pago.entrega == 'DOMICILIO'
+                  ? 'Envio a domicilio (cobra el delivery)'
+                  : 'Retira en sucursal',
+              style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave),
+            ),
+            if (pago.metodo == 'QR')
+              Text(
+                pago.informadoEn != null
+                    ? 'Informo el pago${pago.referenciaCliente != null ? ' · Ref: ${pago.referenciaCliente}' : ''}'
+                    : 'La clienta todavia no informo el pago',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: pago.informadoEn != null ? FontWeight.w700 : FontWeight.w400,
+                  color: pago.informadoEn != null ? Paleta.verde : Paleta.inkSuave,
+                ),
+              ),
+            const SizedBox(height: 6),
+            ...pago.items.map(
+              (item) => Text(
+                '${item.cantidad} x ${item.producto} (${item.talla} · ${item.color})',
+                style: const TextStyle(fontSize: 12.5),
+              ),
+            ),
+            if (pago.carritoModificado) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'La clienta modifico su carrito despues del pedido: solo se puede rechazar.',
+                style: TextStyle(fontSize: 12.5, color: Paleta.rojo),
+              ),
+            ] else if (sinSesion) ...[
+              const SizedBox(height: 6),
+              const Text(
+                'Abri una sesion de caja para cobrar este pedido en efectivo.',
+                style: TextStyle(fontSize: 12.5, color: Paleta.rojo),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: puedeAprobar ? () => _aprobarPago(pago) : null,
+                    child: _pagoEnProceso == pago.pagoId
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Paleta.blanco),
+                          )
+                        : Text(pago.metodo == 'EFECTIVO' ? 'COBRADO' : 'VERIFICADO'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: ocupado ? null : () => _rechazarPago(pago),
+                    child: const Text('RECHAZAR'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _vistaVenta() {
     final iva = _subtotal * 0.13;
@@ -417,6 +662,7 @@ class _CajaPaginaState extends State<CajaPagina> {
                 : Text('COBRAR ${formatearPrecio(total)}'),
           ),
         ],
+        ..._seccionPagosPendientes(),
       ],
     );
   }

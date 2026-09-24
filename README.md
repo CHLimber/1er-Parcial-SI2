@@ -27,8 +27,9 @@ modelar `producto_variante` como la unidad fisica real en vez de guardar el stoc
 La misma coleccion no se reparte en partes iguales entre las tres tiendas: un tapado de lana rota
 en Sopocachi y se queda parado en Equipetrol. Esa es la razon de negocio por la que el stock vive
 por sucursal (`inventario`, una fila por sucursal x variante) y no como un unico saldo global, y
-por la que existen los traspasos entre tiendas. El seed refleja esa asimetria, no carga cantidades
-uniformes.
+por la que existen los traspasos entre tiendas (panel **Traspasos**: el encargado del origen
+despacha y el stock sale de su tienda; el del destino cuenta lo que llego y eso entra en la suya).
+El seed refleja esa asimetria, no carga cantidades uniformes.
 
 **Temporadas.** Cada prenda puede pertenecer a una temporada (`temporada` / `coleccion`) o ser
 atemporal. El seed deja el ciclo completo a la vista: Otonio-Invierno 2026 ya cerrada, con su
@@ -104,12 +105,20 @@ Password de todos: `demo1234`.
 | Email                              | Tipo    | Rol / sucursal                  |
 |-------------------------------------|---------|----------------------------------|
 | admin@fashionstore.bo               | STAFF   | ADMIN — Equipetrol (Santa Cruz)  |
+| cajera.scz@fashionstore.bo          | STAFF   | CAJERO — Equipetrol (Santa Cruz) |
 | encargada.lapaz@fashionstore.bo     | STAFF   | ENCARGADO — Sopocachi (La Paz)   |
+| cajera.lapaz@fashionstore.bo        | STAFF   | CAJERO — Sopocachi (La Paz)      |
+| encargado.cbba@fashionstore.bo      | STAFF   | ENCARGADO — Cala Cala (Cochabamba) |
 | cajero.cbba@fashionstore.bo         | STAFF   | CAJERO — Cala Cala (Cochabamba)  |
-| vendedor.scz@fashionstore.bo        | STAFF   | VENDEDOR — Equipetrol (Santa Cruz) |
-| almacen.scz@fashionstore.bo         | STAFF   | ALMACEN — Equipetrol (Santa Cruz) |
 | cliente@fashionstore.bo             | CLIENTE | —                                |
 | cliente2@fashionstore.bo            | CLIENTE | —                                |
+
+Actores humanos: Cliente, Administrador, Encargado de sucursal (recepciones, ajustes de stock,
+confirmar/preparar reservas; puede cubrir la caja) y Cajero (venta presencial, cobros,
+verificacion de pagos QR/efectivo, cierre de caja). No hay cargos VENDEDOR ni ALMACEN, y el
+proveedor no es usuario (sus datos los carga el Administrador en CU11). Caja (CU07) y atencion
+de reservas (CU08) se autorizan por permiso (`caja.crear` / `reservas.actualizar`), no por
+cargo; el ADMIN tambien puede operarlas en su sucursal (Equipetrol).
 
 El catalogo queda poblado con 6 productos de moda femenina (blusa de lino, vestido floral, jean de
 tiro alto, tapado de lana, botineta de cuero y chalina de alpaca), 63 variantes por talla/color e

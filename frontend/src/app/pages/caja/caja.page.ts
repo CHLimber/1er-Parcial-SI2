@@ -8,6 +8,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import {
   ArqueoOut,
   CajaOut,
+  PagoPorVerificarOut,
   SesionCajaOut,
   SesionCerradaOut,
   VarianteBusquedaOut,
@@ -15,6 +16,8 @@ import {
 import { CajaService } from '../../core/caja/caja.service';
 import { MetodoPagoPos, VentaPosOut } from '../../core/ventas/ventas.models';
 import { VentasService } from '../../core/ventas/ventas.service';
+import { CampanaNotificaciones } from '../../shared/notificaciones/campana-notificaciones';
+import { interpretarError } from '../../shared/errores';
 
 const IVA_TASA = 0.13;
 
@@ -25,7 +28,7 @@ interface TicketItem extends VarianteBusquedaOut {
 @Component({
   selector: 'app-caja-page',
   standalone: true,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, CampanaNotificaciones],
   templateUrl: './caja.page.html',
   styleUrls: ['./caja.page.css', '../../shared/responsive.css'],
 })
@@ -73,6 +76,14 @@ export class CajaPage implements OnInit {
     this.montoRecibido != null ? this.montoRecibido - this.total() : null,
   );
 
+  // 2.19.1.b/c: pedidos online en EFECTIVO o QR que esperan que el cajero los apruebe
+  protected readonly pagosPendientes = signal<PagoPorVerificarOut[]>([]);
+  protected readonly cargandoPagos = signal(false);
+  protected readonly pagoEnProceso = signal<string | null>(null);
+  protected readonly rechazandoId = signal<string | null>(null);
+  protected motivoRechazo = '';
+  protected readonly mensajePagos = signal<{ texto: string; error: boolean } | null>(null);
+
   protected readonly diferenciaPreview = computed(() => {
     const arqueo = this.arqueo();
     if (arqueo === null || this.montoDeclarado == null) return null;
@@ -81,6 +92,73 @@ export class CajaPage implements OnInit {
 
   ngOnInit(): void {
     this.cargarSesion();
+    this.cargarPagosPendientes();
+  }
+
+  protected cargarPagosPendientes(): void {
+    this.cargandoPagos.set(true);
+    this.cajaService.listarPagosPendientes().subscribe({
+      next: (pagos) => {
+        this.pagosPendientes.set(pagos);
+        this.cargandoPagos.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cargandoPagos.set(false);
+        this.mensajePagos.set({ texto: interpretarError(error), error: true });
+      },
+    });
+  }
+
+  protected aprobarPago(pago: PagoPorVerificarOut): void {
+    if (this.pagoEnProceso()) return;
+    this.pagoEnProceso.set(pago.pago_id);
+    this.mensajePagos.set(null);
+    this.cajaService.aprobarPago(pago.pago_id).subscribe({
+      next: (resultado) => {
+        this.pagoEnProceso.set(null);
+        const aprobado = resultado.pago_estado === 'APROBADO';
+        this.mensajePagos.set({
+          texto: aprobado
+            ? `Pedido ${resultado.numero} aprobado: se descontó el stock y se emitió el comprobante.`
+            : `Pedido ${resultado.numero} anulado (${resultado.pago_estado}): ${resultado.mensaje}`,
+          error: !aprobado,
+        });
+        this.cargarPagosPendientes();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.pagoEnProceso.set(null);
+        this.mensajePagos.set({ texto: interpretarError(error), error: true });
+        this.cargarPagosPendientes();
+      },
+    });
+  }
+
+  protected iniciarRechazo(pago: PagoPorVerificarOut): void {
+    this.rechazandoId.set(pago.pago_id);
+    this.motivoRechazo = '';
+  }
+
+  protected cancelarRechazo(): void {
+    this.rechazandoId.set(null);
+  }
+
+  protected confirmarRechazo(pago: PagoPorVerificarOut): void {
+    if (this.pagoEnProceso()) return;
+    this.pagoEnProceso.set(pago.pago_id);
+    this.mensajePagos.set(null);
+    this.cajaService.rechazarPago(pago.pago_id, this.motivoRechazo.trim() || null).subscribe({
+      next: (resultado) => {
+        this.pagoEnProceso.set(null);
+        this.rechazandoId.set(null);
+        this.mensajePagos.set({ texto: `Pedido ${resultado.numero} rechazado y anulado.`, error: false });
+        this.cargarPagosPendientes();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.pagoEnProceso.set(null);
+        this.mensajePagos.set({ texto: interpretarError(error), error: true });
+        this.cargarPagosPendientes();
+      },
+    });
   }
 
   private cargarSesion(): void {

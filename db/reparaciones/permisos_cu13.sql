@@ -20,6 +20,10 @@
 --  Este archivo vive en db/reparaciones/ a proposito: docker-entrypoint-initdb.d solo
 --  ejecuta lo que esta en el primer nivel de db/, asi que no se corre solo en local.
 --
+--  OJO (2026-09-24): este script es anterior a la reduccion de actores y todavia siembra
+--  los roles VENDEDOR/ALMACEN y la matriz vieja del ENCARGADO. Si se vuelve a correr,
+--  correr DESPUES db/reparaciones/reduccion_actores.sql para dejar la matriz actual.
+--
 --  Uso:
 --    docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1 \
 --      < db/reparaciones/permisos_cu13.sql

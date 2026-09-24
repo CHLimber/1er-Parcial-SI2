@@ -8,6 +8,8 @@ import {
   ArqueoOut,
   CajaOut,
   CerrarSesionIn,
+  PagoPorVerificarOut,
+  ResolucionPagoOut,
   SesionCajaOut,
   SesionCerradaOut,
   VarianteBusquedaOut,
@@ -41,5 +43,17 @@ export class CajaService {
 
   cerrarSesion(datos: CerrarSesionIn): Observable<SesionCerradaOut> {
     return this.http.post<SesionCerradaOut>(`${this.base}/cerrar`, datos);
+  }
+
+  listarPagosPendientes(): Observable<PagoPorVerificarOut[]> {
+    return this.http.get<PagoPorVerificarOut[]>(`${this.base}/pagos-pendientes`);
+  }
+
+  aprobarPago(pagoId: string): Observable<ResolucionPagoOut> {
+    return this.http.post<ResolucionPagoOut>(`${this.base}/pagos/${pagoId}/aprobar`, {});
+  }
+
+  rechazarPago(pagoId: string, motivo: string | null): Observable<ResolucionPagoOut> {
+    return this.http.post<ResolucionPagoOut>(`${this.base}/pagos/${pagoId}/rechazar`, { motivo });
   }
 }

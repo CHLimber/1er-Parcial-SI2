@@ -148,13 +148,18 @@ class _CarritoPaginaState extends State<CarritoPagina> {
             ),
             const SizedBox(height: 10),
             const Text(
-              'Escaneá este código desde tu app bancaria y después tocá "Pagar con QR".',
+              'Tocá "Pagar con QR" para generar tu pedido, escaneá el código desde tu app bancaria '
+              'y avisanos que pagaste. La sucursal verifica el depósito y recién ahí confirma tu '
+              'compra.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12.5, color: Paleta.inkSuave, height: 1.35),
             ),
           ],
         );
       case 'EFECTIVO':
+        final cuando = _entrega == 'DOMICILIO'
+            ? 'Pagás en efectivo cuando te entreguen el pedido.'
+            : 'Pagás en efectivo al retirar el pedido en la sucursal.';
         return Row(
           key: const ValueKey('efectivo'),
           children: [
@@ -162,9 +167,8 @@ class _CarritoPaginaState extends State<CarritoPagina> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                _entrega == 'DOMICILIO'
-                    ? 'Pagás en efectivo cuando te entreguen el pedido.'
-                    : 'Pagás en efectivo al retirar el pedido en la sucursal.',
+                '$cuando Tu pedido queda pendiente de cobro: el cajero lo confirma cuando registra el '
+                'pago, y recién ahí se emite el comprobante.',
                 style: const TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
               ),
             ),
@@ -190,7 +194,7 @@ class _CarritoPaginaState extends State<CarritoPagina> {
 
   String get _textoBotonPago => switch (_metodoPago) {
         'QR' => 'PAGAR CON QR',
-        'EFECTIVO' => 'PAGAR CON EFECTIVO',
+        'EFECTIVO' => 'CONFIRMAR PEDIDO EN EFECTIVO',
         _ => 'PAGAR CON TARJETA',
       };
 
@@ -311,10 +315,10 @@ class _CarritoPaginaState extends State<CarritoPagina> {
 
       context.read<CarritoService>().reiniciar();
       if (checkout.esPagoSimulado) {
-        // QR no tiene sandbox: se resuelve con la pantalla de pago simulado.
+        // QR: la pantalla muestra el codigo y la clienta informa que pago (2.19.1.c).
         context.push('/pago-simulado/${checkout.ventaId}');
       } else {
-        // EFECTIVO: ya quedo pagada al toque, directo a la confirmacion.
+        // EFECTIVO: queda pendiente de cobro hasta que el cajero lo apruebe (2.19.1.b).
         context.push('/compra/${checkout.ventaId}');
       }
     } catch (error) {

@@ -23,6 +23,7 @@ import {
   ColumnaOut,
   ConsultaIaOut,
   EnvioEstadoOut,
+  ExistenciaOut,
   FiltroReportes,
   IndicadoresOut,
   MensajeReporteIn,
@@ -31,6 +32,8 @@ import {
   ProductoSinMovimientoOut,
   RecepcionPendienteProveedorOut,
   ReservaEstadoOut,
+  ResumenExistenciasOut,
+  SituacionExistencia,
   StockSucursalOut,
   VendedorOut,
   VentaDiariaOut,
@@ -84,7 +87,32 @@ const ETIQUETAS_ESTADO_ENVIO: Record<string, string | undefined> = {
   CANCELADO: 'Cancelado',
 };
 
-type VistaReportes = 'graficas' | 'estaticos' | 'dinamicos' | 'ia';
+type VistaReportes = 'graficas' | 'estaticos' | 'dinamicos' | 'existencias' | 'ia';
+
+// Consolidado de existencias (PENDIENTES 2.19.5): una situacion por fila (variante x sucursal),
+// derivada en la vista v_existencias_consolidadas. "Vendidas" no es una situacion sino una columna.
+const ETIQUETAS_SITUACION: Record<SituacionExistencia, string> = {
+  DISPONIBLE: 'Disponible',
+  RESERVADA: 'Reservada',
+  PROXIMA_A_INGRESAR: 'Próxima a ingresar',
+  AGOTADA: 'Agotada',
+};
+
+const COLUMNAS_EXISTENCIAS: ColumnaExportable[] = [
+  { clave: 'producto', etiqueta: 'Producto' },
+  { clave: 'sku', etiqueta: 'SKU' },
+  { clave: 'talla', etiqueta: 'Talla' },
+  { clave: 'color', etiqueta: 'Color' },
+  { clave: 'sucursal', etiqueta: 'Sucursal' },
+  { clave: 'cantidad_fisica', etiqueta: 'Físico' },
+  { clave: 'cantidad_reservada', etiqueta: 'Reservado' },
+  { clave: 'disponible', etiqueta: 'Disponible' },
+  { clave: 'vendidas', etiqueta: 'Vendidas' },
+  { clave: 'proximas_a_ingresar', etiqueta: 'Por ingresar' },
+  { clave: 'situacion', etiqueta: 'Situación' },
+];
+
+const TAMANIO_PAGINA_EXISTENCIAS = 50;
 
 type TipoEstatico = 'stock' | 'reservas' | 'envios' | 'ocupacion' | 'clientes' | 'sinMovimiento' | 'recepciones';
 
@@ -245,6 +273,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
   protected readonly ETIQUETAS_ESTADO_ENVIO = ETIQUETAS_ESTADO_ENVIO;
   protected readonly ETIQUETAS_TIPO_ESTATICO = ETIQUETAS_TIPO_ESTATICO;
   protected readonly ETIQUETAS_TIPO_DINAMICO = ETIQUETAS_TIPO_DINAMICO;
+  protected readonly ETIQUETAS_SITUACION = ETIQUETAS_SITUACION;
 
   // --- Graficas: solo desde/hasta/sucursal (canal sigue embebido en "Ventas diarias") ---
 
@@ -333,6 +362,26 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
   protected readonly dinVentasPorSucursal = signal<VentaPorSucursalOut[]>([]);
   protected readonly dinTopProductos = signal<ProductoRankingOut[]>([]);
 
+  // --- Existencias: consolidado por variante x sucursal, paginado (GET /reportes/existencias) ---
+
+  protected readonly filtroExistencias = this.fb.nonNullable.group({
+    sucursal_id: '',
+    categoria_id: '',
+    busqueda: '',
+    situacion: '' as SituacionExistencia | '',
+  });
+
+  protected readonly exiCargando = signal(false);
+  protected readonly exiConsultado = signal(false);
+  protected readonly exiResumen = signal<ResumenExistenciasOut | null>(null);
+  protected readonly exiFilas = signal<ExistenciaOut[]>([]);
+  protected readonly exiTotal = signal(0);
+  protected readonly exiPagina = signal(1);
+
+  protected get exiTotalPaginas(): number {
+    return Math.max(1, Math.ceil(this.exiTotal() / TAMANIO_PAGINA_EXISTENCIAS));
+  }
+
   // --- Reporte con IA: chat de texto/voz sobre los mismos 11 reportes (POST /reportes/consulta-ia) ---
 
   protected readonly iaSoportaVoz = signal(soportaVoz());
@@ -390,6 +439,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
     this.vista.set(vista);
     if (vista === 'estaticos' && this.estaticoTipoActivo() === null) this.consultarEstatico();
     if (vista === 'dinamicos' && this.dinTipoActivo() === null) this.consultarDinamico();
+    if (vista === 'existencias' && !this.exiConsultado()) this.consultarExistencias();
   }
 
   private manejarError(e: HttpErrorResponse, porDefecto: string): void {
@@ -841,6 +891,67 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
         });
         break;
     }
+  }
+
+  // =========================================================================
+  //  EXISTENCIAS: consolidado de existencias con tarjetas por situacion + tabla paginada. Las
+  //  tarjetas (resumen) ignoran el filtro de situacion en el backend, asi que tocar una tarjeta
+  //  filtra la tabla sin que las demas tarjetas se vayan a cero.
+  // =========================================================================
+
+  protected consultarExistencias(pagina = 1): void {
+    const crudo = this.filtroExistencias.getRawValue();
+    this.error.set(null);
+    this.exiCargando.set(true);
+    this.servicio
+      .existencias({
+        sucursal_id: this.puedeElegirSucursal ? crudo.sucursal_id || null : null,
+        categoria_id: crudo.categoria_id || null,
+        busqueda: crudo.busqueda.trim() || null,
+        situacion: crudo.situacion || null,
+        pagina,
+        tamanio_pagina: TAMANIO_PAGINA_EXISTENCIAS,
+      })
+      .subscribe({
+        next: (datos) => {
+          this.exiResumen.set(datos.resumen);
+          this.exiFilas.set(datos.items);
+          this.exiTotal.set(datos.total);
+          this.exiPagina.set(datos.pagina);
+          this.exiConsultado.set(true);
+          this.exiCargando.set(false);
+        },
+        error: (e: HttpErrorResponse) => {
+          this.manejarError(e, 'No se pudo cargar el consolidado de existencias.');
+          this.exiCargando.set(false);
+        },
+      });
+  }
+
+  protected filtrarPorSituacion(situacion: SituacionExistencia | ''): void {
+    const actual = this.filtroExistencias.controls.situacion.value;
+    // Tocar dos veces la misma tarjeta quita el filtro.
+    this.filtroExistencias.controls.situacion.setValue(actual === situacion ? '' : situacion);
+    this.consultarExistencias(1);
+  }
+
+  protected irAPaginaExistencias(pagina: number): void {
+    if (pagina < 1 || pagina > this.exiTotalPaginas) return;
+    this.consultarExistencias(pagina);
+  }
+
+  private filasExistencias(): Record<string, unknown>[] {
+    return this.exiFilas().map((f) => ({ ...f, situacion: ETIQUETAS_SITUACION[f.situacion] }));
+  }
+
+  // Exporta la pagina que esta en pantalla (hasta 50 filas), igual que el resto de exportaciones:
+  // no hay endpoint aparte para bajar el consolidado completo.
+  protected exportarExistenciasPdf(): void {
+    exportarTablaPdf('Consolidado de existencias', COLUMNAS_EXISTENCIAS, this.filasExistencias(), 'reporte-existencias');
+  }
+
+  protected exportarExistenciasExcel(): void {
+    exportarTablaExcel('Consolidado de existencias', COLUMNAS_EXISTENCIAS, this.filasExistencias(), 'reporte-existencias');
   }
 
   // =========================================================================

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'core/auth/auth_service.dart';
 import 'core/carrito/carrito_service.dart';
+import 'core/notificaciones/notificaciones_service.dart';
 import 'core/reservas/reserva_carrito_service.dart';
 import 'core/tema.dart';
 import 'rutas.dart';
@@ -16,6 +17,8 @@ Future<void> main() async {
   await reservaCarrito.inicializar();
 
   final carrito = CarritoService();
+  // PENDIENTES 2.19.3: escucha a auth y hace polling del contador solo mientras hay sesion.
+  final notificaciones = NotificacionesService(auth);
   if (auth.estaAutenticado) {
     // el contador del carrito se refresca sin bloquear el arranque
     unawaited(carrito.refrescar());
@@ -27,6 +30,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: auth),
         ChangeNotifierProvider.value(value: reservaCarrito),
         ChangeNotifierProvider.value(value: carrito),
+        ChangeNotifierProvider.value(value: notificaciones),
       ],
       child: AppFashionStore(auth: auth),
     ),

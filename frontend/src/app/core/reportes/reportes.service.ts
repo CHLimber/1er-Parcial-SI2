@@ -8,6 +8,8 @@ import {
   ClienteRankingOut,
   ConsultaIaOut,
   EnvioEstadoOut,
+  ExistenciasPaginadoOut,
+  FiltroExistencias,
   FiltroReportes,
   IndicadoresOut,
   MensajeReporteIn,
@@ -101,6 +103,17 @@ export class ReportesService {
     let params = new HttpParams();
     if (sucursalId) params = params.set('sucursal_id', sucursalId);
     return this.http.get<RecepcionPendienteProveedorOut[]>(`${this.base}/recepciones-pendientes`, { params });
+  }
+
+  existencias(filtro: FiltroExistencias): Observable<ExistenciasPaginadoOut> {
+    let params = new HttpParams();
+    if (filtro.sucursal_id) params = params.set('sucursal_id', filtro.sucursal_id);
+    if (filtro.categoria_id) params = params.set('categoria_id', filtro.categoria_id);
+    if (filtro.busqueda) params = params.set('busqueda', filtro.busqueda);
+    if (filtro.situacion) params = params.set('situacion', filtro.situacion);
+    if (filtro.pagina) params = params.set('pagina', filtro.pagina);
+    if (filtro.tamanio_pagina) params = params.set('tamanio_pagina', filtro.tamanio_pagina);
+    return this.http.get<ExistenciasPaginadoOut>(`${this.base}/existencias`, { params });
   }
 
   vendedores(sucursalId?: string | null): Observable<VendedorOut[]> {

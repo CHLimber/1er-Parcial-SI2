@@ -227,7 +227,10 @@
             @case ('QR') {
               <div class="qr-preview">
                 <img src="pago-qr.jpeg" alt="Código QR para pagar" class="qr-preview__imagen" />
-                <p class="campo__ayuda">Escaneá este código desde tu app bancaria y despues tocá "Pagar".</p>
+                <p class="campo__ayuda">
+                  Tocá "Pagar con QR" para generar tu pedido, escaneá el código desde tu app bancaria y
+                  avisanos que pagaste. La sucursal verifica el depósito y recién ahí confirma tu compra.
+                </p>
               </div>
               <button type="button" class="boton" [disabled]="enviando()" (click)="pagar()">
                 {{ enviando() ? 'Procesando…' : 'Pagar con QR' }}
@@ -240,9 +243,11 @@
                 } @else {
                   Pagás en efectivo al retirar el pedido en la sucursal.
                 }
+                Tu pedido queda pendiente de cobro: el cajero de la sucursal lo confirma cuando registra
+                el pago, y recién ahí se emite el comprobante.
               </p>
               <button type="button" class="boton" [disabled]="enviando()" (click)="pagar()">
-                {{ enviando() ? 'Procesando…' : 'Pagar con efectivo' }}
+                {{ enviando() ? 'Procesando…' : 'Confirmar pedido en efectivo' }}
               </button>
             }
           }

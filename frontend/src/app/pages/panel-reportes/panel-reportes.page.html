@@ -30,6 +30,14 @@
     <button
       type="button"
       class="submenu__item"
+      [class.submenu__item--activo]="vista() === 'existencias'"
+      (click)="cambiarVista('existencias')"
+    >
+      Existencias
+    </button>
+    <button
+      type="button"
+      class="submenu__item"
       [class.submenu__item--activo]="vista() === 'ia'"
       (click)="cambiarVista('ia')"
     >
@@ -757,6 +765,193 @@
               </div>
             }
           }
+        }
+      </section>
+    }
+  }
+
+  <!-- Existencias: consolidado por variante x sucursal (PENDIENTES 2.19.5). Tarjetas por
+       situacion (tocar una filtra la tabla) + tabla paginada. Foto actual, sin fechas. -->
+  @if (vista() === 'existencias') {
+    <form class="barra" [formGroup]="filtroExistencias" (ngSubmit)="consultarExistencias(1)">
+      @if (puedeElegirSucursal) {
+        <div class="campo">
+          <label for="x-sucursal">Sucursal</label>
+          <select id="x-sucursal" formControlName="sucursal_id">
+            <option value="">Todas</option>
+            @for (s of sucursales(); track s.id) {
+              <option [value]="s.id">{{ s.nombre }}</option>
+            }
+          </select>
+        </div>
+      }
+      <div class="campo">
+        <label for="x-categoria">Categoría</label>
+        <select id="x-categoria" formControlName="categoria_id">
+          <option value="">Todas</option>
+          @for (c of categorias(); track c.id) {
+            <option [value]="c.id">{{ c.nombre }}</option>
+          }
+        </select>
+      </div>
+      <div class="campo">
+        <label for="x-situacion">Situación</label>
+        <select id="x-situacion" formControlName="situacion">
+          <option value="">Todas</option>
+          <option value="DISPONIBLE">Disponible</option>
+          <option value="RESERVADA">Reservada</option>
+          <option value="PROXIMA_A_INGRESAR">Próxima a ingresar</option>
+          <option value="AGOTADA">Agotada</option>
+        </select>
+      </div>
+      <div class="campo">
+        <label for="x-busqueda">Prenda o SKU</label>
+        <input id="x-busqueda" type="search" formControlName="busqueda" placeholder="Buscar…" />
+      </div>
+      <div class="barra__espacio"></div>
+      <button type="submit" class="boton">Consultar</button>
+    </form>
+
+    @if (exiResumen(); as r) {
+      <div class="kpis existencias-tarjetas">
+        <button
+          type="button"
+          class="kpi kpi--boton"
+          [class.kpi--activo]="filtroExistencias.controls.situacion.value === 'DISPONIBLE'"
+          (click)="filtrarPorSituacion('DISPONIBLE')"
+        >
+          <span class="kpi__etiqueta">Disponibles</span>
+          <span class="kpi__valor">{{ r.variantes_disponibles }}</span>
+          <span class="kpi__detalle">{{ r.unidades_disponibles }} unidades libres para vender</span>
+        </button>
+        <button
+          type="button"
+          class="kpi kpi--boton"
+          [class.kpi--activo]="filtroExistencias.controls.situacion.value === 'RESERVADA'"
+          (click)="filtrarPorSituacion('RESERVADA')"
+        >
+          <span class="kpi__etiqueta">Reservadas</span>
+          <span class="kpi__valor">{{ r.variantes_reservadas }}</span>
+          <span class="kpi__detalle">Todo lo que queda está apartado · {{ r.unidades_reservadas }} u. reservadas en total</span>
+        </button>
+        <button
+          type="button"
+          class="kpi kpi--boton"
+          [class.kpi--activo]="filtroExistencias.controls.situacion.value === 'PROXIMA_A_INGRESAR'"
+          (click)="filtrarPorSituacion('PROXIMA_A_INGRESAR')"
+        >
+          <span class="kpi__etiqueta">Próximas a ingresar</span>
+          <span class="kpi__valor">{{ r.variantes_proximas_a_ingresar }}</span>
+          <span class="kpi__detalle">Agotadas con recepción pendiente · {{ r.unidades_por_ingresar }} u. en camino en total</span>
+        </button>
+        <button
+          type="button"
+          class="kpi kpi--boton"
+          [class.kpi--alerta]="r.variantes_agotadas > 0"
+          [class.kpi--activo]="filtroExistencias.controls.situacion.value === 'AGOTADA'"
+          (click)="filtrarPorSituacion('AGOTADA')"
+        >
+          <span class="kpi__etiqueta">Agotadas</span>
+          <span class="kpi__valor">{{ r.variantes_agotadas }}</span>
+          <span class="kpi__detalle">Sin stock y sin ingreso previsto</span>
+        </button>
+        <div class="kpi">
+          <span class="kpi__etiqueta">Vendidas</span>
+          <span class="kpi__valor">{{ r.unidades_vendidas }}</span>
+          <span class="kpi__detalle">Unidades vendidas históricas (ventas pagadas o entregadas)</span>
+        </div>
+      </div>
+      <p class="secundario existencias-nota">
+        Las tarjetas cuentan variantes (talla × color) por sucursal, de un total de {{ r.variantes_total }};
+        tocá una para filtrar la tabla. Foto actual, no depende de un rango de fechas.
+      </p>
+    }
+
+    @if (exiCargando()) {
+      <p class="estado">Cargando…</p>
+    } @else if (exiConsultado()) {
+      <section class="panel">
+        <div class="panel__cabecera">
+          <h2 class="panel__titulo">Consolidado de existencias</h2>
+          @if (exiFilas().length) {
+            <div class="exportar">
+              <button type="button" class="boton boton--secundario" (click)="exportarExistenciasPdf()">
+                Exportar PDF
+              </button>
+              <button type="button" class="boton boton--secundario" (click)="exportarExistenciasExcel()">
+                Exportar Excel
+              </button>
+            </div>
+          }
+        </div>
+        @if (!exiFilas().length) {
+          <p class="estado">No hay prendas que cumplan esos filtros.</p>
+        } @else {
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Talla</th>
+                  <th>Color</th>
+                  <th>Sucursal</th>
+                  <th class="tabla__numero">Físico</th>
+                  <th class="tabla__numero">Reservado</th>
+                  <th class="tabla__numero">Disponible</th>
+                  <th class="tabla__numero">Vendidas</th>
+                  <th class="tabla__numero">Por ingresar</th>
+                  <th>Situación</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of exiFilas(); track fila.variante_id + fila.sucursal_id) {
+                  <tr>
+                    <td>
+                      {{ fila.producto }}
+                      <span class="mono secundario existencias-sku">{{ fila.sku }}</span>
+                    </td>
+                    <td>{{ fila.talla }}</td>
+                    <td>{{ fila.color }}</td>
+                    <td>{{ fila.sucursal }}</td>
+                    <td class="tabla__numero">{{ fila.cantidad_fisica }}</td>
+                    <td class="tabla__numero">{{ fila.cantidad_reservada }}</td>
+                    <td class="tabla__numero">{{ fila.disponible }}</td>
+                    <td class="tabla__numero">{{ fila.vendidas }}</td>
+                    <td class="tabla__numero">{{ fila.proximas_a_ingresar }}</td>
+                    <td>
+                      <span
+                        class="badge"
+                        [class.badge--ok]="fila.situacion === 'DISPONIBLE'"
+                        [class.badge--alerta]="fila.situacion === 'AGOTADA'"
+                        [class.badge--baja]="fila.situacion === 'RESERVADA' || fila.situacion === 'PROXIMA_A_INGRESAR'"
+                      >
+                        {{ ETIQUETAS_SITUACION[fila.situacion] }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="paginacion">
+            <button
+              type="button"
+              class="boton boton--secundario boton--chico"
+              [disabled]="exiPagina() <= 1"
+              (click)="irAPaginaExistencias(exiPagina() - 1)"
+            >
+              Anterior
+            </button>
+            <span class="secundario">Página {{ exiPagina() }} de {{ exiTotalPaginas }} · {{ exiTotal() }} filas</span>
+            <button
+              type="button"
+              class="boton boton--secundario boton--chico"
+              [disabled]="exiPagina() >= exiTotalPaginas"
+              (click)="irAPaginaExistencias(exiPagina() + 1)"
+            >
+              Siguiente
+            </button>
+          </div>
         }
       </section>
     }

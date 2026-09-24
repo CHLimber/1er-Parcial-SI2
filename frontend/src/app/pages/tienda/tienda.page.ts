@@ -10,11 +10,12 @@ import { ProductoRecomendadoOut } from '../../core/recomendaciones/recomendacion
 import { RecomendacionesService } from '../../core/recomendaciones/recomendaciones.service';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
 import { ProductoCard } from '../../shared/catalogo/producto-card';
+import { CampanaNotificaciones } from '../../shared/notificaciones/campana-notificaciones';
 
 @Component({
   selector: 'app-tienda-page',
   standalone: true,
-  imports: [FormsModule, ProductoCard, RouterLink],
+  imports: [CampanaNotificaciones, FormsModule, ProductoCard, RouterLink],
   templateUrl: './tienda.page.html',
   styleUrls: ['./tienda.page.css', '../../shared/responsive.css'],
 })

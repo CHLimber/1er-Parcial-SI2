@@ -122,3 +122,56 @@ export interface ConsultaIaOut {
   columnas: ColumnaOut[];
   tabla: Record<string, unknown>[];
 }
+
+// Consolidado de existencias (GET /reportes/existencias, vista v_existencias_consolidadas).
+export type SituacionExistencia = 'DISPONIBLE' | 'RESERVADA' | 'PROXIMA_A_INGRESAR' | 'AGOTADA';
+
+export interface FiltroExistencias {
+  sucursal_id?: string | null;
+  categoria_id?: string | null;
+  busqueda?: string | null;
+  situacion?: SituacionExistencia | null;
+  pagina?: number;
+  tamanio_pagina?: number;
+}
+
+export interface ExistenciaOut {
+  producto_id: string;
+  producto: string;
+  categoria: string;
+  variante_id: string;
+  sku: string;
+  talla: string;
+  color: string;
+  sucursal_id: string;
+  sucursal: string;
+  cantidad_fisica: number;
+  cantidad_reservada: number;
+  disponible: number;
+  stock_minimo: number;
+  vendidas: number;
+  proximas_a_ingresar: number;
+  situacion: SituacionExistencia;
+}
+
+/** Respeta sucursal/categoria/busqueda pero no la situacion: las tarjetas siguen mostrando todo. */
+export interface ResumenExistenciasOut {
+  variantes_total: number;
+  variantes_disponibles: number;
+  variantes_reservadas: number;
+  variantes_proximas_a_ingresar: number;
+  variantes_agotadas: number;
+  unidades_fisicas: number;
+  unidades_reservadas: number;
+  unidades_disponibles: number;
+  unidades_vendidas: number;
+  unidades_por_ingresar: number;
+}
+
+export interface ExistenciasPaginadoOut {
+  total: number;
+  pagina: number;
+  tamanio_pagina: number;
+  resumen: ResumenExistenciasOut;
+  items: ExistenciaOut[];
+}

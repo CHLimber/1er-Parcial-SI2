@@ -22,7 +22,9 @@ CREATE EXTENSION IF NOT EXISTS unaccent;   -- busqueda del catalogo sin tildes
 CREATE TYPE ciudad_bo         AS ENUM ('SANTA_CRUZ','LA_PAZ','EL_ALTO','COCHABAMBA','SUCRE',
                                        'ORURO','POTOSI','TARIJA','TRINIDAD','COBIJA');
 CREATE TYPE tipo_usuario      AS ENUM ('CLIENTE','STAFF');
-CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN');
+-- Actores humanos de tienda (PENDIENTES 2.19.1.d): el ENCARGADO absorbio a ALMACEN y el CAJERO a
+-- VENDEDOR. Railway: db/reparaciones/reduccion_actores.sql recrea el tipo sin esos valores.
+CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO');
 CREATE TYPE estado_caja       AS ENUM ('ABIERTA','CERRADA');
 CREATE TYPE tipo_talla        AS ENUM ('LETRA','NUMERO','CALZADO');
 CREATE TYPE tipo_temporada    AS ENUM ('PRIMAVERA_VERANO','OTONO_INVIERNO','ESCOLAR',
@@ -63,7 +65,7 @@ CREATE TABLE rol (
     descripcion VARCHAR(200),
     es_sistema  BOOLEAN      NOT NULL DEFAULT FALSE
 );
-COMMENT ON TABLE rol IS 'ADMIN, ENCARGADO, CAJERO, VENDEDOR. Solo aplica a usuarios STAFF.';
+COMMENT ON TABLE rol IS 'ADMIN, ENCARGADO, CAJERO (los del sistema; CU13 puede crear otros). Solo aplica a usuarios STAFF.';
  
 CREATE TABLE permiso (
     id          SERIAL PRIMARY KEY,
@@ -428,8 +430,18 @@ CREATE TABLE traspaso (
     estado              estado_traspaso NOT NULL DEFAULT 'SOLICITADO',
     usuario_solicita_id UUID            REFERENCES usuario(id),
     usuario_recibe_id   UUID            REFERENCES usuario(id),
+    -- Traspasos entre sucursales (PENDIENTES 2.7): fecha de salida del origen, quien hizo el
+    -- ultimo cambio de estado (el trigger tg_traspaso_stock firma el kardex con el) y la nota
+    -- del destino al recibir (p.ej. por que llego de menos).
+    fecha_despacho      TIMESTAMPTZ,
+    actualizado_por_id  UUID            REFERENCES usuario(id),
+    observacion         VARCHAR(250),
     CONSTRAINT ck_traspaso_sucursales CHECK (sucursal_origen_id <> sucursal_destino_id)
 );
+COMMENT ON TABLE traspaso IS
+    'Mercaderia que pasa de una sucursal a otra (las tres estan en climas distintos). '
+    'SOLICITADO -> EN_TRANSITO (sale del origen) -> RECIBIDO (entra en destino lo recibido); '
+    'ANULADO desde SOLICITADO o EN_TRANSITO. El stock lo mueve tg_traspaso_stock.';
  
 CREATE TABLE traspaso_detalle (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -574,6 +586,12 @@ CREATE TABLE pago (
     id_transaccion VARCHAR(120),
     creado_en      TIMESTAMPTZ   NOT NULL DEFAULT now(),
     confirmado_en  TIMESTAMPTZ,
+    -- 2.19.1.c: en QR la clienta solo INFORMA que ya pago (con una referencia opcional del
+    -- deposito); quien aprueba o rechaza es el CAJERO de la sucursal desde caja. Lo mismo para
+    -- EFECTIVO en el checkout online (2.19.1.b): verificado_por_id guarda que cajero lo resolvio.
+    informado_en       TIMESTAMPTZ,
+    referencia_cliente VARCHAR(200),
+    verificado_por_id  UUID      REFERENCES usuario(id),
     CONSTRAINT ck_pago_pasarela CHECK (metodo <> 'PASARELA' OR pasarela IS NOT NULL)
 );
 CREATE INDEX ix_pago_venta ON pago(venta_id);
@@ -668,8 +686,17 @@ CREATE TABLE devolucion (
     monto_devuelto NUMERIC(12,2)     NOT NULL CHECK (monto_devuelto >= 0),
     estado         estado_devolucion NOT NULL DEFAULT 'SOLICITADA',
     usuario_id     UUID              REFERENCES usuario(id),
-    fecha          TIMESTAMPTZ       NOT NULL DEFAULT now()
+    fecha          TIMESTAMPTZ       NOT NULL DEFAULT now(),
+    -- Devoluciones (PENDIENTES 2.7): quien la aprobo/rechazo y cuando (el trigger
+    -- tg_devolucion_stock firma el kardex con resuelta_por_id) y por que se rechazo.
+    resuelta_por_id UUID             REFERENCES usuario(id),
+    resuelta_en     TIMESTAMPTZ,
+    motivo_rechazo  VARCHAR(250)
 );
+CREATE INDEX ix_devolucion_venta ON devolucion(venta_id);
+COMMENT ON TABLE devolucion IS
+    'Devolucion de prendas de una venta PAGADA/ENTREGADA. Nace SOLICITADA; al pasar a APROBADA '
+    'tg_devolucion_stock reingresa el stock (tipo DEVOLUCION). usuario_id = quien la registro.';
  
 CREATE TABLE devolucion_detalle (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),

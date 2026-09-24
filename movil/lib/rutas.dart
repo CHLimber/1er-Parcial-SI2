@@ -12,6 +12,7 @@ import 'paginas/login_pagina.dart';
 import 'paginas/mis_compras_pagina.dart';
 import 'paginas/mis_direcciones_pagina.dart';
 import 'paginas/mis_reservas_pagina.dart';
+import 'paginas/notificaciones_pagina.dart';
 import 'paginas/pago_simulado_pagina.dart';
 import 'paginas/panel_catalogo_pagina.dart';
 import 'paginas/panel_pagina.dart';
@@ -31,6 +32,8 @@ const _rutasDeInvitado = {'/login', '/registro'};
 /// Permisos exigidos por cada pantalla del panel, espejo de `permisoGuard` en
 /// `frontend/src/app/app.routes.ts`. Quien autoriza de verdad siempre es la API.
 const Map<String, List<String>> _permisosPorRuta = {
+  '/caja': [permisoCaja],
+  '/atender-reservas': [permisoAtenderReservas],
   '/panel/catalogo': [
     'catalogo.leer',
     'catalogo.crear',
@@ -127,6 +130,11 @@ GoRouter construirRouter(AuthService auth) {
         builder: (contexto, estado) => const MisDireccionesPagina(),
       ),
       GoRoute(path: '/asistente', builder: (contexto, estado) => const AsistentePagina()),
+      // PENDIENTES 2.19.3: cliente y personal, cada uno ve solo las suyas.
+      GoRoute(
+        path: '/notificaciones',
+        builder: (contexto, estado) => const NotificacionesPagina(),
+      ),
       GoRoute(
         path: '/pago-simulado/:ventaId',
         builder: (contexto, estado) =>
@@ -137,8 +145,7 @@ GoRouter construirRouter(AuthService auth) {
         builder: (contexto, estado) => CompraPagina(ventaId: estado.pathParameters['ventaId']!),
       ),
 
-      // CU07 y CU08 siguen validando por cargo en el backend (get_cajero_actual /
-      // get_encargado_actual), asi que aca no se exige permiso: la API responde 403.
+      // CU07 y CU08: el permiso lo exige _permisosPorRuta (caja.crear / reservas.actualizar).
       GoRoute(path: '/caja', builder: (contexto, estado) => const CajaPagina()),
       GoRoute(
         path: '/atender-reservas',

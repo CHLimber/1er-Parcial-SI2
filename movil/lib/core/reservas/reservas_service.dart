@@ -38,7 +38,31 @@ class ReservasService {
     return comoLista(respuesta).map(ReservaOut.desdeJson).toList();
   }
 
+  /// 2.19.2: el cliente cancela su reserva (solo PENDIENTE/CONFIRMADA/PREPARADA); el
+  /// backend libera el stock y avisa a la sucursal.
+  Future<ReservaOut> cancelar(String reservaId, {String? motivo}) async {
+    final respuesta = await api.post('/reservas/$reservaId/cancelar', cuerpo: {
+      'motivo': (motivo?.isEmpty ?? true) ? null : motivo,
+    });
+    final reserva = ReservaOut.desdeJson(respuesta as Map<String, dynamic>);
+    actualizaciones.value++;
+    return reserva;
+  }
+
   // --- CU08: cola de la sucursal -------------------------------------------
+
+  /// 2.19.1.a: la sucursal acepta la reserva (PENDIENTE -> CONFIRMADA).
+  Future<ReservaStaffOut> confirmar(String reservaId) async {
+    final respuesta = await api.post('/reservas/$reservaId/confirmar');
+    return ReservaStaffOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// 2.19.1.a: la sucursal rechaza la reserva (PENDIENTE -> CANCELADA); libera el stock.
+  Future<ReservaStaffOut> rechazar(String reservaId, String motivo) async {
+    final respuesta =
+        await api.post('/reservas/$reservaId/rechazar', cuerpo: {'motivo': motivo});
+    return ReservaStaffOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
 
   Future<List<ReservaStaffOut>> listarDeSucursal({String? estado}) async {
     final respuesta = await api.get('/reservas/sucursal', query: {'estado': estado});

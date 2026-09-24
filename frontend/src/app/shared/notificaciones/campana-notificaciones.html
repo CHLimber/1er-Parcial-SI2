@@ -1,0 +1,78 @@
+<button
+  type="button"
+  class="campana"
+  [class.campana--abierta]="abierto()"
+  [attr.aria-expanded]="abierto()"
+  [attr.aria-label]="noLeidas() > 0 ? 'Notificaciones, ' + noLeidas() + ' sin leer' : 'Notificaciones'"
+  aria-haspopup="true"
+  aria-controls="panel-notificaciones"
+  (click)="alternar()"
+>
+  <svg class="campana__icono" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Z"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.7"
+      stroke-linejoin="round"
+    />
+    <path d="M10 20.5a2.2 2.2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+  </svg>
+  @if (noLeidas() > 0) {
+    <span class="campana__badge" aria-hidden="true">{{ badge() }}</span>
+  }
+</button>
+
+@if (abierto()) {
+  <section id="panel-notificaciones" class="panel" aria-label="Notificaciones">
+    <header class="panel__cabecera">
+      <h2 class="panel__titulo">Notificaciones</h2>
+      @if (noLeidas() > 0) {
+        <button type="button" class="panel__accion" (click)="marcarTodas()">Marcar todas como leídas</button>
+      }
+    </header>
+
+    @if (error(); as mensaje) {
+      <p class="panel__estado panel__estado--error">{{ mensaje }}</p>
+    }
+
+    @if (items().length === 0 && !cargando() && !error()) {
+      <p class="panel__estado">No tenés notificaciones por ahora.</p>
+    }
+
+    @if (items().length > 0) {
+      <ul class="lista">
+        @for (n of items(); track n.id) {
+          <li>
+            <button
+              type="button"
+              class="aviso"
+              [class.aviso--nueva]="!n.leida"
+              [class.aviso--enlace]="tieneDestino(n)"
+              (click)="abrir(n)"
+            >
+              <span class="aviso__meta">
+                <span class="aviso__tipo">{{ etiquetaTipo(n) }}</span>
+                <time class="aviso__fecha" [attr.datetime]="n.fecha">{{ n.fecha | date: 'dd/MM HH:mm' }}</time>
+              </span>
+              <span class="aviso__titulo">
+                @if (!n.leida) {
+                  <span class="aviso__punto" aria-hidden="true"></span>
+                  <span class="visualmente-oculto">Sin leer:</span>
+                }
+                {{ n.titulo }}
+              </span>
+              <span class="aviso__mensaje">{{ n.mensaje }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (cargando()) {
+      <p class="panel__estado">Cargando…</p>
+    } @else if (hayMas()) {
+      <button type="button" class="panel__mas" (click)="cargarMas()">Ver anteriores</button>
+    }
+  </section>
+}

@@ -11,14 +11,15 @@
   <main class="contenido">
     @if (resultado(); as reserva) {
       <section class="confirmacion">
-        <span class="confirmacion__etiqueta">Reserva registrada</span>
+        <span class="confirmacion__etiqueta">Reserva enviada a la sucursal</span>
         <h1 class="confirmacion__codigo">{{ reserva.codigo }}</h1>
         <p class="confirmacion__linea">
           {{ reserva.sucursal }} · {{ reserva.fecha_visita }} a las {{ reserva.hora_visita.slice(0, 5) }}
         </p>
         <p class="confirmacion__linea">
-          Estado: <strong>{{ reserva.estado }}</strong> · Presentate antes de que venza,
-          el compromiso de stock expira el {{ reserva.expira_en | date: 'short' }}.
+          Estado: <strong>{{ reserva.estado === 'PENDIENTE' ? 'Pendiente de confirmación' : reserva.estado }}</strong>
+          · La sucursal tiene que confirmar tu reserva; te avisamos cuando lo haga. Mientras tanto
+          las prendas quedan apartadas para vos hasta el {{ reserva.expira_en | date: 'short' }}.
         </p>
 
         <ul class="confirmacion__items">

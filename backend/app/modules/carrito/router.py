@@ -36,6 +36,36 @@ async def _obtener_o_crear_carrito(conn: asyncpg.Connection, usuario_id: UUID) -
     )
 
 
+async def _exigir_carrito_editable(conn: asyncpg.Connection, carrito_id: UUID) -> None:
+    """Bloquea el carrito (FOR UPDATE; el checkout toma el mismo lock antes de crear la venta) y
+    rechaza 409 si tiene un pedido online en EFECTIVO o QR esperando al cajero. Cuando el cajero
+    lo aprueba, confirmar_aprobado (pagos/servicio.py) vuelca a venta_detalle el carrito TAL COMO
+    ESTE en ese momento: si la clienta lo cambio, se venderian otras prendas por el monto viejo.
+    Stripe no se bloquea: si el carrito cambia, el proximo checkout abandona ese intento y arma
+    uno nuevo con el importe correcto (ver ventas/router.py). Debe llamarse dentro de una
+    transaccion."""
+    await conn.execute("SELECT id FROM carrito WHERE id = $1 FOR UPDATE", carrito_id)
+    numero = await conn.fetchval(
+        """
+        SELECT v.numero
+        FROM venta v
+        JOIN pago p ON p.venta_id = v.id
+        WHERE v.carrito_id = $1 AND v.estado = 'PENDIENTE' AND p.estado = 'PENDIENTE'
+          AND (p.metodo = 'EFECTIVO' OR p.pasarela = 'QR')
+        LIMIT 1
+        """,
+        carrito_id,
+    )
+    if numero is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Tenes un pedido pendiente de pago en caja ({numero}): espera a que la sucursal "
+                "lo cobre o lo anule antes de cambiar tu carrito"
+            ),
+        )
+
+
 async def _armar_carrito_out(conn: asyncpg.Connection, carrito: asyncpg.Record) -> CarritoOut:
     filas = await conn.fetch(
         """
@@ -144,19 +174,21 @@ async def agregar_item(
             detail="Este carrito viene de una reserva; vacialo antes de agregar otras prendas",
         )
 
-    await conn.execute(
-        """
-        INSERT INTO carrito_item (carrito_id, variante_id, cantidad, precio_unitario)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (carrito_id, variante_id)
-        DO UPDATE SET cantidad = carrito_item.cantidad + EXCLUDED.cantidad
-        """,
-        carrito["id"],
-        body.variante_id,
-        body.cantidad,
-        variante["precio"],
-    )
-    await conn.execute("UPDATE carrito SET actualizado_en = now() WHERE id = $1", carrito["id"])
+    async with conn.transaction():
+        await _exigir_carrito_editable(conn, carrito["id"])
+        await conn.execute(
+            """
+            INSERT INTO carrito_item (carrito_id, variante_id, cantidad, precio_unitario)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (carrito_id, variante_id)
+            DO UPDATE SET cantidad = carrito_item.cantidad + EXCLUDED.cantidad
+            """,
+            carrito["id"],
+            body.variante_id,
+            body.cantidad,
+            variante["precio"],
+        )
+        await conn.execute("UPDATE carrito SET actualizado_en = now() WHERE id = $1", carrito["id"])
     return await _armar_carrito_out(conn, carrito)
 
 
@@ -170,12 +202,14 @@ async def actualizar_cantidad(
     _exigir_cliente(usuario)
     carrito = await _obtener_o_crear_carrito(conn, usuario["id"])
 
-    resultado = await conn.execute(
-        "UPDATE carrito_item SET cantidad = $1 WHERE id = $2 AND carrito_id = $3",
-        body.cantidad,
-        item_id,
-        carrito["id"],
-    )
+    async with conn.transaction():
+        await _exigir_carrito_editable(conn, carrito["id"])
+        resultado = await conn.execute(
+            "UPDATE carrito_item SET cantidad = $1 WHERE id = $2 AND carrito_id = $3",
+            body.cantidad,
+            item_id,
+            carrito["id"],
+        )
     if resultado == "UPDATE 0":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Ese item no esta en tu carrito"
@@ -191,9 +225,11 @@ async def quitar_item(
 ) -> CarritoOut:
     _exigir_cliente(usuario)
     carrito = await _obtener_o_crear_carrito(conn, usuario["id"])
-    await conn.execute(
-        "DELETE FROM carrito_item WHERE id = $1 AND carrito_id = $2", item_id, carrito["id"]
-    )
+    async with conn.transaction():
+        await _exigir_carrito_editable(conn, carrito["id"])
+        await conn.execute(
+            "DELETE FROM carrito_item WHERE id = $1 AND carrito_id = $2", item_id, carrito["id"]
+        )
     return await _armar_carrito_out(conn, carrito)
 
 
@@ -244,6 +280,8 @@ async def crear_desde_reserva(
             "SELECT id FROM carrito WHERE usuario_id = $1 AND estado = 'ACTIVO'", usuario["id"]
         )
         if carrito_previo is not None:
+            # reemplazar el contenido pisaria un pedido en efectivo/QR que espera al cajero
+            await _exigir_carrito_editable(conn, carrito_previo["id"])
             # un carrito solo puede venir de una reserva a la vez: se reemplaza el contenido anterior
             await conn.execute(
                 "DELETE FROM carrito_item WHERE carrito_id = $1", carrito_previo["id"]

@@ -96,6 +96,16 @@ export interface ResolverReservaIn {
   monto_recibido?: number | null;
 }
 
+// 2.19.1.a: el Encargado rechaza una reserva PENDIENTE
+export interface RechazarReservaIn {
+  motivo: string;
+}
+
+// 2.19.2: el cliente cancela su propia reserva
+export interface CancelarReservaIn {
+  motivo?: string | null;
+}
+
 export interface ResolverReservaOut {
   reserva: ReservaStaffOut;
   venta_id: string | null;

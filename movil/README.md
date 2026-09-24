@@ -72,9 +72,9 @@ Entrar con cualquiera de los usuarios semilla (password `demo1234` para todos):
 |---|---|
 | `cliente@fashionstore.bo` | CU03 a CU06: catalogo, reservas, carrito, pago |
 | `admin@fashionstore.bo` | el panel completo, CU09 a CU13 |
-| `encargada.lapaz@fashionstore.bo` | CU08, atender reservas de La Paz |
-| `cajero.cbba@fashionstore.bo` | CU07, caja de Cochabamba |
-| `almacen.scz@fashionstore.bo` | CU09, recepciones (rol sin acceso al resto) |
+| `encargada.lapaz@fashionstore.bo` | CU08 atender reservas y CU09 recepciones de La Paz (tambien puede cubrir la caja) |
+| `cajero.cbba@fashionstore.bo` | CU07, caja de Cochabamba (sin acceso al panel de gestion) |
+| `cajera.scz@fashionstore.bo`, `cajera.lapaz@fashionstore.bo`, `encargado.cbba@fashionstore.bo` | lo mismo en las otras sucursales |
 
 La pantalla **Cuenta** muestra abajo un badge `LOCAL` / `RAILWAY` con la URL
 activa: sirve para confirmar de un vistazo contra que base estas probando.

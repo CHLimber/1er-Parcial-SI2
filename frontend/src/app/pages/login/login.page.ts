@@ -41,6 +41,8 @@ export class LoginPage {
 
     this.auth.iniciarSesion(this.form.getRawValue()).subscribe({
       next: (usuario) => {
+        // Por rol y no por permiso a proposito: ENCARGADO y ADMIN tambien tienen caja.crear
+        // (pueden cubrir la caja), pero su pantalla de entrada no es esa.
         const esCajero = usuario.tipo === 'STAFF' && usuario.rol === 'CAJERO';
         this.router.navigateByUrl(esCajero ? '/caja' : '/tienda');
       },

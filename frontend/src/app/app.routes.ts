@@ -3,9 +3,9 @@ import { Routes } from '@angular/router';
 
 import {
   authGuard,
-  cajeroGuard,
-  encargadoGuard,
   invitadoGuard,
+  PERMISO_ATENDER_RESERVAS,
+  PERMISO_CAJA,
   permisoGuard,
 } from './core/auth/auth.guard';
 import { AuthService } from './core/auth/auth.service';
@@ -80,13 +80,13 @@ export const routes: Routes = [
   {
     path: 'caja',
     loadComponent: () => import('./pages/caja/caja.page').then((m) => m.CajaPage),
-    canActivate: [authGuard, cajeroGuard],
+    canActivate: [authGuard, permisoGuard(PERMISO_CAJA)],
   },
   {
     path: 'atender-reservas',
     loadComponent: () =>
       import('./pages/atender-reservas/atender-reservas.page').then((m) => m.AtenderReservasPage),
-    canActivate: [authGuard, encargadoGuard],
+    canActivate: [authGuard, permisoGuard(PERMISO_ATENDER_RESERVAS)],
   },
 
   // Panel de gestion (CU09 a CU13). Cada pantalla exige el mismo permiso que su endpoint.
@@ -131,6 +131,24 @@ export const routes: Routes = [
             (m) => m.PanelInventarioPage,
           ),
         canActivate: [permisoGuard('inventario.leer', 'inventario.actualizar')],
+      },
+      {
+        path: 'traspasos',
+        loadComponent: () =>
+          import('./pages/panel-traspasos/panel-traspasos.page').then((m) => m.PanelTraspasosPage),
+        canActivate: [
+          permisoGuard('traspasos.leer', 'traspasos.crear', 'traspasos.actualizar', 'traspasos.eliminar'),
+        ],
+      },
+      {
+        path: 'devoluciones',
+        loadComponent: () =>
+          import('./pages/panel-devoluciones/panel-devoluciones.page').then(
+            (m) => m.PanelDevolucionesPage,
+          ),
+        canActivate: [
+          permisoGuard('devoluciones.leer', 'devoluciones.crear', 'devoluciones.actualizar'),
+        ],
       },
       {
         path: 'proveedores',

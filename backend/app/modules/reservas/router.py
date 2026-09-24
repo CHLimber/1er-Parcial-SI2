@@ -7,11 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario, get_encargado_actual
+from app.core.mutex import mutex_variante
 from app.modules.reservas.schemas import (
+    CancelarReservaIn,
     ClienteBreveOut,
     ItemRechazadoOut,
     MarcarPresenteIn,
     PrepararReservaIn,
+    RechazarReservaIn,
     ReservaCrear,
     ReservaItemOut,
     ReservaOut,
@@ -23,7 +26,12 @@ from app.modules.ventas.router import IVA_TASA, _alertar_stock_bajo
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
 
-ESTADOS_COLA_ENCARGADO = ("CONFIRMADA", "PREPARADA", "CLIENTE_PRESENTE")
+# PENDIENTE entra a la cola: es lo primero que el Encargado tiene que resolver (confirmar o
+# rechazar), 2.19.1.a
+ESTADOS_COLA_ENCARGADO = ("PENDIENTE", "CONFIRMADA", "PREPARADA", "CLIENTE_PRESENTE")
+
+# Estados en los que la reserva todavia compromete stock y el cliente puede cancelarla (2.19.2)
+ESTADOS_CANCELABLES_CLIENTE = ("PENDIENTE", "CONFIRMADA", "PREPARADA")
 
 
 def _exigir_cliente(usuario: dict) -> None:
@@ -148,6 +156,29 @@ async def crear_reserva(
             )
 
     variante_ids = [item.variante_id for item in body.items]
+
+    # Mutex de aplicacion (app/core/mutex.py): serializa, dentro de este proceso, las reservas
+    # que compiten por la MISMA prenda+sucursal -- se ordena por id antes de adquirir para no
+    # generar un deadlock si dos pedidos piden las mismas 2 prendas en orden distinto. El
+    # candado que de verdad evita que 2 clientes se lleven la ultima unidad (entre procesos e
+    # instancias) sigue siendo el FOR UPDATE de fn_mover_inventario en la base de datos.
+    locks = [mutex_variante(body.sucursal_id, vid) for vid in sorted(set(variante_ids), key=str)]
+    for lock in locks:
+        await lock.acquire()
+    try:
+        return await _crear_reserva_pendiente(conn, usuario, body, sucursal, variante_ids)
+    finally:
+        for lock in locks:
+            lock.release()
+
+
+async def _crear_reserva_pendiente(
+    conn: asyncpg.Connection,
+    usuario: dict,
+    body: ReservaCrear,
+    sucursal: asyncpg.Record,
+    variante_ids: list[UUID],
+) -> ReservaOut:
     filas = await conn.fetch(
         """
         SELECT pv.id AS variante_id, pv.sku, pv.activa, p.nombre AS producto,
@@ -206,12 +237,20 @@ async def crear_reserva(
     horas_vigencia = int(config["valor"]) if config else 4
     codigo = f"RES-{uuid4().hex[:10].upper()}"
 
+    # 2.19.1.a: la reserva nace PENDIENTE -- la sucursal tiene que recibirla y confirmarla
+    # (POST /reservas/{id}/confirmar) o rechazarla. El stock se compromete igual desde ahora, al
+    # insertar reserva_detalle, para que otro cliente no se lleve la misma prenda mientras tanto.
     async with conn.transaction():
         reserva = await conn.fetchrow(
             """
             INSERT INTO reserva (usuario_id, sucursal_id, codigo, fecha_visita, hora_visita,
                                   expira_en, observaciones, estado)
-            VALUES ($1, $2, $3, $4, $5, now() + make_interval(hours => $6), $7, 'CONFIRMADA')
+            -- la vigencia corre desde la VISITA (hora de Bolivia), no desde la creacion: si no,
+            -- una reserva para maniana la venceria el job antes de que la clienta llegue
+            VALUES ($1, $2, $3, $4, $5,
+                    GREATEST(now(), ($4::date + $5::time) AT TIME ZONE 'America/La_Paz')
+                        + make_interval(hours => $6),
+                    $7, 'PENDIENTE')
             RETURNING id, codigo, sucursal_id, estado, fecha_visita, hora_visita, expira_en,
                       creada_en, observaciones
             """,
@@ -282,7 +321,7 @@ async def crear_reserva(
         )
         mensaje = (
             f"Nueva reserva {codigo} para el {body.fecha_visita} a las {body.hora_visita}, "
-            f"{len(items_confirmados)} prenda(s)."
+            f"{len(items_confirmados)} prenda(s). Pendiente de tu confirmacion."
         )
         for empleado in empleados:
             await conn.execute(
@@ -335,23 +374,176 @@ async def listar_mis_reservas(
     ids = [fila["id"] for fila in reservas]
     detalles_por_reserva = await _cargar_items_por_reserva(conn, ids)
 
-    return [
-        ReservaOut(
-            id=fila["id"],
-            codigo=fila["codigo"],
-            sucursal_id=fila["sucursal_id"],
-            sucursal=fila["sucursal"],
-            estado=fila["estado"],
-            fecha_visita=fila["fecha_visita"],
-            hora_visita=fila["hora_visita"],
-            expira_en=fila["expira_en"],
-            creada_en=fila["creada_en"],
-            observaciones=fila["observaciones"],
-            items=detalles_por_reserva.get(fila["id"], []),
-            items_rechazados=[],
+    return [_reserva_cliente_out(fila, detalles_por_reserva.get(fila["id"], [])) for fila in reservas]
+
+
+def _reserva_cliente_out(fila: asyncpg.Record, items: list[ReservaItemOut]) -> ReservaOut:
+    return ReservaOut(
+        id=fila["id"],
+        codigo=fila["codigo"],
+        sucursal_id=fila["sucursal_id"],
+        sucursal=fila["sucursal"],
+        estado=fila["estado"],
+        fecha_visita=fila["fecha_visita"],
+        hora_visita=fila["hora_visita"],
+        expira_en=fila["expira_en"],
+        creada_en=fila["creada_en"],
+        observaciones=fila["observaciones"],
+        items=items,
+        items_rechazados=[],
+    )
+
+
+async def _liberar_compromiso(
+    conn: asyncpg.Connection,
+    reserva_id: UUID,
+    sucursal_id: UUID,
+    motivo: str,
+    usuario_id: UUID,
+) -> None:
+    """Libera (LIBERACION via fn_mover_inventario) el stock que la reserva todavia compromete --
+    items RESERVADO o PREPARADO -- y los deja DESCARTADO. Pasar a DESCARTADO en la misma
+    transaccion es lo que evita una doble liberacion: ni fn_expirar_reservas ni otro endpoint
+    vuelven a tocar un item DESCARTADO. Debe llamarse con la reserva ya bloqueada (FOR UPDATE)."""
+    pendientes = await conn.fetch(
+        "SELECT variante_id, cantidad FROM reserva_detalle "
+        "WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')",
+        reserva_id,
+    )
+    for item in pendientes:
+        await conn.execute(
+            "SELECT fn_mover_inventario($1, $2, 'LIBERACION', $3, $4, 'RESERVA', $5, $6)",
+            sucursal_id,
+            item["variante_id"],
+            item["cantidad"],
+            motivo[:200],  # movimiento_inventario.motivo es VARCHAR(200)
+            reserva_id,
+            usuario_id,
         )
-        for fila in reservas
-    ]
+    await conn.execute(
+        "UPDATE reserva_detalle SET estado_item = 'DESCARTADO' "
+        "WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')",
+        reserva_id,
+    )
+
+
+async def _exigir_vigente(conn: asyncpg.Connection, reserva_id: UUID) -> None:
+    """Una reserva cuyo expira_en ya paso le pertenece a fn_expirar_reservas (el job la pasa a
+    EXPIRADA y libera su stock). Si ademas la cancelaramos/confirmaramos aca, el job podria haber
+    leido sus items antes de nuestro commit y liberar el stock dos veces. clock_timestamp() y no
+    now(): now() es la hora de inicio de la transaccion."""
+    vencida = await conn.fetchval(
+        "SELECT expira_en < clock_timestamp() FROM reserva WHERE id = $1", reserva_id
+    )
+    if vencida:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La reserva ya vencio; el sistema la esta expirando",
+        )
+
+
+async def _exigir_sin_pago_en_curso(conn: asyncpg.Connection, reserva_id: UUID) -> None:
+    """Si el cliente ya paso por el checkout con un carrito armado desde esta reserva (CU05), hay
+    una venta PENDIENTE con venta.reserva_id: cuando el pago se apruebe, tg_venta_descuenta_stock
+    va a LIBERAR el compromiso de la reserva antes de descontar. Si la cancelaramos ahora, ese
+    compromiso se liberaria dos veces."""
+    en_curso = await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM venta WHERE reserva_id = $1 AND estado = 'PENDIENTE')",
+        reserva_id,
+    )
+    if en_curso:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Hay un pago en curso por las prendas de esta reserva; espera a que se resuelva",
+        )
+
+
+@router.post("/{reserva_id}/cancelar", response_model=ReservaOut)
+async def cancelar_reserva(
+    reserva_id: UUID,
+    body: CancelarReservaIn | None = None,
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ReservaOut:
+    """2.19.2: el cliente cancela su propia reserva mientras todavia no paso por el vestidor
+    (PENDIENTE, CONFIRMADA o PREPARADA). Libera el stock comprometido y avisa a los encargados de
+    la sucursal."""
+    _exigir_cliente(usuario)
+    motivo_cliente = body.motivo.strip() if body and body.motivo and body.motivo.strip() else None
+
+    async with conn.transaction():
+        # FOR UPDATE: si el Encargado esta confirmando/preparando la misma reserva, uno de los dos
+        # espera al otro y despues ve el estado ya actualizado.
+        reserva = await conn.fetchrow(
+            """
+            SELECT r.id, r.codigo, r.usuario_id, r.sucursal_id, r.estado
+            FROM reserva r
+            WHERE r.id = $1
+            FOR UPDATE
+            """,
+            reserva_id,
+        )
+        if reserva is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reserva no encontrada")
+        if reserva["usuario_id"] != usuario["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo puedes cancelar tus propias reservas",
+            )
+        if reserva["estado"] not in ESTADOS_CANCELABLES_CLIENTE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Una reserva en estado {reserva['estado']} ya no se puede cancelar",
+            )
+        await _exigir_vigente(conn, reserva_id)
+        await _exigir_sin_pago_en_curso(conn, reserva_id)
+
+        motivo_kardex = "Reserva cancelada por el cliente"
+        if motivo_cliente:
+            motivo_kardex += f": {motivo_cliente}"
+        await _liberar_compromiso(
+            conn, reserva_id, reserva["sucursal_id"], motivo_kardex, usuario["id"]
+        )
+
+        # atendida_por_id = el cliente: es la columna que tg_reserva_historial usa para firmar el
+        # cambio de estado, y el que cancelo fue el cliente, no el ultimo encargado que la toco.
+        await conn.execute(
+            "UPDATE reserva SET estado = 'CANCELADA', atendida_por_id = $1 WHERE id = $2",
+            usuario["id"],
+            reserva_id,
+        )
+
+        encargados = await conn.fetch(
+            "SELECT usuario_id FROM empleado "
+            "WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'",
+            reserva["sucursal_id"],
+        )
+        mensaje = f"El cliente cancelo la reserva {reserva['codigo']}; el stock ya se libero."
+        if motivo_cliente:
+            mensaje += f" Motivo: {motivo_cliente}"
+        for encargado in encargados:
+            await conn.execute(
+                """
+                INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+                VALUES ($1, 'RESERVA', 'Reserva cancelada por el cliente', $2, 'RESERVA', $3)
+                """,
+                encargado["usuario_id"],
+                mensaje,
+                reserva_id,
+            )
+
+        fila = await conn.fetchrow(
+            """
+            SELECT r.id, r.codigo, r.sucursal_id, s.nombre AS sucursal, r.estado,
+                   r.fecha_visita, r.hora_visita, r.expira_en, r.creada_en, r.observaciones
+            FROM reserva r
+            JOIN sucursal s ON s.id = r.sucursal_id
+            WHERE r.id = $1
+            """,
+            reserva_id,
+        )
+        items = (await _cargar_items_por_reserva(conn, [reserva_id])).get(reserva_id, [])
+        return _reserva_cliente_out(fila, items)
 
 
 # --- CU08: Atender Reserva ---------------------------------------------------
@@ -436,6 +628,110 @@ async def obtener_reserva_sucursal(
     return await _reserva_staff_out(conn, reserva)
 
 
+async def _notificar_cliente(
+    conn: asyncpg.Connection, reserva: asyncpg.Record, titulo: str, mensaje: str
+) -> None:
+    await conn.execute(
+        """
+        INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+        VALUES ($1, 'RESERVA', $2, $3, 'RESERVA', $4)
+        """,
+        reserva["usuario_id"],
+        titulo,
+        mensaje,
+        reserva["id"],
+    )
+
+
+@router.post("/{reserva_id}/confirmar", response_model=ReservaStaffOut)
+async def confirmar_reserva(
+    reserva_id: UUID,
+    encargado: dict = Depends(get_encargado_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ReservaStaffOut:
+    """2.19.1.a: la sucursal recibe la reserva y la acepta (PENDIENTE -> CONFIRMADA). El stock ya
+    estaba comprometido desde que el cliente reservo; aca solo cambia el estado."""
+    async with conn.transaction():
+        reserva = await _obtener_reserva_staff(
+            conn, reserva_id, encargado["sucursal_id"], para_actualizar=True
+        )
+        if reserva["estado"] != "PENDIENTE":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La reserva no esta en estado PENDIENTE",
+            )
+        await _exigir_vigente(conn, reserva_id)
+
+        # atendida_por_id firma el cambio en reserva_historial (tg_reserva_historial)
+        await conn.execute(
+            "UPDATE reserva SET estado = 'CONFIRMADA', atendida_por_id = $1 WHERE id = $2",
+            encargado["usuario_id"],
+            reserva_id,
+        )
+        await _notificar_cliente(
+            conn,
+            reserva,
+            "Reserva confirmada",
+            f"La sucursal {reserva['sucursal']} confirmo tu reserva {reserva['codigo']} para el "
+            f"{reserva['fecha_visita']} a las {reserva['hora_visita'].strftime('%H:%M')}.",
+        )
+
+        reserva = await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"])
+        return await _reserva_staff_out(conn, reserva)
+
+
+@router.post("/{reserva_id}/rechazar", response_model=ReservaStaffOut)
+async def rechazar_reserva(
+    reserva_id: UUID,
+    body: RechazarReservaIn,
+    encargado: dict = Depends(get_encargado_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ReservaStaffOut:
+    """2.19.1.a: la sucursal no puede atender la reserva (PENDIENTE -> CANCELADA). Se libera todo
+    el stock que comprometia y se le avisa al cliente con el motivo."""
+    motivo = body.motivo.strip()
+    if len(motivo) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Indica el motivo del rechazo",
+        )
+
+    async with conn.transaction():
+        reserva = await _obtener_reserva_staff(
+            conn, reserva_id, encargado["sucursal_id"], para_actualizar=True
+        )
+        if reserva["estado"] != "PENDIENTE":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Solo se puede rechazar una reserva PENDIENTE",
+            )
+        await _exigir_vigente(conn, reserva_id)
+        await _exigir_sin_pago_en_curso(conn, reserva_id)
+
+        await _liberar_compromiso(
+            conn,
+            reserva_id,
+            reserva["sucursal_id"],
+            f"Reserva rechazada por la sucursal: {motivo}",
+            encargado["usuario_id"],
+        )
+        await conn.execute(
+            "UPDATE reserva SET estado = 'CANCELADA', atendida_por_id = $1 WHERE id = $2",
+            encargado["usuario_id"],
+            reserva_id,
+        )
+        await _notificar_cliente(
+            conn,
+            reserva,
+            "Reserva rechazada",
+            f"La sucursal {reserva['sucursal']} no pudo aceptar tu reserva {reserva['codigo']}. "
+            f"Motivo: {motivo}",
+        )
+
+        reserva = await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"])
+        return await _reserva_staff_out(conn, reserva)
+
+
 @router.post("/{reserva_id}/preparar", response_model=ReservaStaffOut)
 async def preparar_reserva(
     reserva_id: UUID,
@@ -511,7 +807,12 @@ async def preparar_reserva(
             reserva_id,
         )
         nuevo_estado = "PREPARADA" if quedan_preparadas > 0 else "CANCELADA"
-        await conn.execute("UPDATE reserva SET estado = $1 WHERE id = $2", nuevo_estado, reserva_id)
+        await conn.execute(
+            "UPDATE reserva SET estado = $1, atendida_por_id = $2 WHERE id = $3",
+            nuevo_estado,
+            encargado["usuario_id"],
+            reserva_id,
+        )
 
         reserva = await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"])
         return await _reserva_staff_out(conn, reserva)
@@ -726,24 +1027,23 @@ async def marcar_no_presentado(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Solo se puede expirar una reserva CONFIRMADA o PREPARADA",
             )
+        # mismo motivo que en cancelar/rechazar: si la clienta ya esta pagando estas prendas
+        # online, el trigger de la venta liberaria el compromiso otra vez al aprobarse el pago
+        await _exigir_sin_pago_en_curso(conn, reserva_id)
 
-        pendientes = await conn.fetch(
-            "SELECT variante_id, cantidad FROM reserva_detalle "
-            "WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')",
+        await _liberar_compromiso(
+            conn,
+            reserva_id,
+            reserva["sucursal_id"],
+            "Reserva expirada sin presentacion del cliente",
+            encargado["usuario_id"],
+        )
+
+        await conn.execute(
+            "UPDATE reserva SET estado = 'EXPIRADA', atendida_por_id = $1 WHERE id = $2",
+            encargado["usuario_id"],
             reserva_id,
         )
-        for item in pendientes:
-            await conn.execute(
-                "SELECT fn_mover_inventario($1, $2, 'LIBERACION', $3, $4, 'RESERVA', $5, $6)",
-                reserva["sucursal_id"],
-                item["variante_id"],
-                item["cantidad"],
-                "Reserva expirada sin presentacion del cliente",
-                reserva_id,
-                encargado["usuario_id"],
-            )
-
-        await conn.execute("UPDATE reserva SET estado = 'EXPIRADA' WHERE id = $1", reserva_id)
 
         reserva = await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"])
         return await _reserva_staff_out(conn, reserva)

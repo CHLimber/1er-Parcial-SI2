@@ -102,6 +102,18 @@ class ResolverReservaIn(BaseModel):
     monto_recibido: float | None = Field(default=None, ge=0)
 
 
+class RechazarReservaIn(BaseModel):
+    """2.19.1.a: el Encargado rechaza una reserva PENDIENTE; el motivo le llega al cliente."""
+
+    motivo: str = Field(min_length=3, max_length=150)
+
+
+class CancelarReservaIn(BaseModel):
+    """2.19.2: el cliente cancela su propia reserva; el motivo es opcional."""
+
+    motivo: str | None = Field(default=None, max_length=150)
+
+
 class ResolverReservaOut(BaseModel):
     reserva: ReservaStaffOut
     venta_id: UUID | None

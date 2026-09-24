@@ -17,10 +17,12 @@ from app.modules.caja.router import router as caja_router
 from app.modules.carrito.router import router as carrito_router
 from app.modules.catalogo.admin_router import router as catalogo_admin_router
 from app.modules.catalogo.router import router as catalogo_router
+from app.modules.devoluciones.router import router as devoluciones_router
 from app.modules.direcciones.router import router as direcciones_router
 from app.modules.envios.admin_router import router as envios_admin_router
 from app.modules.envios.router import router as envios_router
 from app.modules.inventario.router import router as inventario_router
+from app.modules.notificaciones.router import router as notificaciones_router
 from app.modules.pagos.router import router as pagos_router
 from app.modules.proveedores.router import router as proveedores_router
 from app.modules.recepciones.router import router as recepciones_router
@@ -29,6 +31,7 @@ from app.modules.reportes.router import router as reportes_router
 from app.modules.reservas.router import router as reservas_router
 from app.modules.sucursales.admin_router import router as sucursales_admin_router
 from app.modules.sucursales.router import router as sucursales_router
+from app.modules.traspasos.router import router as traspasos_router
 from app.modules.usuarios.admin_router import router as usuarios_admin_router
 from app.modules.usuarios.router import router as usuarios_router
 from app.modules.ventas.router import router as ventas_router
@@ -113,6 +116,9 @@ app.include_router(auditoria_router)
 app.include_router(direcciones_router)
 app.include_router(envios_router)
 app.include_router(envios_admin_router)
+app.include_router(notificaciones_router)
+app.include_router(devoluciones_router)
+app.include_router(traspasos_router)
 
 
 @app.get("/health")

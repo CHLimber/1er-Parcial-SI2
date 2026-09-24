@@ -54,3 +54,44 @@ export interface SesionCerradaOut {
   diferencia: number;
   estado: string;
 }
+
+/** 2.19.1.b/c: pedido online con pago EFECTIVO o QR que espera al cajero. */
+export interface ItemPagoPendienteOut {
+  sku: string;
+  producto: string;
+  talla: string;
+  color: string;
+  cantidad: number;
+}
+
+export interface PagoPorVerificarOut {
+  pago_id: string;
+  venta_id: string;
+  numero: string;
+  fecha: string;
+  cliente: string;
+  cliente_email: string;
+  metodo: 'EFECTIVO' | 'QR';
+  entrega: string;
+  total: number;
+  costo_envio: number;
+  /** Solo QR: null = la clienta todavía no avisó que pagó. */
+  informado_en: string | null;
+  referencia_cliente: string | null;
+  /** La clienta cambió su carrito después del checkout: no se puede aprobar, solo rechazar. */
+  carrito_modificado: boolean;
+  items: ItemPagoPendienteOut[];
+}
+
+export interface RechazarPagoIn {
+  motivo: string | null;
+}
+
+export interface ResolucionPagoOut {
+  pago_id: string;
+  venta_id: string;
+  numero: string;
+  venta_estado: string;
+  pago_estado: string;
+  mensaje: string;
+}

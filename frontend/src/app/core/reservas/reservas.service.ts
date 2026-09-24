@@ -4,8 +4,10 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
+  CancelarReservaIn,
   MarcarPresenteIn,
   PrepararReservaIn,
+  RechazarReservaIn,
   ReservaCrear,
   ReservaOut,
   ReservaStaffOut,
@@ -26,6 +28,11 @@ export class ReservasService {
     return this.http.get<ReservaOut[]>(this.base);
   }
 
+  /** 2.19.2: solo el duenio, en PENDIENTE/CONFIRMADA/PREPARADA; libera el stock. */
+  cancelarReserva(reservaId: string, datos: CancelarReservaIn = {}): Observable<ReservaOut> {
+    return this.http.post<ReservaOut>(`${this.base}/${reservaId}/cancelar`, datos);
+  }
+
   // --- CU08: Atender Reserva (Encargado de Sucursal) ------------------------
 
   listarReservasSucursal(estado?: string): Observable<ReservaStaffOut[]> {
@@ -35,6 +42,16 @@ export class ReservasService {
 
   obtenerReservaSucursal(reservaId: string): Observable<ReservaStaffOut> {
     return this.http.get<ReservaStaffOut>(`${this.base}/sucursal/${reservaId}`);
+  }
+
+  /** 2.19.1.a: PENDIENTE -> CONFIRMADA. */
+  confirmarReserva(reservaId: string): Observable<ReservaStaffOut> {
+    return this.http.post<ReservaStaffOut>(`${this.base}/${reservaId}/confirmar`, {});
+  }
+
+  /** 2.19.1.a: PENDIENTE -> CANCELADA, libera el stock y avisa al cliente. */
+  rechazarReserva(reservaId: string, datos: RechazarReservaIn): Observable<ReservaStaffOut> {
+    return this.http.post<ReservaStaffOut>(`${this.base}/${reservaId}/rechazar`, datos);
   }
 
   prepararReserva(reservaId: string, datos: PrepararReservaIn): Observable<ReservaStaffOut> {

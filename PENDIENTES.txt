@@ -571,7 +571,7 @@
       de stock fantasma en un paso intermedio de esta misma verificacion y
       hubo que corregir aparte).
 
-[2.7] Tablas del esquema sin ningun uso en el backend (0 referencias):
+[2.7] [HECHO 2026-09-24, ver 2.19.7] Tablas del esquema sin ningun uso en el backend (0 referencias):
       traspaso, devolucion. Estan en db/01_schema.sql pero ningun modulo las toca.
       Decidir si entran en el alcance o se documentan como fuera de el.
       [CORREGIDO 2026-09-18] Esta entrada decia tambien "resena, favorito" -- no
@@ -1642,11 +1642,177 @@
       shared/validacion-password.ts) o `validarPassword`/`ListaRequisitosPassword` (movil,
       compartido/widgets.dart) en vez de escribir la regla de nuevo.
 
+[2.19] [HECHO 2026-09-24, salvo lo listado en "QUEDA ABIERTO" al final; relevado el mismo dia] Auditoria contra la rubrica de la defensa y contra
+      Instrucciones.md. El relevamiento original se conserva abajo; lo hecho esta en
+      "RESOLUCION". El orden sugerido original era
+      2.19.1 -> 2.19.2 -> 2.19.3 -> 2.19.4 -> 2.19.5. ANTES de 2.19.1 y 2.19.3 hay que
+      confirmar la lista final de actores (2.19.1.d), porque cambia cargo_empleado y el seed
+      (y requiere migracion en Railway).
+
+      [2.19.1] Procesos que hoy se APRUEBAN SOLOS y deberian pasar por el personal
+               (pedido del usuario: "muchos procedimientos se hicieron como que se aprobaban
+               automaticamente mientras que tienen que pasar por un encargado/cajero").
+         a) Reserva (CU04/CU08): reservas/router.py::crear_reserva inserta la reserva con
+            estado 'CONFIRMADA'. La consigna dice "la sucursal debera recibir la reserva y
+            preparar las prendas". Cambio: nacer 'PENDIENTE' (el stock se sigue
+            comprometiendo al insertar reserva_detalle, para no perder la proteccion contra
+            carreras) y agregar endpoints para que el ENCARGADO confirme o rechace (rechazo =
+            LIBERACION de cada item + notificacion al cliente). preparar_reserva hoy exige
+            'CONFIRMADA', queda igual. fn_expirar_reservas ya contempla 'PENDIENTE'.
+            Web (atender reservas) y movil (atender_reservas_pagina.dart) necesitan los
+            botones nuevos; mis-reservas debe mostrar "pendiente de confirmacion".
+         b) Pago EFECTIVO en el checkout online: ventas/router.py:519 llama a
+            confirmar_aprobado al instante -> descuenta stock y emite comprobante sin que
+            nadie haya cobrado. Cambio: el pago queda PENDIENTE; lo aprueba el CAJERO al
+            cobrar en caja (retiro en sucursal) o se aprueba al marcar el envio ENTREGADO
+            (contra entrega). OJO: mientras este PENDIENTE el stock no esta apartado (hoy
+            venta_detalle se inserta recien al aprobar); decidir si se compromete stock en el
+            checkout (movimiento RESERVA) o se acepta el riesgo del reembolso.
+         c) Pago QR: la propia clienta pulsa "Aprobar" en /pago-simulado y
+            POST /pagos/webhook/{pasarela} no exige autenticacion -- cualquiera puede aprobar
+            su propio pago. Cambio: la clienta solo informa "ya pague" y el CAJERO verifica el
+            deposito y aprueba/rechaza desde caja con un permiso (p.ej. pagos.verificar).
+            Sacar el webhook QR publico o protegerlo.
+         d) Reduccion de actores propuesta (a confirmar con el usuario):
+            humanos = Cliente, Administrador, Encargado de sucursal (absorbe ALMACEN:
+            recepciones, ajustes, confirmar reservas) y Cajero (cobros, verificacion de QR y
+            efectivo); secundarios = Sistema de pagos, Servicio de IA, delivery externo.
+            Se eliminarian VENDEDOR y ALMACEN de cargo_empleado y Proveedor como actor
+            (no tiene acceso al sistema, sus datos los carga el Administrador en CU11).
+            Al tocar CU07/CU08 aprovechar para migrarlos a requiere_permiso (ver 3.1).
+
+      [2.19.2] Cliente no puede CANCELAR una reserva (Instrucciones.md, actor Cliente:
+               "Consultar y cancelar reservas"). No hay endpoint ni boton en web ni movil.
+               Agregar POST /reservas/{id}/cancelar (solo el duenio, solo en
+               PENDIENTE/CONFIRMADA/PREPARADA) que haga LIBERACION de los items
+               RESERVADO/PREPARADO y deje la reserva 'CANCELADA'.
+
+      [2.19.3] Notificaciones que nadie lee. La tabla notificacion se escribe (reserva
+               nueva al encargado, pago rechazado, reembolso, envio, stock bajo) pero no hay
+               GET /notificaciones ni pantalla en web/movil. Ademas confirmar_aprobado
+               (pagos/servicio.py) NO inserta ninguna notificacion de "pago aprobado".
+               Afecta a la rubrica ("el cliente puede recibir confirmaciones de su
+               transaccion") y a RF11 (notificar reservas a la sucursal). Cambio: modulo
+               notificaciones/ (listar, marcar leida), campana en web y movil, y notificar
+               tambien la aprobacion del pago y la confirmacion/rechazo de reservas.
+
+      [2.19.4] Recomendaciones (CU17) solo usan el historial por categoria. La rubrica
+               pregunta por "talla, historial o disponibilidad" y la consigna por
+               "preferencias, historial, temporada, categoria, talla y disponibilidad".
+               Hoy no se filtra por disponibilidad (devuelve prendas con agotado=true), ni se
+               prioriza la talla que la clienta mas compra/reserva, ni la temporada activa.
+               Cambio en recomendaciones/router.py: excluir agotados, ordenar por talla
+               habitual y temporada activa, y reflejarlo en el campo `motivo`.
+
+      [2.19.5] Consolidado de existencias incompleto. v_disponibilidad.situacion solo da
+               DISPONIBLE/RESERVADA/AGOTADA; la consigna pide "disponibles, reservadas,
+               vendidas, agotadas o proximas a ingresar". Vendidas sale de venta_detalle /
+               kardex SALIDA y proximas a ingresar de recepciones en BORRADOR (hoy solo en
+               reportes). Juntarlo en una sola vista/reporte.
+
+      [2.19.6] Notas para la defensa (no requieren codigo):
+         - El stock se lleva por CANTIDAD de variante (talla x color), no por unidad con
+           serie: "la prenda reservada" es una unidad de cantidad_reservada.
+         - La compra online no aparta stock entre checkout y pago: si dos clientes pagan la
+           ultima unidad, al segundo se le reembolsa (confirmar_aprobado). Relacionado con
+           2.19.1.b.
+         - El mutex de 4.7 no se probo con 2 requests concurrentes reales; la garantia es el
+           FOR UPDATE de fn_mover_inventario.
+         - Verificar que el documento (.docx) tenga el diagrama de estados UML de reserva y
+           de reserva_detalle.estado_item; no esta en el repo.
+         - Siguen sin implementar devoluciones (objetivo 11 de la consigna) y traspasos
+           (ver 2.7).
+         - CLAUDE.md esta desactualizado: menciona LIBELULA (hoy pasarela 'QR') y el cargo
+           REPARTIDOR (eliminado en 2.16). [HECHO 2026-09-24: CLAUDE.md actualizado]
+         - Devoluciones y traspasos [HECHO 2026-09-24, ver 2.19.7]. Diagramas UML de estados
+           [HECHO 2026-09-24: ..\ducumentacion\uml\, 8 diagramas PlantUML + PNG].
+
+      ---------------------------------------------------------------------------------
+      RESOLUCION 2026-09-24 (hecha con agentes en paralelo, integrada y probada en vivo)
+      ---------------------------------------------------------------------------------
+      [2.19.1.a] Reserva nace PENDIENTE (el stock ya se compromete). POST
+         /reservas/{id}/confirmar y /rechazar {motivo} para el ENCARGADO; ambos firman
+         atendida_por_id y notifican al cliente. Helper _liberar_compromiso compartido con
+         no-presentado (que antes dejaba items RESERVADO/PREPARADO en una reserva EXPIRADA).
+         Guardas 409: reserva ya vencida y venta PENDIENTE ligada (evita doble LIBERACION;
+         aplicada tambien a no-presentado). expira_en ahora corre desde la hora de VISITA
+         (America/La_Paz) + reserva_horas_vigencia: antes una reserva para maniana la vencia
+         el job a las 4h de creada.
+      [2.19.1.b/c] Checkout EFECTIVO ya no se aprueba solo y se elimino el webhook publico del
+         QR. La clienta informa el QR (POST /pagos/qr/{venta_id}/informar). El CAJERO resuelve
+         ambos: GET /caja/pagos-pendientes, POST /caja/pagos/{pago_id}/aprobar|rechazar (FOR
+         UPDATE pago->venta, 409 si ya se resolvio, si cambio el carrito o si es EFECTIVO sin
+         sesion de caja abierta; el efectivo se ata a la sesion y entra al arqueo). Columnas
+         nuevas pago.informado_en/referencia_cliente/verificado_por_id. confirmar_aprobado
+         notifica "Pago aprobado"; si el stock o el carrito cambiaron anula la venta
+         (REEMBOLSADO si ya se cobro -- con Stripe se pide el Refund REAL a la API --,
+         RECHAZADO si era efectivo). La reserva solo pasa a CONVERTIDA si no quedan items
+         RESERVADO ni PREPARADO (antes un PREPARADO quedaba comprometido para siempre).
+         Carrito bloqueado (409) mientras haya un pedido EFECTIVO/QR pendiente; checkout
+         bloquea carrito y reserva con FOR UPDATE. jobs.py anula pedidos EFECTIVO/QR sin
+         informar pasadas configuracion.pago_pendiente_horas_vigencia (48h).
+      [2.19.1.d] Actores: Cliente, Administrador, Encargado (absorbe Almacen, puede cubrir
+         caja), Cajero; secundarios Sistema de pagos, Servicio de IA, delivery externo.
+         cargo_empleado = (ENCARGADO, CAJERO); roles VENDEDOR/ALMACEN y Proveedor-actor
+         eliminados. Seed: cada sucursal con 1 encargado y 1 cajero (vendedor.scz ->
+         cajera.scz, almacen.scz -> encargado.cbba, nueva cajera.lapaz). 3.1: get_cajero_actual
+         exige 'caja.crear' y get_encargado_actual 'reservas.actualizar' (+ fila de empleado);
+         web y movil muestran /caja y /atender-reservas por permiso.
+      [2.19.2] POST /reservas/{id}/cancelar para la clienta duenia (PENDIENTE/CONFIRMADA/
+         PREPARADA), libera stock y avisa a los encargados. Boton en web y movil.
+      [2.19.3] Modulo notificaciones/ (listar paginado, contador, marcar leida, leer todas).
+         Campana web en tienda, panel-shell, caja y atender-reservas; movil con
+         NotificacionesService + pagina /notificaciones. Navegacion por permiso (no por rol).
+      [2.19.4] CU17 puntua por historial (categorias top 3), talla habitual (historial o
+         perfil_cliente), temporada activa/liquidacion, promocion, color favorito y
+         destacado; nunca recomienda prendas sin stock. `motivo` explica la senal.
+      [2.19.5] Vista v_existencias_consolidadas (DISPONIBLE/RESERVADA/PROXIMA_A_INGRESAR/
+         AGOTADA + vendidas + proximas_a_ingresar), GET /reportes/existencias, solapa
+         "Existencias" en panel-reportes y herramienta para el Reporte con IA.
+      [2.19.7] Devoluciones y traspasos (cierra 2.7), backend + web (movil no, igual que
+         panel-inventario). Stock movido solo por triggers tg_devolucion_stock (al APROBAR,
+         DEVOLUCION) y tg_traspaso_stock (despachar = TRASPASO_SAL, recibir = TRASPASO_ENT por
+         lo recibido, anular EN_TRANSITO = vuelve al origen). Devolucion SOLICITADA -> el
+         encargado aprueba/rechaza; reembolso prorrateado sobre total - envio; pago
+         REEMBOLSADO solo si la devolucion es total. Permisos devoluciones.* y traspasos.*
+         para ADMIN y ENCARGADO. Paginas /panel/devoluciones y /panel/traspasos.
+
+      VERIFICADO EN VIVO (Docker local, migraciones aplicadas sobre la base existente, no
+      down -v): prueba integral de 51 chequeos contra la API, todos OK -- reserva PENDIENTE ->
+      confirmar/rechazar/cancelar con stock correcto, 2 clientes reservando la ultima unidad a
+      la vez (una 201, otra 409, disponible 0), efectivo pendiente -> cajero aprueba (stock y
+      "Pago aprobado"), doble aprobacion 409, QR informado -> cajero rechaza, webhook QR
+      eliminado, notificaciones, recomendaciones sin agotados, consolidado, devolucion y
+      traspaso con kardex. Ademas: init limpio de 01/02/03 en un Postgres descartable, ng build,
+      flutter analyze y flutter test en verde.
+
+      RAILWAY (BLOQUEANTE, en este orden, despues de los scripts ya corridos alli):
+         db/reparaciones/consolidado_existencias.sql
+         db/reparaciones/pagos_verificacion_caja.sql
+         db/reparaciones/expirar_reservas_skip_locked.sql
+         db/reparaciones/reduccion_actores.sql   (despues de cu20_delivery_simplificado.sql;
+                                                  reiniciar el backend y volver a loguearse)
+         db/reparaciones/devoluciones_traspasos.sql
+         Si se re-corre permisos_cu13.sql, volver a correr reduccion_actores.sql y
+         devoluciones_traspasos.sql. Sin pagos_verificacion_caja.sql el checkout da 500.
+
+      QUEDA ABIERTO:
+         - Nada se probo en un navegador ni en el telefono (solo API + compilacion).
+         - El reembolso del QR (simulado) y de una devolucion lo hace la sucursal fuera del
+           sistema; solo Stripe devuelve la plata por API (y solo en la anulacion automatica).
+         - estado_item_res PROBADO no lo setea nadie (resolver va de PREPARADO a COMPRADO/
+           DESCARTADO).
+         - Una venta de retiro en tienda queda PAGADA y nunca pasa a ENTREGADA.
+         - Devoluciones: sin plazo maximo ni cambios de prenda; los reportes de ventas siguen
+           contando la venta devuelta por su monto completo.
+         - El mutex de app/core/mutex.py sigue sin probarse con varios workers (la garantia es
+           el FOR UPDATE, que si se probo en vivo).
+
 -------------------------------------------------------------------------------
  3. DEUDA TECNICA
 -------------------------------------------------------------------------------
 
-[3.1] CU07 y CU08 siguen autorizando por CARGO, no por permiso.
+[3.1] [HECHO 2026-09-24, ver 2.19.1.d] CU07 y CU08 siguen autorizando por CARGO, no por permiso.
       get_cajero_actual y get_encargado_actual (app/core/deps.py) validan
       empleado.cargo. Los permisos caja.operar, ventas.pos y reservas.atender
       existen y estan asignados, pero no se usan. Al tocar esos modulos hay que
@@ -1837,3 +2003,22 @@
 - Flujo de pago completo probado de punta a punta contra el backend local:
   checkout (canal MOVIL) -> webhook LIBELULA -> venta PAGADA con comprobante.
 - flutter analyze sin issues; flutter test 3/3 en verde.
+
+[4.7] [HECHO 2026-09-22] Mutex de aplicacion sobre CU04 (Reservar Prendas), pedido
+      para la defensa del punto de la rubrica "como se evita que 2 clientes
+      reserven simultaneamente la misma prenda". `app/core/mutex.py` agrega un
+      asyncio.Lock por (sucursal_id, variante_id), adquirido (ordenado por id,
+      para no generar deadlock si dos pedidos piden las mismas 2 prendas en
+      orden distinto) en `reservas/router.py::crear_reserva` antes de la
+      verificacion de disponibilidad y el insert en `reserva_detalle`.
+      OJO (aclarar en la defensa si preguntan): este mutex es un COMPLEMENTO
+      didactico, no el mecanismo de fondo. Solo serializa pedidos manejados por
+      el MISMO proceso de Uvicorn -- si el backend corre con --workers > 1 o
+      con varias replicas, cada proceso tiene su propio diccionario de locks y
+      no se enteran entre si. La garantia real, que ya existia antes de este
+      cambio y sigue siendo la que efectivamente evita la condicion de carrera
+      entre procesos/instancias, es el `SELECT ... FOR UPDATE` sobre la fila de
+      `inventario` dentro de `fn_mover_inventario()` (db/02_logica.sql:100-105).
+      FALTA: probar en vivo con 2 requests concurrentes reales (ahora mismo solo
+      se verifico que compila y que la logica no rompe el flujo normal de
+      reserva de un solo cliente).

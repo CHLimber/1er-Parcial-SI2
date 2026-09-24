@@ -15,6 +15,9 @@ ADMIN y ENCARGADO en db/03_datos_iniciales.sql):
   productos-sin-movimiento, top-clientes, ocupacion-cajas, recepciones-pendientes): una foto del
   estado actual, sin filtro de fecha, calculados sobre `inventario`/`reserva`/`envio`/
   `venta_detalle`/`venta`/`caja`+`sesion_caja`/`recepcion`.
+- "Existencias" (consolidado de existencias, PENDIENTES 2.19.5): tambien foto actual, pero por
+  variante x sucursal y paginado, sobre la vista `v_existencias_consolidadas` (db/02_logica.sql):
+  disponible / reservada / vendidas / agotada / proxima a ingresar en una sola fila.
 
 Un ENCARGADO solo ve su propia sucursal (igual que recepciones.py); un ADMIN (el que puede editar
 sucursales) ve la cadena completa y puede filtrar por sucursal. No hay motor de consultas
@@ -24,7 +27,7 @@ lectura para poblar el filtro de vendedor en la UI (staff de la sucursal visible
 reporte en si mismo.
 
 Cada consulta SQL vive en una funcion interna `_consultar_*(conn, ...)` que devuelve dict/list[dict]
-crudos (valores de plata ya convertidos a float, ver `_normalizar`). Los 11 endpoints HTTP de
+crudos (valores de plata ya convertidos a float, ver `_normalizar`). Los 12 endpoints HTTP de
 arriba son wrappers finitos sobre esas funciones; la seccion "IA / VOZ" de mas abajo (POST
 /reportes/consulta-ia) las reusa como "herramientas" de un loop de tool-use contra la API de
 Claude, para no duplicar el SQL de cada reporte una segunda vez.
@@ -48,11 +51,14 @@ from app.modules.reportes.schemas import (
     ConsultaIaIn,
     ConsultaIaOut,
     EnvioEstadoOut,
+    ExistenciaOut,
+    ExistenciasPaginadoOut,
     IndicadoresOut,
     ProductoRankingOut,
     ProductoSinMovimientoOut,
     RecepcionPendienteProveedorOut,
     ReservaEstadoOut,
+    ResumenExistenciasOut,
     StockSucursalOut,
     VendedorOut,
     VentaDiariaOut,
@@ -66,6 +72,8 @@ puede_ver = requiere_permiso("reportes.leer")
 VENTA_ESTADOS_CONTADOS = ("PAGADA", "ENTREGADA")
 CANAL_PATTERN = "^(WEB|MOVIL|POS)$"
 ENTREGA_PATTERN = "^(RETIRO_SUCURSAL|DOMICILIO)$"
+SITUACIONES_EXISTENCIA = ("DISPONIBLE", "RESERVADA", "PROXIMA_A_INGRESAR", "AGOTADA")
+SITUACION_PATTERN = "^(" + "|".join(SITUACIONES_EXISTENCIA) + ")$"
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
@@ -454,6 +462,68 @@ async def _consultar_recepciones_pendientes(conn: asyncpg.Connection, sucursal: 
     return [_normalizar(f) for f in filas]
 
 
+async def _consultar_existencias(
+    conn: asyncpg.Connection,
+    sucursal: UUID | None,
+    categoria_id: UUID | None,
+    busqueda: str | None,
+    situacion: str | None,
+    limite: int,
+    desplazamiento: int,
+) -> dict:
+    """Consolidado de existencias (v_existencias_consolidadas). El resumen respeta sucursal,
+    categoria y busqueda pero no la situacion (asi las tarjetas muestran la distribucion completa
+    aunque la tabla este filtrada); `total` si cuenta la situacion, porque es el que pagina."""
+    busqueda = (busqueda or "").strip() or None
+    resumen = await conn.fetchrow(
+        """
+        SELECT
+            COUNT(*) FILTER (WHERE $4::text IS NULL OR e.situacion = $4)   AS total,
+            COUNT(*)                                                       AS variantes_total,
+            COUNT(*) FILTER (WHERE e.situacion = 'DISPONIBLE')             AS variantes_disponibles,
+            COUNT(*) FILTER (WHERE e.situacion = 'RESERVADA')              AS variantes_reservadas,
+            COUNT(*) FILTER (WHERE e.situacion = 'PROXIMA_A_INGRESAR')     AS variantes_proximas_a_ingresar,
+            COUNT(*) FILTER (WHERE e.situacion = 'AGOTADA')                AS variantes_agotadas,
+            COALESCE(SUM(e.cantidad_fisica), 0)                            AS unidades_fisicas,
+            COALESCE(SUM(e.cantidad_reservada), 0)                         AS unidades_reservadas,
+            COALESCE(SUM(e.disponible), 0)                                 AS unidades_disponibles,
+            COALESCE(SUM(e.vendidas), 0)                                   AS unidades_vendidas,
+            COALESCE(SUM(e.proximas_a_ingresar), 0)                        AS unidades_por_ingresar
+        FROM v_existencias_consolidadas e
+        WHERE ($1::uuid IS NULL OR e.sucursal_id = $1)
+          AND ($2::uuid IS NULL OR e.categoria_id = $2)
+          AND ($3::text IS NULL OR e.producto ILIKE '%' || $3 || '%' OR e.sku ILIKE '%' || $3 || '%')
+        """,
+        sucursal,
+        categoria_id,
+        busqueda,
+        situacion,
+    )
+    filas = await conn.fetch(
+        """
+        SELECT e.producto_id, e.producto, e.categoria, e.variante_id, e.sku, e.talla, e.color,
+               e.sucursal_id, e.sucursal, e.cantidad_fisica, e.cantidad_reservada, e.disponible,
+               e.stock_minimo, e.vendidas, e.proximas_a_ingresar, e.situacion
+        FROM v_existencias_consolidadas e
+        WHERE ($1::uuid IS NULL OR e.sucursal_id = $1)
+          AND ($2::uuid IS NULL OR e.categoria_id = $2)
+          AND ($3::text IS NULL OR e.producto ILIKE '%' || $3 || '%' OR e.sku ILIKE '%' || $3 || '%')
+          AND ($4::text IS NULL OR e.situacion = $4)
+        ORDER BY e.producto, e.talla_orden, e.talla, e.color, e.sucursal
+        LIMIT $5 OFFSET $6
+        """,
+        sucursal,
+        categoria_id,
+        busqueda,
+        situacion,
+        limite,
+        desplazamiento,
+    )
+    datos = _normalizar(resumen)
+    total = datos.pop("total")
+    return {"total": total, "resumen": datos, "items": [_normalizar(f) for f in filas]}
+
+
 # ---------------------------------------------------------------------
 #  DINAMICOS: aceptan filtros de fecha / sucursal / canal
 # ---------------------------------------------------------------------
@@ -624,6 +694,33 @@ async def listar_recepciones_pendientes(
     return [RecepcionPendienteProveedorOut(**f) for f in filas]
 
 
+@router.get("/existencias", response_model=ExistenciasPaginadoOut)
+async def listar_existencias(
+    sucursal_id: UUID | None = Query(default=None),
+    categoria_id: UUID | None = Query(default=None),
+    busqueda: str | None = Query(default=None, max_length=100),
+    situacion: str | None = Query(default=None, pattern=SITUACION_PATTERN),
+    pagina: int = Query(default=1, ge=1),
+    tamanio_pagina: int = Query(default=50, ge=1, le=200),
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> ExistenciasPaginadoOut:
+    """Consolidado de existencias por variante x sucursal (foto actual): disponible, reservada,
+    vendidas (historicas, ventas PAGADA/ENTREGADA), proximas a ingresar (recepciones BORRADOR) y
+    la situacion derivada. Mismo alcance por sucursal que el resto de CU15."""
+    sucursal = _resolver_sucursal(staff, sucursal_id)
+    datos = await _consultar_existencias(
+        conn, sucursal, categoria_id, busqueda, situacion, tamanio_pagina, (pagina - 1) * tamanio_pagina
+    )
+    return ExistenciasPaginadoOut(
+        total=datos["total"],
+        pagina=pagina,
+        tamanio_pagina=tamanio_pagina,
+        resumen=ResumenExistenciasOut(**datos["resumen"]),
+        items=[ExistenciaOut(**f) for f in datos["items"]],
+    )
+
+
 @router.get("/vendedores", response_model=list[VendedorOut])
 async def listar_vendedores(
     sucursal_id: UUID | None = Query(default=None),
@@ -649,7 +746,7 @@ async def listar_vendedores(
 
 # ---------------------------------------------------------------------
 #  IA / VOZ: "Reporte con IA" -- consultas en lenguaje natural (texto o voz transcripta en el
-#  navegador con la Web Speech API, sin backend propio para eso) sobre los mismos 11 reportes de
+#  navegador con la Web Speech API, sin backend propio para eso) sobre los mismos 12 reportes de
 #  arriba. Mismo patron de tool-use que asistente/router.py (CU18): un loop contra la API de
 #  Claude con una herramienta por reporte, todas de solo lectura contra Postgres -- el modelo
 #  nunca inventa una cifra, solo puede citar lo que una herramienta devolvio en esta conversacion.
@@ -686,6 +783,7 @@ ETIQUETAS_TOOL: dict[str, str] = {
     "consultar_top_clientes": "Top clientes",
     "consultar_ocupacion_cajas": "Ocupación de cajas",
     "consultar_recepciones_pendientes": "Recepciones pendientes por proveedor",
+    "consultar_existencias": "Consolidado de existencias",
 }
 
 ETIQUETAS_CAMPO: dict[str, str] = {
@@ -721,6 +819,14 @@ ETIQUETAS_CAMPO: dict[str, str] = {
     "total_cajas": "Cajas totales",
     "cajas_abiertas": "Cajas abiertas",
     "proveedor": "Proveedor",
+    "categoria": "Categoría",
+    "sku": "SKU",
+    "cantidad_reservada": "Reservado",
+    "disponible": "Disponible",
+    "stock_minimo": "Stock mínimo",
+    "vendidas": "Vendidas",
+    "proximas_a_ingresar": "Por ingresar",
+    "situacion": "Situación",
 }
 
 _SYSTEM_PROMPT_IA = """\
@@ -862,6 +968,42 @@ HERRAMIENTAS_REPORTES = [
         "consultar_recepciones_pendientes",
         "Recepciones de mercaderia en borrador (no confirmadas) agrupadas por proveedor.",
     ),
+    # Propiedades simples y opcionales, sin union types ni strict: el limite de 16 parametros-
+    # union es del request completo (PENDIENTES 2.5.6) y esta herramienta no suma ninguno.
+    {
+        "name": "consultar_existencias",
+        "description": (
+            "Consolidado de existencias por prenda (variante talla x color) y sucursal, foto actual: "
+            "stock fisico, reservado, disponible, unidades vendidas historicas, unidades proximas a "
+            "ingresar (recepciones pendientes) y situacion (DISPONIBLE, RESERVADA, "
+            "PROXIMA_A_INGRESAR, AGOTADA), mas un resumen con los conteos por situacion. Usala para "
+            "preguntas como 'que prendas estan agotadas' o 'que esta por llegar'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sucursal_nombre": _PROP_SUCURSAL,
+                "categoria_nombre": {
+                    "type": "string",
+                    "description": "Nombre (o parte) de la categoria, ej. 'Vestidos'. Omitilo para no filtrar.",
+                },
+                "busqueda": {
+                    "type": "string",
+                    "description": "Parte del nombre de la prenda o del SKU. Omitilo para no filtrar.",
+                },
+                "situacion": {
+                    "type": "string",
+                    "enum": list(SITUACIONES_EXISTENCIA),
+                    "description": "Filtrar por situacion. Omitilo para todas.",
+                },
+                "limite": {
+                    "type": "integer",
+                    "description": "Cuantas filas traer como mucho (entre 1 y 200, sugerido 50).",
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -969,6 +1111,10 @@ async def _ejecutar_herramienta_reporte(
         avisos.append(aviso)
 
     categoria_id = vendedor_id = None
+    if nombre_tool == "consultar_existencias":
+        categoria_id, aviso = await _resolver_categoria_nombre(conn, entrada.get("categoria_nombre"))
+        if aviso:
+            avisos.append(aviso)
     if nombre_tool in _TOOLS_DINAMICOS:
         categoria_id, aviso = await _resolver_categoria_nombre(conn, entrada.get("categoria_nombre"))
         if aviso:
@@ -1008,6 +1154,26 @@ async def _ejecutar_herramienta_reporte(
         filas = await _consultar_ocupacion_cajas(conn, sucursal)
     elif nombre_tool == "consultar_recepciones_pendientes":
         filas = await _consultar_recepciones_pendientes(conn, sucursal)
+    elif nombre_tool == "consultar_existencias":
+        limite = min(max(int(limite_crudo), 1), 200) if isinstance(limite_crudo, int) else 50
+        situacion = entrada.get("situacion")
+        if situacion not in SITUACIONES_EXISTENCIA:
+            situacion = None
+        busqueda = entrada.get("busqueda") if isinstance(entrada.get("busqueda"), str) else None
+        datos = await _consultar_existencias(conn, sucursal, categoria_id, busqueda, situacion, limite, 0)
+        filas = datos["items"]
+        r = datos["resumen"]
+        # El resumen viaja como texto aparte (no entra en la tabla de la pantalla): asi Claude puede
+        # contestar "cuantas agotadas hay" aunque la tabla venga recortada por el limite.
+        avisos.append(
+            f"Resumen (sin filtro de situacion): {r['variantes_total']} variantes x sucursal -- "
+            f"{r['variantes_disponibles']} disponibles, {r['variantes_reservadas']} reservadas, "
+            f"{r['variantes_proximas_a_ingresar']} proximas a ingresar, {r['variantes_agotadas']} agotadas. "
+            f"Unidades: {r['unidades_fisicas']} fisicas, {r['unidades_reservadas']} reservadas, "
+            f"{r['unidades_disponibles']} disponibles, {r['unidades_vendidas']} vendidas, "
+            f"{r['unidades_por_ingresar']} por ingresar. Filas que cumplen los filtros: {datos['total']} "
+            f"(se listan hasta {limite})."
+        )
     else:
         return f"Herramienta desconocida: {nombre_tool}", [], titulo, []
 

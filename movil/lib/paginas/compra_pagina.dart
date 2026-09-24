@@ -173,24 +173,10 @@ class _CompraPaginaState extends State<CompraPagina> {
                             : Paleta.rojo,
                   ),
                   const SizedBox(height: 14),
-                  Titular(
-                    aprobado
-                        ? 'Pago confirmado'
-                        : pendiente
-                            ? 'Pago en proceso'
-                            : 'Pago rechazado',
-                    tamano: 28,
-                  ),
+                  Titular(_titulo(venta, estadoPago), tamano: 28),
                   const SizedBox(height: 8),
                   Text(
-                    aprobado
-                        ? 'Tu pedido ${venta.numero} quedo registrado. Presenta este numero '
-                            'en ${venta.sucursal} para retirarlo.'
-                        : pendiente
-                            ? 'Estamos esperando la confirmacion de la pasarela. Si ya pagaste, '
-                                'vuelve a consultar en unos segundos.'
-                            : 'La pasarela rechazo el pago. Puedes volver al carrito e '
-                                'intentarlo con otro medio.',
+                    _explicacion(venta, estadoPago),
                     style: const TextStyle(color: Paleta.inkSuave, height: 1.45),
                   ),
                   const SizedBox(height: 22),
@@ -271,10 +257,20 @@ class _CompraPaginaState extends State<CompraPagina> {
                     ),
                   ] else
                     const Text(
-                      'El detalle de la venta se escribe cuando la pasarela confirma el pago.',
+                      'El detalle de la venta se escribe cuando se confirma el pago.',
                       style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
                     ),
                   const SizedBox(height: 24),
+                  if (pendiente &&
+                      venta.pago?.pasarela == 'QR' &&
+                      venta.pago?.informadoEn == null) ...[
+                    ElevatedButton.icon(
+                      onPressed: () => context.push('/pago-simulado/${venta.id}'),
+                      icon: const Icon(Icons.qr_code_2),
+                      label: const Text('PAGAR CON QR'),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
                   if (pendiente)
                     ElevatedButton.icon(
                       onPressed: _refrescando ? null : () => _cargar(esRefresco: true),
@@ -304,6 +300,62 @@ class _CompraPaginaState extends State<CompraPagina> {
               ),
       ),
     );
+  }
+
+  /// 2.19.1.b/c: EFECTIVO y QR quedan PENDIENTE hasta que el cajero de la sucursal los verifica,
+  /// asi que "esperando a la pasarela" solo aplica a Stripe.
+  String _titulo(VentaOut venta, String estadoPago) {
+    final pago = venta.pago;
+    if (estadoPago == 'APROBADO') return 'Pago confirmado';
+    if (estadoPago == 'PENDIENTE') {
+      if (pago?.metodo == 'EFECTIVO') return 'Pendiente de cobro';
+      if (pago?.pasarela == 'QR') {
+        return pago?.informadoEn != null ? 'Pago en verificacion' : 'Esperando tu pago QR';
+      }
+      return 'Pago en proceso';
+    }
+    if (estadoPago == 'REEMBOLSADO') return 'Pedido anulado';
+    return pago?.metodo == 'EFECTIVO' ? 'Pedido anulado' : 'Pago rechazado';
+  }
+
+  String _explicacion(VentaOut venta, String estadoPago) {
+    final pago = venta.pago;
+    switch (estadoPago) {
+      case 'APROBADO':
+        return venta.entrega == 'DOMICILIO'
+            ? 'Tu pedido ${venta.numero} quedo registrado y sale a reparto desde ${venta.sucursal}.'
+            : 'Tu pedido ${venta.numero} quedo registrado. Presenta este numero '
+                'en ${venta.sucursal} para retirarlo.';
+      case 'PENDIENTE':
+        if (pago?.metodo == 'EFECTIVO') {
+          return venta.entrega == 'DOMICILIO'
+              ? 'Pagas ${formatearPrecio(venta.total)} en efectivo al recibir tu pedido. '
+                  '${venta.sucursal} lo confirma cuando se registra el cobro.'
+              : 'Acercate a ${venta.sucursal} y paga ${formatearPrecio(venta.total)} en caja. '
+                  'Cuando el cajero registre el cobro te emitimos el comprobante.';
+        }
+        if (pago?.pasarela == 'QR') {
+          return pago?.informadoEn != null
+              ? 'Nos avisaste que pagaste el ${fechaLegible(pago!.informadoEn!)}. La sucursal '
+                  'esta verificando el deposito; te notificamos cuando lo apruebe.'
+              : 'Todavia no nos avisaste que pagaste este pedido.';
+        }
+        return 'Estamos esperando la confirmacion de la pasarela. Si ya pagaste, '
+            'vuelve a consultar en unos segundos.';
+      case 'REEMBOLSADO':
+        return 'Hubo un problema al confirmar tu pedido y se genero un reembolso.';
+      default:
+        if (pago?.metodo == 'EFECTIVO') {
+          return 'El pedido se anulo sin cobrarte nada: no se concreto el cobro en efectivo o '
+              'el stock cambio. Tu carrito sigue disponible.';
+        }
+        if (pago?.pasarela == 'QR') {
+          return 'La sucursal no pudo verificar tu deposito QR. Si ya pagaste, acercate con tu '
+              'comprobante. Tu carrito sigue disponible.';
+        }
+        return 'La pasarela rechazo el pago. Puedes volver al carrito e '
+            'intentarlo con otro medio.';
+    }
   }
 
   Widget _totalFila(String etiqueta, double monto) => Padding(

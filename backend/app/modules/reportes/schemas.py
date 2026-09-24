@@ -95,6 +95,51 @@ class RecepcionPendienteProveedorOut(BaseModel):
     monto_total: float
 
 
+class ExistenciaOut(BaseModel):
+    """Una fila de v_existencias_consolidadas (variante x sucursal)."""
+
+    producto_id: UUID
+    producto: str
+    categoria: str
+    variante_id: UUID
+    sku: str
+    talla: str
+    color: str
+    sucursal_id: UUID
+    sucursal: str
+    cantidad_fisica: int
+    cantidad_reservada: int
+    disponible: int
+    stock_minimo: int
+    vendidas: int
+    proximas_a_ingresar: int
+    situacion: Literal["DISPONIBLE", "RESERVADA", "PROXIMA_A_INGRESAR", "AGOTADA"]
+
+
+class ResumenExistenciasOut(BaseModel):
+    """Conteos para las tarjetas. Respeta sucursal/categoria/busqueda pero NO el filtro de
+    situacion, para que las tarjetas sigan mostrando la distribucion completa al filtrar."""
+
+    variantes_total: int
+    variantes_disponibles: int
+    variantes_reservadas: int
+    variantes_proximas_a_ingresar: int
+    variantes_agotadas: int
+    unidades_fisicas: int
+    unidades_reservadas: int
+    unidades_disponibles: int
+    unidades_vendidas: int
+    unidades_por_ingresar: int
+
+
+class ExistenciasPaginadoOut(BaseModel):
+    total: int  # filas que cumplen TODOS los filtros (incluida la situacion), para paginar
+    pagina: int
+    tamanio_pagina: int
+    resumen: ResumenExistenciasOut
+    items: list[ExistenciaOut]
+
+
 class VendedorOut(BaseModel):
     id: UUID
     nombre: str

@@ -107,7 +107,7 @@ export class PanelUsuariosPage implements OnInit {
     password: [''],
     rol_id: [0, [Validators.required, Validators.min(1)]],
     sucursal_id: ['', [Validators.required]],
-    cargo: ['VENDEDOR' as CargoEmpleado, [Validators.required]],
+    cargo: ['CAJERO' as CargoEmpleado, [Validators.required]],
     ci: [''],
     fecha_ingreso: [''],
   });
@@ -198,7 +198,7 @@ export class PanelUsuariosPage implements OnInit {
       password: '',
       rol_id: this.roles()[0]?.id ?? 0,
       sucursal_id: this.sucursales()[0]?.id ?? '',
-      cargo: 'VENDEDOR',
+      cargo: 'CAJERO',
       ci: '',
       fecha_ingreso: '',
     });
@@ -223,7 +223,7 @@ export class PanelUsuariosPage implements OnInit {
       password: '',
       rol_id: usuario.rol_id ?? 0,
       sucursal_id: usuario.empleado?.sucursal_id ?? this.sucursales()[0]?.id ?? '',
-      cargo: usuario.empleado?.cargo ?? 'VENDEDOR',
+      cargo: usuario.empleado?.cargo ?? 'CAJERO',
       ci: usuario.empleado?.ci ?? '',
       fecha_ingreso: usuario.empleado?.fecha_ingreso ?? '',
     });

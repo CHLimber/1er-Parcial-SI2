@@ -33,8 +33,8 @@ class UsuarioOut(BaseModel):
     apellido: str
     tipo: str
     rol: str | None = None
-    # cargo del empleado: el permiso dice QUE puede hacer, el cargo QUIEN es (ENCARGADO,
-    # CAJERO, VENDEDOR o ALMACEN). El reparto a domicilio (CU20) lo hace un servicio externo,
+    # cargo del empleado: el permiso dice QUE puede hacer, el cargo QUIEN es (ENCARGADO o
+    # CAJERO). El reparto a domicilio (CU20) lo hace un servicio externo,
     # no personal con este cargo.
     cargo: str | None = None
     # codigos de permiso del rol (CU13). El frontend los usa para mostrar u ocultar el panel.

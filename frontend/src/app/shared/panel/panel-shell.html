@@ -8,6 +8,7 @@
         <span class="cabecera__rol">{{ u.rol ?? 'STAFF' }}</span>
       </span>
     }
+    <app-campana-notificaciones />
     <a class="cabecera__enlace" routerLink="/tienda">Ir a la tienda</a>
     <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
   </div>

@@ -44,7 +44,9 @@ puede_crear_roles = requiere_permiso("roles.crear")
 puede_actualizar_roles = requiere_permiso("roles.actualizar")
 puede_eliminar_roles = requiere_permiso("roles.eliminar")
 
-CARGOS = {"ENCARGADO", "CAJERO", "VENDEDOR", "ALMACEN"}
+# Actores humanos de la tienda (PENDIENTES 2.19.1.d): el ENCARGADO absorbio lo de ALMACEN y el
+# CAJERO lo de VENDEDOR. El ADMIN es un rol, no un cargo: su fila de empleado usa ENCARGADO.
+CARGOS = {"ENCARGADO", "CAJERO"}
 
 SELECT_USUARIO = """
 SELECT u.id, u.email, u.nombre, u.apellido, u.telefono, u.tipo, u.rol_id, r.nombre AS rol,

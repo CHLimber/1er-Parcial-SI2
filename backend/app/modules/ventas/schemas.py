@@ -11,9 +11,10 @@ class CheckoutIn(BaseModel):
     )
     entrega: Literal["RETIRO_SUCURSAL", "DOMICILIO"] = "RETIRO_SUCURSAL"
     direccion_id: UUID | None = None
-    # STRIPE y QR pasan por pago.pasarela (metodo PASARELA); EFECTIVO no tiene pasarela y se
-    # aprueba de una en el checkout mismo -- retiro lo cobra la sucursal, domicilio queda a
-    # cargo del servicio de delivery (se asume cobrado, no hay confirmacion posterior).
+    # STRIPE y QR pasan por pago.pasarela (metodo PASARELA); EFECTIVO no tiene pasarela. QR y
+    # EFECTIVO quedan PENDIENTE hasta que el CAJERO de la sucursal los aprueba desde caja
+    # (2.19.1.b/c): QR cuando verifica el deposito, EFECTIVO cuando cobra (retiro en tienda) o
+    # recibe lo que rinde el delivery externo (domicilio).
     metodo_pago: Literal["STRIPE", "QR", "EFECTIVO"]
     codigo_cupon: str | None = Field(default=None, max_length=40)
     canal: Literal["WEB", "MOVIL"] = "WEB"
@@ -61,6 +62,9 @@ class PagoOut(BaseModel):
     id_transaccion: str | None
     creado_en: datetime
     confirmado_en: datetime | None
+    # 2.19.1.c: solo QR -- cuando la clienta aviso "ya pague" y la referencia que dejo
+    informado_en: datetime | None = None
+    referencia_cliente: str | None = None
 
 
 class ComprobanteOut(BaseModel):

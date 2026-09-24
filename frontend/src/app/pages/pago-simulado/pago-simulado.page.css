@@ -97,3 +97,38 @@
 .boton--secundario:hover {
   background: var(--paper);
 }
+
+/* 2.19.1.c: QR a escanear + referencia opcional del deposito */
+.pasarela-card__qr {
+  width: min(16rem, 100%);
+  align-self: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--paper-line);
+}
+
+.pasarela-card__campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.pasarela-card__campo input {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: var(--ink);
+}
+
+.pasarela-card__error {
+  margin: 0;
+  color: var(--flame-dark);
+  font-size: 0.85rem;
+}
+
+.boton--secundario {
+  text-align: center;
+  text-decoration: none;
+}

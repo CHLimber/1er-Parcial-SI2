@@ -85,6 +85,10 @@ class ReservaOut {
       estado == 'PREPARADA' ||
       estado == 'CLIENTE_PRESENTE';
 
+  /// 2.19.2: espejo de ESTADOS_CANCELABLES_CLIENTE del backend (reservas/router.py).
+  bool get esCancelable =>
+      estado == 'PENDIENTE' || estado == 'CONFIRMADA' || estado == 'PREPARADA';
+
   factory ReservaOut.desdeJson(Map<String, dynamic> j) => ReservaOut(
         id: j['id'] as String,
         codigo: j['codigo'] as String,

@@ -11,6 +11,7 @@ import {
   ResolverReservaOut,
 } from '../../core/reservas/reservas.models';
 import { ReservasService } from '../../core/reservas/reservas.service';
+import { CampanaNotificaciones } from '../../shared/notificaciones/campana-notificaciones';
 
 interface PreparacionItem {
   variante_id: string;
@@ -27,6 +28,7 @@ interface DecisionItem {
 
 const FILTROS = [
   { valor: '', etiqueta: 'Cola activa' },
+  { valor: 'PENDIENTE', etiqueta: 'Por confirmar' },
   { valor: 'CONFIRMADA', etiqueta: 'Confirmadas' },
   { valor: 'PREPARADA', etiqueta: 'Preparadas' },
   { valor: 'CLIENTE_PRESENTE', etiqueta: 'En tienda' },
@@ -38,7 +40,7 @@ const FILTROS = [
 @Component({
   selector: 'app-atender-reservas-page',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, CampanaNotificaciones],
   templateUrl: './atender-reservas.page.html',
   styleUrls: ['./atender-reservas.page.css', '../../shared/responsive.css'],
 })
@@ -60,6 +62,7 @@ export class AtenderReservasPage implements OnInit {
   protected readonly resultadoResolver = signal<ResolverReservaOut | null>(null);
 
   protected itemsPreparar: PreparacionItem[] = [];
+  protected motivoRechazo = '';
   protected vestidorAsignado = '';
   protected itemsResolver: DecisionItem[] = [];
   protected readonly metodosPago: MetodoPagoReserva[] = ['EFECTIVO', 'TARJETA', 'QR'];
@@ -95,6 +98,7 @@ export class AtenderReservasPage implements OnInit {
     this.resultadoResolver.set(null);
     this.seleccionada.set(reserva);
     this.vestidorAsignado = reserva.vestidor_asignado ?? '';
+    this.motivoRechazo = '';
 
     this.itemsPreparar = reserva.items
       .filter((item) => item.estado_item === 'RESERVADO')
@@ -113,6 +117,55 @@ export class AtenderReservasPage implements OnInit {
         : FILTROS_ACTIVOS.includes(reserva.estado);
       if (!sigueEnCola) return lista.filter((r) => r.id !== reserva.id);
       return lista.map((r) => (r.id === reserva.id ? reserva : r));
+    });
+  }
+
+  /** 2.19.1.a: la sucursal acepta la reserva (PENDIENTE -> CONFIRMADA). */
+  protected confirmarReserva(): void {
+    const reserva = this.seleccionada();
+    if (!reserva) return;
+
+    this.cargandoAccion.set(true);
+    this.errorAccion.set(null);
+    this.reservasService.confirmarReserva(reserva.id).subscribe({
+      next: (actualizada) => {
+        this.cargandoAccion.set(false);
+        this.seleccionar(actualizada);
+        this.refrescarSeleccionada(actualizada);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cargandoAccion.set(false);
+        this.errorAccion.set(this.interpretarError(error));
+      },
+    });
+  }
+
+  /** 2.19.1.a: la sucursal rechaza la reserva; el backend libera el stock y avisa al cliente. */
+  protected rechazarReserva(): void {
+    const reserva = this.seleccionada();
+    if (!reserva) return;
+
+    const motivo = this.motivoRechazo.trim();
+    if (motivo.length < 3) {
+      this.errorAccion.set('Indicá el motivo del rechazo (se le envía al cliente).');
+      return;
+    }
+    if (!confirm(`¿Rechazar la reserva ${reserva.codigo}? Se libera el stock y se avisa al cliente.`)) {
+      return;
+    }
+
+    this.cargandoAccion.set(true);
+    this.errorAccion.set(null);
+    this.reservasService.rechazarReserva(reserva.id, { motivo }).subscribe({
+      next: (actualizada) => {
+        this.cargandoAccion.set(false);
+        this.seleccionar(actualizada);
+        this.refrescarSeleccionada(actualizada);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cargandoAccion.set(false);
+        this.errorAccion.set(this.interpretarError(error));
+      },
     });
   }
 
@@ -236,6 +289,8 @@ export class AtenderReservasPage implements OnInit {
 
   protected etiquetaEstado(estado: string): string {
     switch (estado) {
+      case 'PENDIENTE':
+        return 'Por confirmar';
       case 'CONFIRMADA':
         return 'Confirmada';
       case 'PREPARADA':
@@ -266,4 +321,4 @@ export class AtenderReservasPage implements OnInit {
   }
 }
 
-const FILTROS_ACTIVOS = ['CONFIRMADA', 'PREPARADA', 'CLIENTE_PRESENTE'];
+const FILTROS_ACTIVOS = ['PENDIENTE', 'CONFIRMADA', 'PREPARADA', 'CLIENTE_PRESENTE'];

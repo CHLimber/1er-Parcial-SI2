@@ -1,0 +1,360 @@
+<app-panel-shell
+  titulo="Traspasos entre sucursales"
+  bajada="Mandá prendas hacia la tienda donde rotan. El stock sale del origen al despachar y entra en el destino por lo que efectivamente llegó."
+>
+  <div class="barra">
+    <div class="campo">
+      <label for="estado">Estado</label>
+      <select id="estado" [value]="filtroEstado" (change)="filtroEstado = $any($event.target).value; cargar()">
+        <option value="">Todos</option>
+        <option value="SOLICITADO">Solicitados</option>
+        <option value="EN_TRANSITO">En tránsito</option>
+        <option value="RECIBIDO">Recibidos</option>
+        <option value="ANULADO">Anulados</option>
+      </select>
+    </div>
+    @if (!eligeOrigen) {
+      <div class="campo">
+        <label for="direccion">Dirección</label>
+        <select id="direccion" [value]="filtroDireccion" (change)="filtroDireccion = $any($event.target).value; cargar()">
+          <option value="">Salientes y entrantes</option>
+          <option value="SALIENTES">Salen de mi sucursal</option>
+          <option value="ENTRANTES">Llegan a mi sucursal</option>
+        </select>
+      </div>
+    }
+
+    <span class="barra__espacio"></span>
+
+    @if (puedeCrear) {
+      <button type="button" class="boton" (click)="abrirNuevo()">Nuevo traspaso</button>
+    }
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="columnas columnas--detalle">
+    <section class="panel">
+      <h2 class="panel__titulo">Traspasos</h2>
+
+      @if (cargando()) {
+        <p class="estado">Cargando…</p>
+      } @else if (traspasos().length === 0) {
+        <p class="estado">No hay traspasos.</p>
+      } @else {
+        <ul class="lista">
+          @for (traspaso of traspasos(); track traspaso.id) {
+            <li>
+              <button
+                type="button"
+                class="tarjeta"
+                [class.tarjeta--activa]="seleccionado()?.id === traspaso.id"
+                (click)="abrir(traspaso)"
+              >
+                <span class="tarjeta__numero">{{ traspaso.numero }}</span>
+                <span class="tarjeta__proveedor">{{ traspaso.origen }} → {{ traspaso.destino }}</span>
+                <span class="tarjeta__meta">{{ fecha(traspaso.fecha_solicitud) }}</span>
+                <span class="tarjeta__meta">
+                  <span
+                    class="badge"
+                    [class.badge--ok]="traspaso.estado === 'RECIBIDO'"
+                    [class.badge--alerta]="traspaso.estado === 'SOLICITADO' || traspaso.estado === 'EN_TRANSITO'"
+                    [class.badge--baja]="traspaso.estado === 'ANULADO'"
+                  >
+                    {{ etiquetaEstado(traspaso.estado) }}
+                  </span>
+                  {{ traspaso.unidades_solicitadas }} u.
+                  @if (traspaso.unidades_recibidas !== null && traspaso.unidades_recibidas < traspaso.unidades_solicitadas) {
+                    · llegaron {{ traspaso.unidades_recibidas }}
+                  }
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      @if (creando()) {
+        <h2 class="panel__titulo">Nuevo traspaso</h2>
+
+        <div class="rejilla">
+          @if (eligeOrigen) {
+            <div class="campo">
+              <label for="origen">Sale de</label>
+              <select id="origen" [(ngModel)]="origenId" name="origen" (ngModelChange)="cambioSucursales()">
+                @for (sucursal of sucursales(); track sucursal.id) {
+                  <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
+                }
+              </select>
+            </div>
+          }
+          <div class="campo">
+            <label for="destino">Va a</label>
+            <select id="destino" [(ngModel)]="destinoId" name="destino" (ngModelChange)="cambioSucursales()">
+              @for (sucursal of sucursales(); track sucursal.id) {
+                @if (sucursal.id !== origenId) {
+                  <option [value]="sucursal.id">{{ sucursal.nombre }}</option>
+                }
+              }
+            </select>
+          </div>
+        </div>
+        @if (!eligeOrigen) {
+          <p class="campo__ayuda">La mercadería sale de tu sucursal.</p>
+        }
+
+        <div class="buscador">
+          <input
+            type="search"
+            class="buscador__campo"
+            placeholder="SKU, código de barras o nombre de la prenda"
+            [(ngModel)]="termino"
+            name="termino"
+            (keyup.enter)="buscar()"
+          />
+          <button type="button" class="boton boton--secundario" [disabled]="buscando()" (click)="buscar()">
+            {{ buscando() ? 'Buscando…' : 'Buscar' }}
+          </button>
+        </div>
+
+        @if (resultados().length > 0) {
+          <ul class="resultados">
+            @for (variante of resultados(); track variante.id) {
+              <li>
+                <button type="button" class="resultado" (click)="agregar(variante)">
+                  <span class="mono">{{ variante.sku }}</span>
+                  <span>{{ variante.producto }}</span>
+                  <span class="secundario">
+                    <span class="punto" [style.background]="variante.codigo_hex"></span>
+                    {{ variante.talla }} · {{ variante.color }} · disponible en origen:
+                    <strong>{{ variante.disponible_origen }}</strong> · en destino: {{ variante.disponible_destino }}
+                  </span>
+                </button>
+              </li>
+            }
+          </ul>
+        }
+
+        @if (errorNuevo()) {
+          <p class="error" role="alert">{{ errorNuevo() }}</p>
+        }
+
+        @if (lineasNuevas().length > 0) {
+          <h3 class="subtitulo">Prendas a enviar</h3>
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Prenda</th>
+                  <th class="tabla__numero">Origen</th>
+                  <th class="tabla__numero">Destino</th>
+                  <th class="tabla__numero">Enviar</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (linea of lineasNuevas(); track linea.variante.id) {
+                  <tr>
+                    <td>
+                      {{ linea.variante.producto }}
+                      <div class="secundario">{{ linea.variante.sku }} · {{ linea.variante.talla }} · {{ linea.variante.color }}</div>
+                    </td>
+                    <td class="tabla__numero">{{ linea.variante.disponible_origen }}</td>
+                    <td class="tabla__numero">{{ linea.variante.disponible_destino }}</td>
+                    <td class="tabla__numero">
+                      <input
+                        class="cantidad"
+                        type="number"
+                        min="1"
+                        [max]="linea.variante.disponible_origen"
+                        [ngModel]="linea.cantidad"
+                        (ngModelChange)="fijarCantidadNueva(linea.variante.id, $event)"
+                        [name]="'enviar-' + linea.variante.id"
+                        [attr.aria-label]="'Unidades a enviar de ' + linea.variante.producto"
+                      />
+                    </td>
+                    <td>
+                      <button type="button" class="boton boton--peligro boton--chico" (click)="quitar(linea.variante.id)">
+                        Quitar
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+
+        <div class="acciones cierre">
+          <button type="button" class="boton" [disabled]="ocupado() || lineasNuevas().length === 0" (click)="crear()">
+            {{ ocupado() ? 'Creando…' : 'Solicitar traspaso (' + unidadesNuevas() + ' u.)' }}
+          </button>
+          <button type="button" class="boton boton--secundario" (click)="creando.set(false)">Cancelar</button>
+        </div>
+      } @else if (seleccionado(); as traspaso) {
+        <div class="ficha">
+          <h2 class="panel__titulo">{{ traspaso.numero }}</h2>
+          <p class="estado"><strong>{{ traspaso.origen }}</strong> → <strong>{{ traspaso.destino }}</strong></p>
+          <p>
+            <span
+              class="badge"
+              [class.badge--ok]="traspaso.estado === 'RECIBIDO'"
+              [class.badge--alerta]="traspaso.estado === 'SOLICITADO' || traspaso.estado === 'EN_TRANSITO'"
+              [class.badge--baja]="traspaso.estado === 'ANULADO'"
+            >
+              {{ etiquetaEstado(traspaso.estado) }}
+            </span>
+          </p>
+          <p class="estado">
+            Solicitado {{ fecha(traspaso.fecha_solicitud) }}
+            @if (traspaso.solicitado_por) { por {{ traspaso.solicitado_por }} }
+            @if (traspaso.fecha_despacho) { · despachado {{ fecha(traspaso.fecha_despacho) }} }
+            @if (traspaso.fecha_recepcion) {
+              · recibido {{ fecha(traspaso.fecha_recepcion) }}
+              @if (traspaso.recibido_por) { por {{ traspaso.recibido_por }} }
+            }
+          </p>
+          @if (traspaso.observacion) {
+            <p class="estado"><strong>Nota del destino:</strong> {{ traspaso.observacion }}</p>
+          }
+
+          @if (aviso()) {
+            <p class="exito">{{ aviso() }}</p>
+          }
+          @if (errorDetalle()) {
+            <p class="error" role="alert">{{ errorDetalle() }}</p>
+          }
+
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Prenda</th>
+                  <th class="tabla__numero">Enviadas</th>
+                  <th class="tabla__numero">Recibidas</th>
+                  <th class="tabla__numero">Disp. origen</th>
+                  <th class="tabla__numero">Disp. destino</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (linea of traspaso.detalle; track linea.id) {
+                  <tr>
+                    <td>
+                      {{ linea.producto }}
+                      <div class="secundario">
+                        <span class="punto" [style.background]="linea.codigo_hex"></span>
+                        {{ linea.sku }} · {{ linea.talla }} · {{ linea.color }}
+                      </div>
+                    </td>
+                    <td class="tabla__numero">{{ linea.cantidad_solicitada }}</td>
+                    <td class="tabla__numero">
+                      @if (puedeRecibir(traspaso)) {
+                        <input
+                          class="cantidad"
+                          type="number"
+                          min="0"
+                          [max]="linea.cantidad_solicitada"
+                          [ngModel]="recibidas()[linea.id]"
+                          (ngModelChange)="fijarRecibida(linea.id, $event, linea.cantidad_solicitada)"
+                          [name]="'recibida-' + linea.id"
+                          [attr.aria-label]="'Unidades recibidas de ' + linea.producto"
+                        />
+                      } @else if (linea.cantidad_recibida !== null) {
+                        <span [class.faltante]="linea.cantidad_recibida < linea.cantidad_solicitada">
+                          {{ linea.cantidad_recibida }}
+                        </span>
+                      } @else {
+                        <span class="secundario">—</span>
+                      }
+                    </td>
+                    <td class="tabla__numero">{{ linea.disponible_origen }}</td>
+                    <td class="tabla__numero">{{ linea.disponible_destino }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          @if (traspaso.estado === 'RECIBIDO' && traspaso.unidades_recibidas !== null && traspaso.unidades_recibidas < traspaso.unidades_solicitadas) {
+            <p class="aviso">
+              Llegaron {{ traspaso.unidades_recibidas }} de {{ traspaso.unidades_solicitadas }} unidades. La diferencia ya
+              salió del origen y no entró al destino: cuando se aclare qué pasó, corregilo con un ajuste en Inventario.
+            </p>
+          }
+
+          @if (puedeRecibir(traspaso)) {
+            <div class="carga">
+              <p class="estado">
+                Contá lo que llegó y corregí las cantidades si falta algo.
+                @if (faltante() > 0) { <strong>Faltan {{ faltante() }} unidad(es).</strong> }
+              </p>
+              <div class="campo">
+                <label for="observacion">Nota (opcional)</label>
+                <textarea id="observacion" rows="2" maxlength="250" [(ngModel)]="observacion" name="observacion"
+                  placeholder="Ej.: una caja llegó abierta"></textarea>
+              </div>
+            </div>
+          }
+
+          @if (puedeDespachar(traspaso) || puedeRecibir(traspaso) || puedeAnularlo(traspaso)) {
+            <div class="acciones cierre">
+              @if (puedeDespachar(traspaso)) {
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="despachar()">
+                  {{ ocupado() ? 'Procesando…' : 'Despachar (sale del stock)' }}
+                </button>
+              }
+              @if (puedeRecibir(traspaso)) {
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="recibir()">
+                  {{ ocupado() ? 'Procesando…' : 'Confirmar recepción' }}
+                </button>
+              }
+              @if (puedeAnularlo(traspaso)) {
+                <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="anular()">
+                  {{ traspaso.estado === 'EN_TRANSITO' ? 'Anular (vuelve al origen)' : 'Anular' }}
+                </button>
+              }
+            </div>
+          }
+
+          @if (movimientos().length > 0) {
+            <h3 class="subtitulo">Movimientos de kardex</h3>
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Sucursal</th>
+                    <th>SKU</th>
+                    <th>Tipo</th>
+                    <th class="tabla__numero">Cant.</th>
+                    <th class="tabla__numero">Saldo ant.</th>
+                    <th class="tabla__numero">Saldo nuevo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (movimiento of movimientos(); track $index) {
+                    <tr>
+                      <td>{{ movimiento.sucursal }}</td>
+                      <td class="mono">{{ movimiento.sku }}</td>
+                      <td>{{ etiquetaMovimiento(movimiento.tipo) }}</td>
+                      <td class="tabla__numero">
+                        {{ movimiento.tipo === 'TRASPASO_SAL' ? '−' : '+' }}{{ movimiento.cantidad }}
+                      </td>
+                      <td class="tabla__numero">{{ movimiento.saldo_anterior }}</td>
+                      <td class="tabla__numero">{{ movimiento.saldo_nuevo }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="estado">Elegí un traspaso de la lista o creá uno nuevo.</p>
+      }
+    </section>
+  </div>
+</app-panel-shell>

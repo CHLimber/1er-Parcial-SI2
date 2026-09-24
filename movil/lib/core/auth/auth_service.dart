@@ -6,6 +6,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
 import 'auth_models.dart';
 
+/// CU07 y CU08 se autorizan por permiso (PENDIENTES 3.1), los mismos codigos que exigen
+/// `get_cajero_actual` / `get_encargado_actual` en el backend.
+const permisoCaja = 'caja.crear';
+const permisoAtenderReservas = 'reservas.actualizar';
+
 /// Sesion del usuario. Espejo de `AuthService` del frontend: guarda token + usuario en
 /// el almacenamiento local (aca SharedPreferences en vez de localStorage) y lo restaura
 /// al arrancar la app.

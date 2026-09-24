@@ -27,8 +27,8 @@ class CheckoutOut {
   final String? idTransaccion;
 
   /// STRIPE nunca la manda (se paga inline, con clientSecret); QR devuelve la ruta interna
-  /// `/pago-simulado/{venta_id}` (pantalla nativa); EFECTIVO devuelve directo
-  /// `/compra/{venta_id}` porque ya quedo pagada al toque.
+  /// `/pago-simulado/{venta_id}` (pantalla nativa donde la clienta informa que pago); EFECTIVO
+  /// devuelve `/compra/{venta_id}`: queda PENDIENTE hasta que el cajero lo cobra (2.19.1.b).
   final String? urlPago;
 
   /// Solo STRIPE: el PaymentIntent que `Stripe.instance.initPaymentSheet()` usa para mostrar el
@@ -105,6 +105,8 @@ class PagoOut {
     required this.idTransaccion,
     required this.creadoEn,
     required this.confirmadoEn,
+    this.informadoEn,
+    this.referenciaCliente,
   });
 
   final String id;
@@ -116,6 +118,10 @@ class PagoOut {
   final DateTime? creadoEn;
   final DateTime? confirmadoEn;
 
+  /// 2.19.1.c, solo QR: cuando la clienta aviso "ya pague" y la referencia que dejo.
+  final DateTime? informadoEn;
+  final String? referenciaCliente;
+
   factory PagoOut.desdeJson(Map<String, dynamic> j) => PagoOut(
         id: j['id'] as String,
         metodo: j['metodo'] as String,
@@ -125,6 +131,8 @@ class PagoOut {
         idTransaccion: j['id_transaccion'] as String?,
         creadoEn: aFechaNula(j['creado_en']),
         confirmadoEn: aFechaNula(j['confirmado_en']),
+        informadoEn: aFechaNula(j['informado_en']),
+        referenciaCliente: j['referencia_cliente'] as String?,
       );
 }
 
@@ -281,23 +289,31 @@ class VentaPosOut {
       );
 }
 
-class WebhookOut {
-  WebhookOut({
-    required this.procesado,
-    required this.ventaEstado,
+/// 2.19.1.c: respuesta de POST /pagos/qr/{venta_id}/informar. La clienta solo avisa que pago
+/// el QR; quien aprueba es el cajero de la sucursal desde caja.
+class InformarPagoOut {
+  InformarPagoOut({
+    required this.ventaId,
+    required this.pagoId,
     required this.pagoEstado,
+    required this.informadoEn,
+    required this.referenciaCliente,
     required this.mensaje,
   });
 
-  final bool procesado;
-  final String? ventaEstado;
-  final String? pagoEstado;
+  final String ventaId;
+  final String pagoId;
+  final String pagoEstado;
+  final DateTime? informadoEn;
+  final String? referenciaCliente;
   final String mensaje;
 
-  factory WebhookOut.desdeJson(Map<String, dynamic> j) => WebhookOut(
-        procesado: j['procesado'] as bool? ?? false,
-        ventaEstado: j['venta_estado'] as String?,
-        pagoEstado: j['pago_estado'] as String?,
+  factory InformarPagoOut.desdeJson(Map<String, dynamic> j) => InformarPagoOut(
+        ventaId: j['venta_id'] as String,
+        pagoId: j['pago_id'] as String,
+        pagoEstado: j['pago_estado'] as String,
+        informadoEn: aFechaNula(j['informado_en']),
+        referenciaCliente: j['referencia_cliente'] as String?,
         mensaje: j['mensaje'] as String,
       );
 }

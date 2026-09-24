@@ -126,8 +126,17 @@ class _ReservarPaginaState extends State<ReservarPagina> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Te esperamos en ${reserva.sucursal} el ${reserva.fechaVisita} '
+              Text('Reserva enviada a ${reserva.sucursal} para el ${reserva.fechaVisita} '
                   'a las ${reserva.horaVisita.substring(0, 5)}.'),
+              // 2.19.1.a: la reserva nace PENDIENTE hasta que el encargado la confirma
+              if (reserva.estado == 'PENDIENTE') ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'La sucursal tiene que confirmarla; te avisamos cuando lo haga. Mientras '
+                  'tanto las prendas quedan apartadas para vos.',
+                  style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
+                ),
+              ],
               const SizedBox(height: 10),
               Text(
                 '${reserva.items.length} prenda(s) apartada(s).',

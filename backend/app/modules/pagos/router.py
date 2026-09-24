@@ -1,11 +1,18 @@
+from uuid import UUID
+
 import asyncpg
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.config import settings
 from app.core.db import get_connection
-from app.modules.pagos.schemas import ConfigPagoOut, WebhookIn, WebhookOut
-from app.modules.pagos.servicio import confirmar_aprobado, confirmar_rechazado
+from app.core.deps import get_current_usuario
+from app.modules.pagos.schemas import ConfigPagoOut, InformarPagoIn, InformarPagoOut, WebhookOut
+from app.modules.pagos.servicio import (
+    confirmar_aprobado,
+    confirmar_rechazado,
+    notificar_cajeros,
+)
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -70,26 +77,77 @@ async def webhook_stripe(
     )
 
 
-@router.post("/webhook/{pasarela}", response_model=WebhookOut)
-async def webhook_pasarela(
-    pasarela: str,
-    body: WebhookIn,
+@router.post("/qr/{venta_id}/informar", response_model=InformarPagoOut)
+async def informar_pago_qr(
+    venta_id: UUID,
+    body: InformarPagoIn,
+    usuario: dict = Depends(get_current_usuario),
     conn: asyncpg.Connection = Depends(get_connection),
-) -> WebhookOut:
-    """Notificacion simulada de QR (CU06): no existe un sandbox real para esta pasarela
-    boliviana, asi que el resultado se dispara a mano desde la pantalla de pago-simulado. Stripe
-    ya no pasa por aca -- usa el webhook real y firmado en /pagos/webhook/stripe (registrado antes
-    que esta ruta generica para que "stripe" no quede capturado por el path param {pasarela})."""
-    pasarela = pasarela.upper()
-    if pasarela != "QR":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pasarela desconocida")
+) -> InformarPagoOut:
+    """2.19.1.c: la clienta avisa que ya escaneo el QR y deposito. NO aprueba nada -- antes la
+    propia clienta pulsaba "Aprobar" en /pago-simulado contra un webhook publico, sin
+    autenticacion. Ahora solo deja constancia (informado_en + referencia opcional) y avisa a los
+    cajeros de la sucursal, que verifican el deposito y aprueban o rechazan desde caja
+    (POST /caja/pagos/{pago_id}/aprobar|rechazar). Idempotente: informar de nuevo solo actualiza
+    la referencia, sin volver a notificar."""
+    if usuario["tipo"] != "CLIENTE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Solo la clienta informa su propio pago"
+        )
 
-    return await _procesar_evento(
-        conn,
-        pasarela=pasarela,
-        id_transaccion=body.id_transaccion,
-        evento_id=body.evento_id,
-        aprobado=body.estado == "APROBADO",
+    referencia = body.referencia.strip() if body.referencia else None
+    async with conn.transaction():
+        pago = await conn.fetchrow(
+            """
+            SELECT p.id, p.estado, p.informado_en, v.sucursal_id, v.numero, v.total
+            FROM pago p
+            JOIN venta v ON v.id = p.venta_id
+            WHERE p.venta_id = $1 AND v.usuario_id = $2 AND p.pasarela = 'QR'
+            ORDER BY p.creado_en DESC
+            LIMIT 1
+            FOR UPDATE OF p
+            """,
+            venta_id,
+            usuario["id"],
+        )
+        if pago is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="No tenes un pago QR para ese pedido"
+            )
+        if pago["estado"] != "PENDIENTE":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Ese pago ya fue resuelto ({pago['estado']})",
+            )
+
+        fila = await conn.fetchrow(
+            """
+            UPDATE pago
+               SET informado_en = COALESCE(informado_en, now()),
+                   referencia_cliente = COALESCE($2, referencia_cliente)
+             WHERE id = $1
+            RETURNING informado_en, referencia_cliente
+            """,
+            pago["id"],
+            referencia,
+        )
+        if pago["informado_en"] is None:
+            await notificar_cajeros(
+                conn,
+                pago["sucursal_id"],
+                venta_id,
+                "Pago QR por verificar",
+                f"La clienta informo el pago QR del pedido {pago['numero']} "
+                f"(Bs {pago['total']}). Verifica el deposito y aprobalo desde caja.",
+            )
+
+    return InformarPagoOut(
+        venta_id=venta_id,
+        pago_id=pago["id"],
+        pago_estado=pago["estado"],
+        informado_en=fila["informado_en"],
+        referencia_cliente=fila["referencia_cliente"],
+        mensaje="Avisamos a la sucursal. Te notificamos cuando verifiquen el deposito.",
     )
 
 

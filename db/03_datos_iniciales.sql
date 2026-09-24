@@ -17,9 +17,11 @@
 INSERT INTO rol (nombre, descripcion, es_sistema) VALUES
     ('ADMIN',      'Administracion general del sistema', TRUE),
     ('ENCARGADO',  'Responsable de una sucursal', TRUE),
-    ('CAJERO',     'Maneja caja y ventas presenciales', TRUE),
-    ('VENDEDOR',   'Atiende clientes y reservas en tienda', TRUE),
-    ('ALMACEN',    'Recibe mercaderia y controla existencias', TRUE);
+    ('CAJERO',     'Maneja caja, ventas presenciales y verificacion de pagos', TRUE);
+-- Actores (PENDIENTES 2.19.1.d): no hay roles VENDEDOR ni ALMACEN. El ENCARGADO absorbe la
+-- recepcion de mercaderia y los ajustes de stock (lo que hacia ALMACEN) y puede cubrir la caja;
+-- el CAJERO absorbe la venta en piso (lo que hacia VENDEDOR). El proveedor no es usuario: sus
+-- datos los carga el ADMIN en CU11.
 
 -- ---------------------------------------------------------------------
 -- PERMISOS Y ASIGNACION A ROLES (CU13)
@@ -61,22 +63,31 @@ INSERT INTO permiso (codigo, modulo, descripcion) VALUES
     ('recepciones.actualizar','recepciones', 'Editar lineas del borrador y confirmar la recepcion'),
     ('recepciones.eliminar',  'recepciones', 'Quitar lineas del borrador y anular una recepcion'),
     ('reservas.leer',         'reservas',    'Consultar la cola de reservas de la sucursal'),
-    ('reservas.actualizar',   'reservas',    'Atender (cambiar de estado) una reserva'),
+    ('reservas.actualizar',   'reservas',    'Atender reservas de su sucursal: confirmar, rechazar, preparar, resolver (CU08)'),
     ('caja.leer',             'caja',        'Consultar el estado de las cajas'),
-    ('caja.crear',            'caja',        'Abrir una sesion de caja'),
+    ('caja.crear',            'caja',        'Operar la caja de su sucursal: abrir sesion, vender, verificar pagos QR/efectivo (CU07)'),
     ('caja.actualizar',       'caja',        'Cerrar una sesion de caja'),
     ('ventas.leer',           'ventas',      'Consultar ventas'),
     ('ventas.crear',          'ventas',      'Registrar ventas presenciales'),
     ('reportes.leer',         'reportes',    'Consultar los tableros de gestion'),
     ('auditoria.leer',        'auditoria',   'Consultar la bitacora de auditoria del sistema'),
     ('envios.leer',           'envios',      'Consultar los envios a domicilio y su estado de despacho'),
-    ('envios.actualizar',     'envios',      'Marcar un envio como despachado, entregado o fallido');
+    ('envios.actualizar',     'envios',      'Marcar un envio como despachado, entregado o fallido'),
+    ('devoluciones.leer',     'devoluciones','Consultar las devoluciones de ventas de la sucursal'),
+    ('devoluciones.crear',    'devoluciones','Registrar una devolucion sobre una venta pagada'),
+    ('devoluciones.actualizar','devoluciones','Aprobar (reingresa el stock) o rechazar una devolucion'),
+    ('traspasos.leer',        'traspasos',   'Consultar los traspasos que salen o llegan a la sucursal'),
+    ('traspasos.crear',       'traspasos',   'Solicitar un traspaso desde la propia sucursal a otra'),
+    ('traspasos.actualizar',  'traspasos',   'Despachar un traspaso (sale el stock) o recibirlo (entra en destino)'),
+    ('traspasos.eliminar',    'traspasos',   'Anular un traspaso solicitado o en transito');
 
 -- ADMIN: todo
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'ADMIN'), p.id FROM permiso p;
 
--- ENCARGADO: manda en su sucursal (inventario, recepciones, reservas, reportes)
+-- ENCARGADO: manda en su sucursal (inventario, recepciones, reservas, reportes) y, como
+-- absorbio lo que hacia ALMACEN, carga recepciones y ajustes; tambien puede cubrir la caja
+-- (caja.* + ventas.crear) si el cajero falta.
 -- auditoria.leer NO entra aca: la bitacora es del sistema completo (usuarios, roles,
 -- catalogo, sucursales...), no tiene sucursal_id para acotar, queda solo para ADMIN.
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -86,27 +97,18 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
                     'inventario.leer','inventario.actualizar',
                     'recepciones.leer','recepciones.crear','recepciones.actualizar','recepciones.eliminar',
                     'reservas.leer','reservas.actualizar',
+                    'caja.leer','caja.crear','caja.actualizar','ventas.crear',
                     'reportes.leer',
-                    'envios.leer','envios.actualizar');
+                    'envios.leer','envios.actualizar',
+                    'devoluciones.leer','devoluciones.crear','devoluciones.actualizar',
+                    'traspasos.leer','traspasos.crear','traspasos.actualizar','traspasos.eliminar');
 
--- ALMACEN: solo el flujo de entrada de mercaderia
-INSERT INTO rol_permiso (rol_id, permiso_id)
-SELECT (SELECT id FROM rol WHERE nombre = 'ALMACEN'), p.id
-  FROM permiso p
- WHERE p.codigo IN ('catalogo.leer','proveedores.leer','inventario.leer','inventario.actualizar',
-                    'recepciones.leer','recepciones.crear','recepciones.actualizar','recepciones.eliminar');
-
--- CAJERO: caja y punto de venta
+-- CAJERO: caja, punto de venta y verificacion de pagos online QR/efectivo (todo cuelga de
+-- caja.crear, ver get_cajero_actual en app/core/deps.py)
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'CAJERO'), p.id
   FROM permiso p
  WHERE p.codigo IN ('catalogo.leer','inventario.leer','caja.leer','caja.crear','caja.actualizar','ventas.crear');
-
--- VENDEDOR: piso de venta y vestidores
-INSERT INTO rol_permiso (rol_id, permiso_id)
-SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
-  FROM permiso p
- WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar');
 
 -- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
 -- fn_cotizar_envio no tiene distancia que cobrar. Son las de cada barrio real.
@@ -144,10 +146,12 @@ INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email
      'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
     ('cajero.cbba@fashionstore.bo',     crypt('demo1234', gen_salt('bf')), 'Jorge',   'Fernandez',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
-    ('vendedor.scz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Camila',  'Rocha',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'VENDEDOR'),  TRUE),
-    ('almacen.scz@fashionstore.bo',     crypt('demo1234', gen_salt('bf')), 'Ruben',   'Mamani',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE);
+    ('cajera.scz@fashionstore.bo',      crypt('demo1234', gen_salt('bf')), 'Camila',  'Rocha',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
+    ('encargado.cbba@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Ruben',   'Mamani',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
+    ('cajera.lapaz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Lucia',   'Condori',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE);
 
 INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado) VALUES
     ('cliente@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Cliente', 'Demo',   'CLIENTE', TRUE),
@@ -160,10 +164,12 @@ INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
      (SELECT id FROM sucursal WHERE codigo = 'LP-01'), 'ENCARGADO', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'cajero.cbba@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'CB-01'), 'CAJERO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'vendedor.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'VENDEDOR', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'almacen.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE);
+    ((SELECT id FROM usuario WHERE email = 'cajera.scz@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'CAJERO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'encargado.cbba@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'CB-01'), 'ENCARGADO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'cajera.lapaz@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'LP-01'), 'CAJERO', CURRENT_DATE);
 
 INSERT INTO perfil_cliente (usuario_id, talla_superior_id, talla_inferior_id, talla_calzado_id,
                              color_favorito_id, fecha_nacimiento, puntos_fidelidad, acepta_marketing)
@@ -2306,6 +2312,9 @@ VALUES (
 
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('reserva_horas_vigencia', '4', 'Horas antes de que una reserva pendiente expire automaticamente'),
+    -- Lo lee el job periodico (app/core/jobs.py): pedidos online en efectivo/QR que nadie pago
+    -- ni informo en este plazo se anulan solos.
+    ('pago_pendiente_horas_vigencia', '48', 'Horas antes de anular un pedido online en efectivo/QR sin pagar ni informar'),
     ('empresa_razon_social',   'FashionStore Bolivia S.R.L.', 'Razon social para comprobantes'),
     ('empresa_nit',            '1234567890', 'NIT para comprobantes'),
     -- CU20: los lee fn_cotizar_envio(). Valores tomados del mercado boliviano de delivery

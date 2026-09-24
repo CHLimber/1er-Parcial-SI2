@@ -1,0 +1,228 @@
+/*
+ * Campana de notificaciones. Se monta sobre cabeceras con fondo `--ink` (tienda y
+ * panel-shell), por eso el boton es claro sobre oscuro; el panel desplegable usa la
+ * paleta de papel del resto de la app.
+ */
+
+:host {
+  position: relative;
+  display: inline-flex;
+}
+
+.campana {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid rgba(255, 253, 249, 0.35);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--white);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.campana:hover,
+.campana--abierta {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.campana__icono {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.campana__badge {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.3rem;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--ink);
+  background: var(--flame);
+  color: var(--white);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.66rem;
+  line-height: 1;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  right: 0;
+  z-index: 30;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(32rem, 75vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 40px rgba(46, 37, 48, 0.22);
+  text-align: left;
+}
+
+.panel__cabecera {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem 0.7rem;
+  background: var(--white);
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.panel__titulo {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.panel__accion,
+.panel__mas {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--flame);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.panel__accion:hover,
+.panel__mas:hover {
+  color: var(--flame-dark);
+  text-decoration: underline;
+}
+
+.panel__mas {
+  display: block;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  text-align: center;
+}
+
+.panel__estado {
+  margin: 0;
+  padding: 1.2rem 1rem;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.panel__estado--error {
+  color: var(--flame-dark);
+}
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lista li + li {
+  border-top: 1px solid var(--paper-line);
+}
+
+.aviso {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: default;
+}
+
+.aviso--enlace {
+  cursor: pointer;
+}
+
+.aviso--nueva {
+  background: rgba(193, 81, 107, 0.07);
+}
+
+.aviso:hover {
+  background: var(--paper);
+}
+
+.aviso__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.aviso__tipo {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.aviso__titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.aviso__punto {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--flame);
+}
+
+.aviso__mensaje {
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+/* Telefono: el panel colgado de la campana no entra (la campana no esta en el borde de la
+   pantalla), asi que se fija al ancho completo del viewport, justo debajo de la campana.
+   `--campana-abajo` lo calcula el componente al abrir: la cabecera del panel cambia de alto
+   en telefono (el nombre baja a su propia linea), asi que no sirve un valor fijo. */
+@media (max-width: 30rem) {
+  .panel {
+    position: fixed;
+    top: calc(var(--campana-abajo, 4.2rem) + 0.6rem);
+    left: 0.75rem;
+    right: 0.75rem;
+    width: auto;
+    max-height: calc(100dvh - var(--campana-abajo, 4.2rem) - 1.4rem);
+  }
+
+  .aviso {
+    padding: 0.9rem 1rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .panel__accion {
+    padding: 0.35rem 0;
+  }
+}

@@ -6,7 +6,6 @@ import { environment } from '../../../environments/environment';
 import {
   CheckoutIn,
   CheckoutOut,
-  Pasarela,
   VentaOut,
   VentaPosIn,
   VentaPosOut,
@@ -35,16 +34,17 @@ export class VentasService {
   }
 }
 
-export interface WebhookIn {
-  evento_id: string;
-  id_transaccion: string;
-  estado: 'APROBADO' | 'RECHAZADO';
+/** 2.19.1.c: la clienta solo informa que pagó el QR; lo aprueba el cajero desde caja. */
+export interface InformarPagoIn {
+  referencia: string | null;
 }
 
-export interface WebhookOut {
-  procesado: boolean;
-  venta_estado: string | null;
-  pago_estado: string | null;
+export interface InformarPagoOut {
+  venta_id: string;
+  pago_id: string;
+  pago_estado: string;
+  informado_en: string;
+  referencia_cliente: string | null;
   mensaje: string;
 }
 
@@ -56,13 +56,9 @@ export interface ConfigPagoOut {
 export class PagosService {
   private readonly http = inject(HttpClient);
 
-  simularWebhook(pasarela: Pasarela, idTransaccion: string, estado: 'APROBADO' | 'RECHAZADO'): Observable<WebhookOut> {
-    const body: WebhookIn = {
-      evento_id: crypto.randomUUID(),
-      id_transaccion: idTransaccion,
-      estado,
-    };
-    return this.http.post<WebhookOut>(`${environment.apiUrl}/pagos/webhook/${pasarela}`, body);
+  informarPagoQr(ventaId: string, referencia: string | null): Observable<InformarPagoOut> {
+    const body: InformarPagoIn = { referencia };
+    return this.http.post<InformarPagoOut>(`${environment.apiUrl}/pagos/qr/${ventaId}/informar`, body);
   }
 
   obtenerConfig(): Observable<ConfigPagoOut> {

@@ -8,6 +8,7 @@ import '../core/carrito/carrito_service.dart';
 import '../core/config.dart';
 import '../core/errores.dart';
 import '../core/tema.dart';
+import 'notificaciones_pagina.dart' show BotonNotificaciones;
 
 /// Cuenta del usuario: datos de sesion, accesos del cliente y, para el personal, la
 /// puerta a caja (CU07), atencion de reservas (CU08) y el panel de gestion (CU09-CU13).
@@ -60,6 +61,7 @@ class _CuentaPaginaState extends State<CuentaPagina> {
       appBar: AppBar(
         title: const Text('Mi cuenta'),
         actions: [
+          const BotonNotificaciones(),
           IconButton(
             tooltip: 'Actualizar permisos',
             onPressed: _refrescando ? null : _refrescarSesion,
@@ -144,18 +146,20 @@ class _CuentaPaginaState extends State<CuentaPagina> {
             const SizedBox(height: 26),
             const EtiquetaDato('Operacion de tienda'),
             const SizedBox(height: 10),
-            _Acceso(
-              icono: Icons.point_of_sale_outlined,
-              titulo: 'Caja',
-              detalle: 'CU07 · Registrar venta presencial',
-              alTocar: () => context.push('/caja'),
-            ),
-            _Acceso(
-              icono: Icons.checkroom_outlined,
-              titulo: 'Atender reservas',
-              detalle: 'CU08 · Cola de vestidores de la sucursal',
-              alTocar: () => context.push('/atender-reservas'),
-            ),
+            if (auth.tienePermiso([permisoCaja]))
+              _Acceso(
+                icono: Icons.point_of_sale_outlined,
+                titulo: 'Caja',
+                detalle: 'CU07 · Registrar venta presencial',
+                alTocar: () => context.push('/caja'),
+              ),
+            if (auth.tienePermiso([permisoAtenderReservas]))
+              _Acceso(
+                icono: Icons.checkroom_outlined,
+                titulo: 'Atender reservas',
+                detalle: 'CU08 · Cola de vestidores de la sucursal',
+                alTocar: () => context.push('/atender-reservas'),
+              ),
             _Acceso(
               icono: Icons.dashboard_outlined,
               titulo: 'Panel de gestion',

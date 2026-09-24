@@ -167,6 +167,48 @@
   cursor: not-allowed;
 }
 
+/* 2.19.2: comprar y cancelar van juntos; en telefono se apilan solos por el wrap */
+.reserva__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.reserva__acciones .reserva__comprar {
+  margin-top: 0;
+}
+
+.reserva__cancelar {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--ink-soft);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reserva__cancelar:hover {
+  border-color: var(--flame);
+  color: var(--flame-dark);
+}
+
+.reserva__cancelar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.reserva__linea--aviso {
+  color: var(--flame-dark);
+}
+
+.reserva__linea--error {
+  color: var(--flame-dark);
+  font-weight: 600;
+}
+
 @media (max-width: 48rem) {
   .reserva__cabecera {
     /* El numero/codigo y el badge de estado no entran en una linea de 360px. */

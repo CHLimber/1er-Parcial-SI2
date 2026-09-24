@@ -1,0 +1,285 @@
+<app-panel-shell
+  titulo="Devoluciones"
+  bajada="Registrá la devolución sobre una venta pagada y resolvela. Recién al aprobarla las prendas vuelven al stock de la sucursal y queda el asiento en el kardex."
+>
+  <div class="barra">
+    <div class="campo">
+      <label for="estado">Estado</label>
+      <select id="estado" [value]="filtroEstado" (change)="filtroEstado = $any($event.target).value; cargar()">
+        <option value="">Todas</option>
+        <option value="SOLICITADA">Pendientes</option>
+        <option value="APROBADA">Aprobadas</option>
+        <option value="RECHAZADA">Rechazadas</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="filtro-venta">Venta</label>
+      <input
+        id="filtro-venta"
+        type="search"
+        placeholder="Nº de venta"
+        [(ngModel)]="filtroVenta"
+        name="filtro-venta"
+        (keyup.enter)="cargar()"
+      />
+    </div>
+
+    <span class="barra__espacio"></span>
+
+    @if (puedeRegistrar) {
+      <button type="button" class="boton" (click)="abrirNueva()">Nueva devolución</button>
+    }
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="columnas columnas--detalle">
+    <section class="panel">
+      <h2 class="panel__titulo">Devoluciones</h2>
+
+      @if (cargando()) {
+        <p class="estado">Cargando…</p>
+      } @else if (devoluciones().length === 0) {
+        <p class="estado">No hay devoluciones registradas.</p>
+      } @else {
+        <ul class="lista">
+          @for (devolucion of devoluciones(); track devolucion.id) {
+            <li>
+              <button
+                type="button"
+                class="tarjeta"
+                [class.tarjeta--activa]="seleccionada()?.id === devolucion.id"
+                (click)="abrir(devolucion)"
+              >
+                <span class="tarjeta__numero">{{ devolucion.venta_numero }}</span>
+                <span class="tarjeta__proveedor">{{ devolucion.cliente ?? 'Venta sin clienta identificada' }}</span>
+                <span class="tarjeta__meta">{{ fecha(devolucion.fecha) }} · {{ devolucion.sucursal }}</span>
+                <span class="tarjeta__meta">
+                  <span
+                    class="badge"
+                    [class.badge--ok]="devolucion.estado === 'APROBADA'"
+                    [class.badge--alerta]="devolucion.estado === 'SOLICITADA'"
+                    [class.badge--baja]="devolucion.estado === 'RECHAZADA'"
+                  >
+                    {{ etiquetaEstado(devolucion.estado) }}
+                  </span>
+                  {{ devolucion.unidades }} u. · {{ precio(devolucion.monto_devuelto) }}
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      @if (creando()) {
+        <h2 class="panel__titulo">Nueva devolución</h2>
+
+        <div class="buscador">
+          <input
+            type="search"
+            class="buscador__campo"
+            placeholder="Nº de la venta (V-…)"
+            [(ngModel)]="numeroVenta"
+            name="numero-venta"
+            (keyup.enter)="buscarVenta()"
+          />
+          <button type="button" class="boton boton--secundario" [disabled]="buscandoVenta()" (click)="buscarVenta()">
+            {{ buscandoVenta() ? 'Buscando…' : 'Buscar venta' }}
+          </button>
+        </div>
+
+        @if (errorNueva()) {
+          <p class="error" role="alert">{{ errorNueva() }}</p>
+        }
+
+        @if (venta(); as v) {
+          <div class="ficha ficha--venta">
+            <p class="estado">
+              <strong>{{ v.numero }}</strong> · {{ v.cliente ?? 'sin clienta identificada' }} · {{ v.sucursal }} ·
+              {{ fecha(v.fecha) }} · {{ v.canal }}
+            </p>
+            <p class="estado">
+              Total {{ precio(v.total) }}
+              @if (Number(v.descuento) > 0) { · descuento {{ precio(v.descuento) }} }
+              @if (Number(v.costo_envio) > 0) { · envío {{ precio(v.costo_envio) }} (no se reintegra) }
+              @if (Number(v.total_devuelto) > 0) { · ya devuelto {{ precio(v.total_devuelto) }} }
+            </p>
+
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Prenda</th>
+                    <th class="tabla__numero">Vendidas</th>
+                    <th class="tabla__numero">Devueltas</th>
+                    <th class="tabla__numero">Reintegro u.</th>
+                    <th class="tabla__numero">A devolver</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (linea of v.lineas; track linea.venta_detalle_id) {
+                    <tr>
+                      <td>
+                        {{ linea.producto }}
+                        <div class="secundario">{{ linea.sku }} · {{ linea.talla }} · {{ linea.color }}</div>
+                      </td>
+                      <td class="tabla__numero">{{ linea.cantidad_vendida }}</td>
+                      <td class="tabla__numero">
+                        {{ linea.devuelta }}
+                        @if (linea.en_tramite > 0) {
+                          <div class="secundario">+{{ linea.en_tramite }} en trámite</div>
+                        }
+                      </td>
+                      <td class="tabla__numero">{{ precio(linea.reembolso_unitario) }}</td>
+                      <td class="tabla__numero">
+                        @if (linea.devolvible > 0) {
+                          <input
+                            class="cantidad"
+                            type="number"
+                            min="0"
+                            [max]="linea.devolvible"
+                            [ngModel]="cantidades()[linea.venta_detalle_id] ?? 0"
+                            (ngModelChange)="fijarCantidad(linea.venta_detalle_id, $event, linea.devolvible)"
+                            [name]="'cant-' + linea.venta_detalle_id"
+                            [attr.aria-label]="'Unidades a devolver de ' + linea.producto"
+                          />
+                          <div class="secundario">máx. {{ linea.devolvible }}</div>
+                        } @else {
+                          <span class="secundario">—</span>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <div class="campo">
+              <label for="motivo">Motivo</label>
+              <textarea id="motivo" rows="2" maxlength="250" [(ngModel)]="motivo" name="motivo"
+                placeholder="Ej.: talla chica, falla de fábrica"></textarea>
+            </div>
+
+            <p class="estado">
+              {{ unidadesElegidas() }} unidad(es) · reintegro estimado <strong>{{ precio(estimado()) }}</strong>
+              <span class="secundario">(descuento e IVA prorrateados; el monto final se fija al aprobar)</span>
+            </p>
+
+            <div class="acciones">
+              <button type="button" class="boton" [disabled]="ocupado() || unidadesElegidas() === 0" (click)="registrar()">
+                {{ ocupado() ? 'Registrando…' : 'Registrar devolución' }}
+              </button>
+              <button type="button" class="boton boton--secundario" (click)="creando.set(false)">Cancelar</button>
+            </div>
+          </div>
+        }
+      } @else if (seleccionada(); as devolucion) {
+        <div class="ficha">
+          <h2 class="panel__titulo">Devolución de {{ devolucion.venta_numero }}</h2>
+          <p class="estado">
+            {{ devolucion.cliente ?? 'Sin clienta identificada' }} · {{ devolucion.sucursal }} ·
+            {{ fecha(devolucion.fecha) }}
+            @if (devolucion.registrada_por) { · registró {{ devolucion.registrada_por }} }
+          </p>
+          <p>
+            <span
+              class="badge"
+              [class.badge--ok]="devolucion.estado === 'APROBADA'"
+              [class.badge--alerta]="devolucion.estado === 'SOLICITADA'"
+              [class.badge--baja]="devolucion.estado === 'RECHAZADA'"
+            >
+              {{ etiquetaEstado(devolucion.estado) }}
+            </span>
+            @if (devolucion.pago_reembolsado) {
+              <span class="badge">Pago reembolsado</span>
+            }
+          </p>
+          <p class="estado"><strong>Motivo:</strong> {{ devolucion.motivo }}</p>
+          @if (devolucion.resuelta_por) {
+            <p class="estado">
+              {{ devolucion.estado === 'APROBADA' ? 'Aprobó' : 'Rechazó' }} {{ devolucion.resuelta_por }} ·
+              {{ fecha(devolucion.resuelta_en) }}
+            </p>
+          }
+          @if (devolucion.motivo_rechazo) {
+            <p class="estado"><strong>Motivo del rechazo:</strong> {{ devolucion.motivo_rechazo }}</p>
+          }
+
+          @if (aviso()) {
+            <p class="exito">{{ aviso() }}</p>
+          }
+          @if (errorDetalle()) {
+            <p class="error" role="alert">{{ errorDetalle() }}</p>
+          }
+
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Prenda</th>
+                  <th class="tabla__numero">Vendidas</th>
+                  <th class="tabla__numero">Devuelve</th>
+                  <th class="tabla__numero">Precio u.</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (linea of devolucion.detalle; track linea.id) {
+                  <tr>
+                    <td class="mono">{{ linea.sku }}</td>
+                    <td>
+                      {{ linea.producto }}
+                      <div class="secundario">{{ linea.talla }} · {{ linea.color }}</div>
+                    </td>
+                    <td class="tabla__numero">{{ linea.cantidad_vendida }}</td>
+                    <td class="tabla__numero">{{ linea.cantidad }}</td>
+                    <td class="tabla__numero">{{ precio(linea.precio_unitario) }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4">
+                    <strong>{{ devolucion.estado === 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado' }}</strong>
+                  </td>
+                  <td class="tabla__numero"><strong>{{ precio(devolucion.monto_devuelto) }}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          @if (devolucion.estado === 'SOLICITADA' && puedeResolver) {
+            <div class="acciones cierre">
+              <button type="button" class="boton" [disabled]="ocupado()" (click)="aprobar()">
+                {{ ocupado() ? 'Procesando…' : 'Aprobar y reingresar al stock' }}
+              </button>
+              <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="rechazando.set(!rechazando())">
+                Rechazar
+              </button>
+            </div>
+            @if (rechazando()) {
+              <div class="carga">
+                <div class="campo">
+                  <label for="motivo-rechazo">Motivo del rechazo (lo ve la clienta)</label>
+                  <textarea id="motivo-rechazo" rows="2" maxlength="250" [(ngModel)]="motivoRechazo" name="motivo-rechazo"></textarea>
+                </div>
+                <div class="acciones">
+                  <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="rechazar()">
+                    Confirmar rechazo
+                  </button>
+                  <button type="button" class="boton boton--secundario" (click)="rechazando.set(false)">Cancelar</button>
+                </div>
+              </div>
+            }
+          }
+        </div>
+      } @else {
+        <p class="estado">Elegí una devolución de la lista o registrá una nueva.</p>
+      }
+    </section>
+  </div>
+</app-panel-shell>

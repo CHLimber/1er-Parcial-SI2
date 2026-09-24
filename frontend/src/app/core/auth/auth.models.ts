@@ -20,7 +20,7 @@ export interface UsuarioOut {
   apellido: string;
   tipo: 'CLIENTE' | 'STAFF';
   rol: string | null;
-  /** Cargo del empleado: ENCARGADO, CAJERO, VENDEDOR o ALMACEN. El delivery (CU20) lo hace
+  /** Cargo del empleado: ENCARGADO o CAJERO. El delivery (CU20) lo hace
    * un servicio externo, no personal con este cargo. */
   cargo: string | null;
   /** Codigos de permiso del rol (CU13). Vacio para clientes. */

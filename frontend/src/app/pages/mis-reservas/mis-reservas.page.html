@@ -33,6 +33,12 @@
             <p class="reserva__linea">
               {{ reserva.sucursal }} · {{ reserva.fecha_visita }} a las {{ reserva.hora_visita.slice(0, 5) }}
             </p>
+            @if (reserva.estado === 'PENDIENTE') {
+              <p class="reserva__linea reserva__linea--aviso">
+                La sucursal todavía tiene que confirmar tu reserva. Las prendas ya quedaron apartadas
+                para vos mientras tanto.
+              </p>
+            }
             @if (reserva.estado === 'PENDIENTE' || reserva.estado === 'CONFIRMADA') {
               <p class="reserva__linea reserva__linea--vence">
                 Vence: {{ reserva.expira_en | date: 'short' }}
@@ -43,15 +49,32 @@
                 <li>{{ item.cantidad }} × {{ item.producto }} ({{ item.talla }} · {{ item.color }})</li>
               }
             </ul>
-            @if (puedeComprar(reserva)) {
-              <button
-                type="button"
-                class="reserva__comprar"
-                [disabled]="comprando() === reserva.id"
-                (click)="comprarPorWeb(reserva)"
-              >
-                {{ comprando() === reserva.id ? 'Armando carrito…' : 'Comprar estas prendas por web →' }}
-              </button>
+            @if (puedeComprar(reserva) || puedeCancelar(reserva)) {
+              <div class="reserva__acciones">
+                @if (puedeComprar(reserva)) {
+                  <button
+                    type="button"
+                    class="reserva__comprar"
+                    [disabled]="comprando() === reserva.id || cancelando() === reserva.id"
+                    (click)="comprarPorWeb(reserva)"
+                  >
+                    {{ comprando() === reserva.id ? 'Armando carrito…' : 'Comprar estas prendas por web →' }}
+                  </button>
+                }
+                @if (puedeCancelar(reserva)) {
+                  <button
+                    type="button"
+                    class="reserva__cancelar"
+                    [disabled]="cancelando() === reserva.id || comprando() === reserva.id"
+                    (click)="cancelar(reserva)"
+                  >
+                    {{ cancelando() === reserva.id ? 'Cancelando…' : 'Cancelar reserva' }}
+                  </button>
+                }
+              </div>
+            }
+            @if (errorCancelar()?.id === reserva.id) {
+              <p class="reserva__linea reserva__linea--error" role="alert">{{ errorCancelar()?.mensaje }}</p>
             }
           </li>
         }

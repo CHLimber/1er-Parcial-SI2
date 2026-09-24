@@ -199,10 +199,49 @@ Es idempotente y corre despues del paso 5 bis. Al final imprime los conteos de
 `empleados_repartidor`/`rol_repartidor` (tienen que dar 0) y los valores actuales de los enums
 `estado_envio` y `cargo_empleado`.
 
+## 5 quater. Reduccion de actores (2026-09-24)
+
+Quedan cuatro actores humanos: Cliente, Administrador, Encargado (absorbe ALMACEN) y Cajero
+(absorbe VENDEDOR). El script pasa los cargos/roles VENDEDOR -> CAJERO y ALMACEN -> ENCARGADO,
+borra esos dos roles, le da al ENCARGADO `caja.*` + `ventas.crear` (CU07/CU08 ahora se autorizan
+por permiso), renombra las cuentas demo `vendedor.scz` -> `cajera.scz` y `almacen.scz` ->
+`encargado.cbba` (Cala Cala), crea `cajera.lapaz` si falta y recrea el enum `cargo_empleado`
+como `('ENCARGADO','CAJERO')`.
+
+```bash
+cd fashionstore
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/reduccion_actores.sql
+```
+
+Corre despues del paso 5 ter (si la base todavia tiene REPARTIDOR) y es idempotente. Al final
+imprime `roles_viejos 0`, `cargos_actuales {ENCARGADO,CAJERO}`, un encargado y un cajero por
+sucursal y el conteo de permisos por rol (**ADMIN 37, ENCARGADO 19, CAJERO 6** con la matriz del
+seed). Despues: **reiniciar el backend** (el tipo se recreo y asyncpg cachea su OID) y volver a
+iniciar sesion. Si alguna vez se re-corre `permisos_cu13.sql`, volver a correr este.
+
+## 5 quinquies. Devoluciones y traspasos entre sucursales (PENDIENTES 2.7)
+
+Agrega las columnas nuevas de `devolucion` (`resuelta_por_id`, `resuelta_en`, `motivo_rechazo`)
+y de `traspaso` (`fecha_despacho`, `actualizado_por_id`, `observacion`), los triggers
+`tg_devolucion_stock` y `tg_traspaso_stock` (son los que mueven el stock al aprobar una
+devolucion o despachar/recibir/anular un traspaso) y los permisos `devoluciones.*` /
+`traspasos.*` para ADMIN y ENCARGADO.
+
+```bash
+cd fashionstore
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/devoluciones_traspasos.sql
+```
+
+Es idempotente y corre despues del paso 5 quater. Queda ADMIN 44 / ENCARGADO 26 permisos con la
+matriz del seed. Si alguna vez se re-corre `permisos_cu13.sql` (que rearma la matriz del
+ENCARGADO), volver a correr `reduccion_actores.sql` y despues este. Los usuarios tienen que
+volver a iniciar sesion (o recargar el panel) para ver las secciones nuevas.
+
 ## 6. Verificacion
 
 - Abrí la URL publica del frontend, iniciá sesion con `cliente@fashionstore.bo` / `demo1234` (o
-  `admin@fashionstore.bo` para `/atender-reservas`, `cajero.cbba@fashionstore.bo` para `/caja` --
+  `admin@fashionstore.bo` o `encargada.lapaz@fashionstore.bo` para `/atender-reservas`,
+  `cajero.cbba@fashionstore.bo` para `/caja` --
   ver `CLAUDE.md` para la lista completa de usuarios semilla).
 - Si algo de CORS/red falla, la consola del navegador (F12) muestra el origen bloqueado --
   revisar que `CORS_ORIGINS` del backend tenga exactamente la URL del frontend (con `https://`,

@@ -36,7 +36,13 @@
             <span class="confirmacion__etiqueta">Pago no completado</span>
             <h1 class="confirmacion__numero">{{ v.numero }}</h1>
             <p class="confirmacion__linea">
-              @if (v.pago?.estado === 'RECHAZADO') {
+              @if (v.pago?.estado === 'RECHAZADO' && v.pago?.metodo === 'EFECTIVO') {
+                El pedido se anuló sin cobrarte nada: la sucursal no concretó el cobro en efectivo o el stock
+                cambió antes de confirmarlo. Tu carrito sigue disponible para que vuelvas a intentarlo.
+              } @else if (v.pago?.estado === 'RECHAZADO' && v.pago?.pasarela === 'QR') {
+                La sucursal no pudo verificar tu depósito QR. Si ya pagaste, acercate con tu comprobante.
+                Tu carrito sigue disponible para que vuelvas a intentarlo.
+              } @else if (v.pago?.estado === 'RECHAZADO') {
                 Tu pago fue rechazado por la pasarela. Tu carrito sigue disponible para que vuelvas a intentarlo.
               } @else {
                 Hubo un problema al confirmar tu pedido y se generó un reembolso. Escribinos si el monto no vuelve en unos días.
@@ -46,12 +52,41 @@
           </section>
         }
         @default {
+          <!-- 2.19.1.b/c: EFECTIVO y QR quedan pendientes hasta que el cajero de la sucursal los verifica -->
           <section class="confirmacion">
-            <span class="confirmacion__etiqueta">Esperando confirmación de pago</span>
-            <h1 class="confirmacion__numero">{{ v.numero }}</h1>
-            <p class="confirmacion__linea">
-              Todavía no recibimos la confirmación de la pasarela para este pedido.
-            </p>
+            @if (v.pago?.metodo === 'EFECTIVO') {
+              <span class="confirmacion__etiqueta">Pendiente de cobro en efectivo</span>
+              <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+              <p class="confirmacion__linea">
+                @if (v.entrega === 'DOMICILIO') {
+                  Pagás {{ formatearPrecio(v.total) }} en efectivo al recibir tu pedido. La sucursal
+                  {{ v.sucursal }} lo confirma cuando se registra el cobro.
+                } @else {
+                  Acercate a {{ v.sucursal }} y pagá {{ formatearPrecio(v.total) }} en caja. Cuando el
+                  cajero registre el cobro te emitimos el comprobante.
+                }
+              </p>
+            } @else if (v.pago?.pasarela === 'QR') {
+              @if (v.pago?.informado_en) {
+                <span class="confirmacion__etiqueta">Pago pendiente de verificación</span>
+                <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+                <p class="confirmacion__linea">
+                  Nos avisaste que pagaste el {{ v.pago?.informado_en | date: 'short' }}. La sucursal
+                  {{ v.sucursal }} está verificando el depósito; te notificamos cuando lo apruebe.
+                </p>
+              } @else {
+                <span class="confirmacion__etiqueta">Esperando tu pago con QR</span>
+                <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+                <p class="confirmacion__linea">Todavía no nos avisaste que pagaste este pedido.</p>
+                <a class="boton" [routerLink]="['/pago-simulado', v.id]">Pagar con QR</a>
+              }
+            } @else {
+              <span class="confirmacion__etiqueta">Esperando confirmación de pago</span>
+              <h1 class="confirmacion__numero">{{ v.numero }}</h1>
+              <p class="confirmacion__linea">
+                Todavía no recibimos la confirmación de la pasarela para este pedido.
+              </p>
+            }
           </section>
         }
       }

@@ -1,0 +1,28 @@
+/* Lista, tarjetas, buscador, resultados y bloque .carga vienen de panel-recepciones.page.css. */
+
+.cantidad {
+  width: 4.5rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--paper-line);
+  font-family: inherit;
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.faltante {
+  color: var(--flame-dark);
+  font-weight: 700;
+}
+
+.rejilla + .campo__ayuda,
+.rejilla + .buscador,
+.campo__ayuda + .buscador {
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 48rem) {
+  .cantidad {
+    width: 3.75rem;
+    font-size: 16px; /* Safari de iOS no hace zoom al enfocar */
+  }
+}

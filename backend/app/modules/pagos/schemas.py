@@ -1,12 +1,7 @@
-from typing import Literal
+from datetime import datetime
+from uuid import UUID
 
-from pydantic import BaseModel
-
-
-class WebhookIn(BaseModel):
-    evento_id: str
-    id_transaccion: str
-    estado: Literal["APROBADO", "RECHAZADO"]
+from pydantic import BaseModel, Field
 
 
 class WebhookOut(BaseModel):
@@ -22,3 +17,19 @@ class ConfigPagoOut(BaseModel):
     asi cambia por entorno (local/Railway) sin recompilar."""
 
     stripe_publishable_key: str
+
+
+class InformarPagoIn(BaseModel):
+    """2.19.1.c: la clienta avisa que ya pago el QR. La referencia (nro. de operacion del banco,
+    nombre del titular, etc.) es opcional y solo ayuda al cajero a encontrar el deposito."""
+
+    referencia: str | None = Field(default=None, max_length=200)
+
+
+class InformarPagoOut(BaseModel):
+    venta_id: UUID
+    pago_id: UUID
+    pago_estado: str
+    informado_en: datetime
+    referencia_cliente: str | None
+    mensaje: str

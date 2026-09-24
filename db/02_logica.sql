@@ -285,40 +285,74 @@ CREATE TRIGGER tg_reserva_historial
  
 -- ---------------------------------------------------------------------
 --  EXPIRACION DE RESERVAS VENCIDAS
---  La llama un job programado (APScheduler o cron) cada pocos minutos.
+--  La llama el job periodico del backend (app/core/jobs.py) cada pocos minutos.
 --  Sin esto, el cliente que no aparece congela el stock para siempre.
+--
+--  Concurrencia: compite con los endpoints que tambien liberan el compromiso
+--  (cancelar/rechazar/no-presentado en reservas/router.py, que bloquean la reserva
+--  con FOR UPDATE) y con el checkout de un carrito armado desde la reserva. Por eso:
+--   * cada reserva vencida se BLOQUEA (FOR UPDATE SKIP LOCKED) antes de tocarla: si
+--     otro la tiene tomada se la saltea y la agarra el proximo ciclo, ya con el
+--     estado actualizado (el recheck del WHERE sobre la fila bloqueada descarta la
+--     que otro ya paso a CANCELADA/ATENDIDA/...);
+--   * los items liberados pasan a DESCARTADO en la misma transaccion (igual que
+--     _liberar_compromiso), asi nadie los vuelve a liberar y la reserva EXPIRADA no
+--     queda con items "vivos";
+--   * no se expira una reserva con una venta PENDIENTE ligada (venta.reserva_id):
+--     cuando ese pago se apruebe, tg_venta_descuenta_stock libera el compromiso de la
+--     reserva antes de descontar, y si ya lo hubiera liberado este job, se liberaria
+--     dos veces. Se re-chequea con una sentencia aparte (snapshot nuevo) DESPUES de
+--     tener el lock, porque el checkout inserta la venta con la reserva bloqueada.
+--  Devuelve la cantidad de reservas expiradas.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_expirar_reservas()
 RETURNS INT LANGUAGE plpgsql AS $$
 DECLARE
     r          RECORD;
+    d          RECORD;
     v_contador INT := 0;
 BEGIN
     FOR r IN
-        SELECT rd.reserva_id, rd.variante_id, rd.cantidad, res.sucursal_id
-          FROM reserva_detalle rd
-          JOIN reserva res ON res.id = rd.reserva_id
+        SELECT res.id, res.sucursal_id
+          FROM reserva res
          WHERE res.estado IN ('PENDIENTE','CONFIRMADA','PREPARADA')
            AND res.expira_en < now()
-           AND rd.estado_item IN ('RESERVADO','PREPARADO')
+         ORDER BY res.expira_en
+           FOR UPDATE SKIP LOCKED
     LOOP
-        PERFORM fn_mover_inventario(
-            r.sucursal_id, r.variante_id, 'LIBERACION', r.cantidad,
-            'Reserva expirada sin presentacion del cliente', 'RESERVA', r.reserva_id);
+        IF EXISTS (SELECT 1 FROM venta v
+                    WHERE v.reserva_id = r.id AND v.estado = 'PENDIENTE') THEN
+            CONTINUE;  -- la resuelve el pago en curso; si se anula, la expira el proximo ciclo
+        END IF;
+
+        FOR d IN
+            SELECT rd.variante_id, rd.cantidad
+              FROM reserva_detalle rd
+             WHERE rd.reserva_id = r.id
+               AND rd.estado_item IN ('RESERVADO','PREPARADO')
+        LOOP
+            PERFORM fn_mover_inventario(
+                r.sucursal_id, d.variante_id, 'LIBERACION', d.cantidad,
+                'Reserva expirada sin presentacion del cliente', 'RESERVA', r.id);
+        END LOOP;
+
+        UPDATE reserva_detalle
+           SET estado_item = 'DESCARTADO'
+         WHERE reserva_id = r.id
+           AND estado_item IN ('RESERVADO','PREPARADO');
+
+        UPDATE reserva SET estado = 'EXPIRADA' WHERE id = r.id;
         v_contador := v_contador + 1;
     END LOOP;
- 
-    UPDATE reserva
-       SET estado = 'EXPIRADA'
-     WHERE estado IN ('PENDIENTE','CONFIRMADA','PREPARADA')
-       AND expira_en < now();
- 
+
     RETURN v_contador;
 END;
 $$;
- 
+
 COMMENT ON FUNCTION fn_expirar_reservas IS
-    'Libera el stock comprometido por reservas vencidas. Debe ejecutarse periodicamente.';
+    'Expira las reservas vencidas y libera su stock comprometido (items -> DESCARTADO). '
+    'Bloquea cada reserva con FOR UPDATE SKIP LOCKED y saltea las que tienen una venta '
+    'PENDIENTE ligada. Debe ejecutarse periodicamente; devuelve cuantas reservas expiro.';
  
  
 -- ---------------------------------------------------------------------
@@ -343,6 +377,137 @@ $$;
 CREATE TRIGGER tg_confirmar_recepcion
     AFTER UPDATE ON recepcion
     FOR EACH ROW EXECUTE FUNCTION fn_confirmar_recepcion();
+
+
+-- ---------------------------------------------------------------------
+--  DEVOLUCIONES (PENDIENTES 2.7): al aprobarla vuelve el stock
+--  Mismo patron que tg_confirmar_recepcion: el backend solo mueve el estado
+--  (SOLICITADA -> APROBADA) y es la base la que reingresa cada linea con
+--  fn_mover_inventario tipo DEVOLUCION, en la sucursal de la devolucion.
+--  Ademas la base es la ultima barrera de dos reglas:
+--   * una devolucion resuelta (APROBADA/RECHAZADA) no cambia mas de estado;
+--   * lo APROBADO de cada linea de venta no supera lo vendido. La venta se
+--     bloquea con FOR UPDATE para que dos aprobaciones simultaneas de la misma
+--     venta se serialicen y la segunda vea la primera.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_devolucion_stock()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    d RECORD;
+BEGIN
+    IF NEW.estado = OLD.estado THEN
+        RETURN NEW;
+    END IF;
+    IF OLD.estado <> 'SOLICITADA' THEN
+        RAISE EXCEPTION 'La devolucion ya esta % y no puede cambiar de estado', lower(OLD.estado::text);
+    END IF;
+
+    IF NEW.estado = 'APROBADA' THEN
+        PERFORM 1 FROM venta WHERE id = NEW.venta_id FOR UPDATE;
+
+        FOR d IN
+            SELECT vd.id, vd.variante_id, vd.cantidad AS vendida, dd.cantidad,
+                   (SELECT COALESCE(SUM(dd2.cantidad), 0)
+                      FROM devolucion_detalle dd2
+                      JOIN devolucion dv ON dv.id = dd2.devolucion_id
+                     WHERE dd2.venta_detalle_id = vd.id
+                       AND dv.estado = 'APROBADA') AS aprobada
+              FROM devolucion_detalle dd
+              JOIN venta_detalle vd ON vd.id = dd.venta_detalle_id
+             WHERE dd.devolucion_id = NEW.id
+        LOOP
+            -- "aprobada" ya incluye esta devolucion (el trigger es AFTER UPDATE)
+            IF d.aprobada > d.vendida THEN
+                RAISE EXCEPTION 'Se devolverian % unidad(es) de una linea que vendio %',
+                                d.aprobada, d.vendida;
+            END IF;
+            PERFORM fn_mover_inventario(
+                NEW.sucursal_id, d.variante_id, 'DEVOLUCION', d.cantidad,
+                'Devolucion de venta: ' || left(NEW.motivo, 150), 'DEVOLUCION', NEW.id,
+                NEW.resuelta_por_id);
+        END LOOP;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_devolucion_stock ON devolucion;
+CREATE TRIGGER tg_devolucion_stock
+    AFTER UPDATE OF estado ON devolucion
+    FOR EACH ROW EXECUTE FUNCTION fn_devolucion_stock();
+
+
+-- ---------------------------------------------------------------------
+--  TRASPASOS ENTRE SUCURSALES (PENDIENTES 2.7)
+--  El backend solo cambia traspaso.estado (y antes carga cantidad_recibida al
+--  recibir); el stock lo mueve este trigger, firmando el kardex con
+--  traspaso.actualizado_por_id:
+--    SOLICITADO  -> EN_TRANSITO : TRASPASO_SAL en el origen por lo solicitado
+--                                 (falla si el origen no tiene disponible).
+--    EN_TRANSITO -> RECIBIDO    : TRASPASO_ENT en el destino por lo RECIBIDO.
+--                                 Si llego de menos, la diferencia salio del
+--                                 origen y no entro en ningun lado: se investiga
+--                                 y se corrige con un AJUSTE (el kardex no se
+--                                 reescribe), igual que una recepcion.
+--    EN_TRANSITO -> ANULADO     : TRASPASO_ENT de vuelta en el ORIGEN (el envio
+--                                 no salio o volvio entero).
+--    SOLICITADO  -> ANULADO     : nada que mover.
+--  Cualquier otra transicion es un error.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_traspaso_stock()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+    d RECORD;
+BEGIN
+    IF NEW.estado = OLD.estado THEN
+        RETURN NEW;
+    END IF;
+
+    IF OLD.estado = 'SOLICITADO' AND NEW.estado = 'EN_TRANSITO' THEN
+        FOR d IN SELECT * FROM traspaso_detalle WHERE traspaso_id = NEW.id LOOP
+            PERFORM fn_mover_inventario(
+                NEW.sucursal_origen_id, d.variante_id, 'TRASPASO_SAL', d.cantidad_solicitada,
+                'Traspaso ' || NEW.numero || ': salida del origen', 'TRASPASO', NEW.id,
+                NEW.actualizado_por_id);
+        END LOOP;
+
+    ELSIF OLD.estado = 'EN_TRANSITO' AND NEW.estado = 'RECIBIDO' THEN
+        FOR d IN SELECT * FROM traspaso_detalle WHERE traspaso_id = NEW.id LOOP
+            IF d.cantidad_recibida IS NULL THEN
+                RAISE EXCEPTION 'Falta indicar la cantidad recibida de todas las lineas';
+            END IF;
+            IF d.cantidad_recibida > d.cantidad_solicitada THEN
+                RAISE EXCEPTION 'Se recibieron % unidad(es) de una linea que despacho %',
+                                d.cantidad_recibida, d.cantidad_solicitada;
+            END IF;
+            IF d.cantidad_recibida > 0 THEN
+                PERFORM fn_mover_inventario(
+                    NEW.sucursal_destino_id, d.variante_id, 'TRASPASO_ENT', d.cantidad_recibida,
+                    'Traspaso ' || NEW.numero || ': entrada en destino', 'TRASPASO', NEW.id,
+                    NEW.actualizado_por_id);
+            END IF;
+        END LOOP;
+
+    ELSIF OLD.estado = 'EN_TRANSITO' AND NEW.estado = 'ANULADO' THEN
+        FOR d IN SELECT * FROM traspaso_detalle WHERE traspaso_id = NEW.id LOOP
+            PERFORM fn_mover_inventario(
+                NEW.sucursal_origen_id, d.variante_id, 'TRASPASO_ENT', d.cantidad_solicitada,
+                'Traspaso ' || NEW.numero || ' anulado en transito: vuelve al origen', 'TRASPASO',
+                NEW.id, NEW.actualizado_por_id);
+        END LOOP;
+
+    ELSIF NOT (OLD.estado = 'SOLICITADO' AND NEW.estado = 'ANULADO') THEN
+        RAISE EXCEPTION 'Un traspaso % no puede pasar a %',
+                        lower(OLD.estado::text), lower(NEW.estado::text);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS tg_traspaso_stock ON traspaso;
+CREATE TRIGGER tg_traspaso_stock
+    AFTER UPDATE OF estado ON traspaso
+    FOR EACH ROW EXECUTE FUNCTION fn_traspaso_stock();
 
 
 -- ---------------------------------------------------------------------
@@ -431,3 +596,85 @@ $$;
 CREATE TRIGGER tg_envio_historial
     AFTER INSERT OR UPDATE ON envio
     FOR EACH ROW EXECUTE FUNCTION fn_envio_historial();
+
+-- ---------------------------------------------------------------------
+--  CU15 - CONSOLIDADO DE EXISTENCIAS (PENDIENTES 2.19.5)
+--  La consigna pide saber que prendas estan disponibles, reservadas,
+--  vendidas, agotadas o proximas a ingresar en todas las sucursales.
+--  v_disponibilidad (la del catalogo) solo distingue DISPONIBLE/RESERVADA/
+--  AGOTADA y no se toca; esta vista suma lo que le faltaba en una sola
+--  fila por variante x sucursal. Situacion, en orden de prioridad:
+--    DISPONIBLE         disponible > 0
+--    RESERVADA          disponible = 0 y hay unidades comprometidas
+--    PROXIMA_A_INGRESAR sin nada fisico libre ni reservado, pero con una
+--                       recepcion BORRADOR que la trae
+--    AGOTADA            nada de lo anterior
+--  "Vendidas" es una columna (unidades historicas), no una situacion: una
+--  variante puede estar disponible y a la vez tener ventas.
+--  Para Railway: db/reparaciones/consolidado_existencias.sql.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE VIEW v_existencias_consolidadas AS
+WITH vendidas AS (
+    -- Unidades vendidas historicas. venta_detalle se inserta recien al aprobar el pago, y se
+    -- cuentan los mismos estados que los reportes de CU15 (PAGADA/ENTREGADA).
+    SELECT v.sucursal_id, vd.variante_id, SUM(vd.cantidad)::int AS vendidas
+    FROM venta_detalle vd
+    JOIN venta v ON v.id = vd.venta_id
+    WHERE v.estado IN ('PAGADA', 'ENTREGADA')
+    GROUP BY v.sucursal_id, vd.variante_id
+),
+entrantes AS (
+    -- Mercaderia cargada en una recepcion BORRADOR: todavia no entro al kardex (eso lo hace
+    -- tg_confirmar_recepcion al confirmar), pero ya se sabe que viene.
+    SELECT r.sucursal_id, rd.variante_id, SUM(rd.cantidad)::int AS proximas_a_ingresar
+    FROM recepcion_detalle rd
+    JOIN recepcion r ON r.id = rd.recepcion_id
+    WHERE r.estado = 'BORRADOR'
+    GROUP BY r.sucursal_id, rd.variante_id
+),
+base AS (
+    -- Una variante nueva que todavia no tiene fila en inventario de esa sucursal pero ya viene
+    -- en una recepcion pendiente tambien tiene que aparecer (como PROXIMA_A_INGRESAR).
+    SELECT sucursal_id, variante_id FROM inventario
+    UNION
+    SELECT sucursal_id, variante_id FROM entrantes
+)
+SELECT
+    p.id                                    AS producto_id,
+    p.nombre                                AS producto,
+    cat.id                                  AS categoria_id,
+    cat.nombre                              AS categoria,
+    pv.id                                   AS variante_id,
+    pv.sku,
+    t.codigo                                AS talla,
+    t.orden                                 AS talla_orden,
+    c.nombre                                AS color,
+    s.id                                    AS sucursal_id,
+    s.nombre                                AS sucursal,
+    s.ciudad,
+    COALESCE(i.cantidad_fisica, 0)          AS cantidad_fisica,
+    COALESCE(i.cantidad_reservada, 0)       AS cantidad_reservada,
+    COALESCE(i.disponible, 0)               AS disponible,
+    COALESCE(i.stock_minimo, 0)             AS stock_minimo,
+    COALESCE(ve.vendidas, 0)                AS vendidas,
+    COALESCE(en.proximas_a_ingresar, 0)     AS proximas_a_ingresar,
+    (CASE
+        WHEN COALESCE(i.disponible, 0) > 0          THEN 'DISPONIBLE'
+        WHEN COALESCE(i.cantidad_reservada, 0) > 0  THEN 'RESERVADA'
+        WHEN COALESCE(en.proximas_a_ingresar, 0) > 0 THEN 'PROXIMA_A_INGRESAR'
+        ELSE                                             'AGOTADA'
+    END)::text                              AS situacion
+FROM base b
+JOIN producto_variante pv ON pv.id  = b.variante_id
+JOIN producto p           ON p.id   = pv.producto_id
+JOIN categoria cat        ON cat.id = p.categoria_id
+JOIN talla t              ON t.id   = pv.talla_id
+JOIN color c              ON c.id   = pv.color_id
+JOIN sucursal s           ON s.id   = b.sucursal_id
+LEFT JOIN inventario i    ON i.sucursal_id  = b.sucursal_id AND i.variante_id  = b.variante_id
+LEFT JOIN vendidas ve     ON ve.sucursal_id = b.sucursal_id AND ve.variante_id = b.variante_id
+LEFT JOIN entrantes en    ON en.sucursal_id = b.sucursal_id AND en.variante_id = b.variante_id
+WHERE p.activo AND pv.activa AND s.activa;
+COMMENT ON VIEW v_existencias_consolidadas IS
+    'CU15 (consolidado de existencias). Por variante x sucursal: fisico, reservado, disponible, '
+    'vendidas historicas y proximas a ingresar (recepciones BORRADOR), con la situacion derivada.';

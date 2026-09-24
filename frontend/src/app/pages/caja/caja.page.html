@@ -5,6 +5,7 @@
       @if (auth.usuario(); as u) {
         <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
       }
+      <app-campana-notificaciones />
       @if (sesion() && !cerrandoCaja() && !comprobante()) {
         <button type="button" class="cabecera__salir" (click)="abrirCierreCaja()">Cerrar caja</button>
       }
@@ -255,6 +256,121 @@
               {{ cobrando() ? 'Cobrando…' : 'Cobrar ' + formatearPrecio(total()) }}
             </button>
           </div>
+        }
+      </section>
+    }
+
+    <!-- 2.19.1.b/c: pedidos online que no se aprueban solos. EFECTIVO: se cobra en caja (retiro) o se
+         recibe lo que rinde el delivery (domicilio) y entra al arqueo de la sesion abierta. QR: la
+         clienta avisa que pago y el cajero verifica el deposito antes de aprobar. -->
+    @if (!cargando() && !cerrandoCaja() && !comprobante()) {
+      <section class="verificar">
+        <div class="verificar__cabecera">
+          <h2 class="verificar__titulo">Pagos online por verificar</h2>
+          <button type="button" class="verificar__secundario" [disabled]="cargandoPagos()" (click)="cargarPagosPendientes()">
+            {{ cargandoPagos() ? 'Actualizando…' : 'Actualizar' }}
+          </button>
+        </div>
+
+        @if (mensajePagos(); as m) {
+          <p [class]="m.error ? 'formulario__error' : 'verificar__ok'" role="status">{{ m.texto }}</p>
+        }
+
+        @if (pagosPendientes().length === 0) {
+          <p class="estado">No hay pedidos online esperando cobro o verificación.</p>
+        } @else {
+          <ul class="verificar__lista">
+            @for (p of pagosPendientes(); track p.pago_id) {
+              <li class="verificar__pedido">
+                <div class="verificar__fila">
+                  <strong>{{ p.numero }}</strong>
+                  <span class="verificar__badge" [class.verificar__badge--qr]="p.metodo === 'QR'">{{ p.metodo }}</span>
+                  <span class="verificar__total">{{ formatearPrecio(p.total) }}</span>
+                </div>
+                <p class="verificar__linea">{{ p.cliente }} · {{ p.cliente_email }} · {{ p.fecha | date: 'short' }}</p>
+                <p class="verificar__linea">
+                  {{ p.entrega === 'DOMICILIO' ? 'Envío a domicilio (cobra el delivery)' : 'Retira en sucursal' }}
+                  @if (p.costo_envio > 0) {
+                    · envío {{ formatearPrecio(p.costo_envio) }}
+                  }
+                </p>
+                @if (p.metodo === 'QR') {
+                  <p class="verificar__linea">
+                    @if (p.informado_en) {
+                      La clienta informó el pago el {{ p.informado_en | date: 'short' }}
+                      @if (p.referencia_cliente) {
+                        · Ref: <strong>{{ p.referencia_cliente }}</strong>
+                      }
+                    } @else {
+                      La clienta todavía no informó el pago.
+                    }
+                  </p>
+                }
+                <ul class="verificar__items">
+                  @for (item of p.items; track item.sku) {
+                    <li>{{ item.cantidad }} × {{ item.producto }} ({{ item.talla }} · {{ item.color }}) · {{ item.sku }}</li>
+                  }
+                </ul>
+
+                @if (p.carrito_modificado) {
+                  <p class="formulario__error">
+                    La clienta modificó su carrito después del pedido: no se puede aprobar, solo rechazar.
+                  </p>
+                } @else if (p.metodo === 'EFECTIVO' && !sesion()) {
+                  <p class="formulario__error">Abrí una sesión de caja para cobrar este pedido en efectivo.</p>
+                }
+
+                @if (rechazandoId() === p.pago_id) {
+                  <div class="campo">
+                    <label [for]="'motivo-' + p.pago_id">Motivo (opcional, lo ve la clienta)</label>
+                    <input
+                      [id]="'motivo-' + p.pago_id"
+                      type="text"
+                      maxlength="200"
+                      [placeholder]="p.metodo === 'QR' ? 'No encontramos el depósito' : 'No se presentó a pagar'"
+                      [(ngModel)]="motivoRechazo"
+                    />
+                  </div>
+                  <div class="verificar__acciones">
+                    <button
+                      type="button"
+                      class="boton boton--peligro"
+                      [disabled]="pagoEnProceso() === p.pago_id"
+                      (click)="confirmarRechazo(p)"
+                    >
+                      {{ pagoEnProceso() === p.pago_id ? 'Rechazando…' : 'Confirmar rechazo' }}
+                    </button>
+                    <button type="button" class="verificar__secundario" (click)="cancelarRechazo()">Cancelar</button>
+                  </div>
+                } @else {
+                  <div class="verificar__acciones">
+                    <button
+                      type="button"
+                      class="boton"
+                      [disabled]="pagoEnProceso() !== null || p.carrito_modificado || (p.metodo === 'EFECTIVO' && !sesion())"
+                      (click)="aprobarPago(p)"
+                    >
+                      {{
+                        pagoEnProceso() === p.pago_id
+                          ? 'Aprobando…'
+                          : p.metodo === 'EFECTIVO'
+                            ? 'Cobrado · aprobar'
+                            : 'Depósito verificado · aprobar'
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="verificar__secundario"
+                      [disabled]="pagoEnProceso() !== null"
+                      (click)="iniciarRechazo(p)"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
         }
       </section>
     }

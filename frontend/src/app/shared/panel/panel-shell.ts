@@ -2,6 +2,8 @@ import { Component, OnInit, computed, inject, input } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { AuthService } from '../../core/auth/auth.service';
+import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/auth/auth.guard';
+import { CampanaNotificaciones } from '../notificaciones/campana-notificaciones';
 
 interface EntradaNav {
   ruta: string;
@@ -29,6 +31,18 @@ const ENTRADAS_PANEL: EntradaNav[] = [
     ruta: '/panel/inventario',
     etiqueta: 'Inventario',
     visible: (auth) => auth.tienePermiso('inventario.leer', 'inventario.actualizar'),
+  },
+  {
+    ruta: '/panel/traspasos',
+    etiqueta: 'Traspasos',
+    visible: (auth) =>
+      auth.tienePermiso('traspasos.leer', 'traspasos.crear', 'traspasos.actualizar', 'traspasos.eliminar'),
+  },
+  {
+    ruta: '/panel/devoluciones',
+    etiqueta: 'Devoluciones',
+    visible: (auth) =>
+      auth.tienePermiso('devoluciones.leer', 'devoluciones.crear', 'devoluciones.actualizar'),
   },
   {
     ruta: '/panel/proveedores',
@@ -74,11 +88,11 @@ const ENTRADAS_PANEL: EntradaNav[] = [
     etiqueta: 'Auditoría',
     visible: (auth) => auth.tienePermiso('auditoria.leer'),
   },
-  { ruta: '/caja', etiqueta: 'Caja', visible: (auth) => auth.usuario()?.rol === 'CAJERO' },
+  { ruta: '/caja', etiqueta: 'Caja', visible: (auth) => auth.tienePermiso(PERMISO_CAJA) },
   {
     ruta: '/atender-reservas',
     etiqueta: 'Reservas',
-    visible: (auth) => auth.usuario()?.rol === 'ENCARGADO',
+    visible: (auth) => auth.tienePermiso(PERMISO_ATENDER_RESERVAS),
   },
 ];
 
@@ -89,12 +103,12 @@ export function primeraSeccionPanel(auth: AuthService): string {
 
 /**
  * Cabecera y navegacion comunes del panel de gestion (CU09 a CU13). Los enlaces se arman con
- * los permisos del rol: un ALMACEN solo ve Recepciones, un ADMIN los ve todos.
+ * los permisos del rol: un CAJERO solo ve Caja, un ADMIN los ve todos.
  */
 @Component({
   selector: 'app-panel-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive],
+  imports: [CampanaNotificaciones, RouterLink, RouterLinkActive],
   templateUrl: './panel-shell.html',
   styleUrl: './panel-shell.css',
 })

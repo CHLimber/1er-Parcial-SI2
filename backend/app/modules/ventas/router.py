@@ -11,7 +11,7 @@ from app.core.db import get_connection
 from app.core.deps import get_cajero_actual, get_current_usuario
 from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.envios.servicio import SinCoordenadas, cotizar
-from app.modules.pagos.servicio import _alertar_stock_bajo, confirmar_aprobado
+from app.modules.pagos.servicio import _alertar_stock_bajo, notificar_cajeros
 from app.modules.ventas.schemas import (
     CheckoutIn,
     CheckoutOut,
@@ -131,6 +131,66 @@ def _exigir_cliente(usuario: dict) -> None:
         )
 
 
+# Mismos estados desde los que carrito/router.py deja armar un carrito con la reserva. En
+# CANCELADA/EXPIRADA/ATENDIDA/CONVERTIDA el compromiso ya se libero (o se consumio): vender contra
+# ella haria que tg_venta_descuenta_stock libere de nuevo un stock que la reserva ya no sostiene.
+ESTADOS_RESERVA_CONVERTIBLES = ("PENDIENTE", "CONFIRMADA", "PREPARADA", "CLIENTE_PRESENTE")
+
+
+async def _validar_reserva_del_carrito(
+    conn: asyncpg.Connection,
+    reserva_id: UUID,
+    items: list[asyncpg.Record],
+    *,
+    bloquear: bool = False,
+) -> UUID:
+    """Valida que la reserva de origen del carrito siga viva y respalde lo que se compra.
+    Devuelve su sucursal. Con bloquear=True la toma FOR UPDATE: debe llamarse dentro de la
+    transaccion que inserta la venta."""
+    reserva = await conn.fetchrow(
+        "SELECT sucursal_id, estado::text AS estado FROM reserva WHERE id = $1"
+        + (" FOR UPDATE" if bloquear else ""),
+        reserva_id,
+    )
+    if reserva is None or reserva["estado"] not in ESTADOS_RESERVA_CONVERTIBLES:
+        estado = reserva["estado"] if reserva else "inexistente"
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"La reserva de este carrito ya no se puede comprar (esta {estado}). "
+                "Vacia el carrito y volve a armarlo desde la tienda."
+            ),
+        )
+
+    # Estas unidades ya estan comprometidas por fn_reserva_compromete_stock: inventario.disponible
+    # (cantidad_fisica - cantidad_reservada) las excluye a proposito, asi que exigirles
+    # disponibilidad libre las rechaza aunque sean del propio cliente (p.ej. si eran la ultima
+    # unidad de la sucursal). Se valida en cambio que la reserva siga sosteniendo el compromiso.
+    comprometido = await conn.fetch(
+        """
+        SELECT variante_id, cantidad
+        FROM reserva_detalle
+        WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO', 'PROBADO')
+        """,
+        reserva_id,
+    )
+    cantidad_comprometida = {fila["variante_id"]: fila["cantidad"] for fila in comprometido}
+    sin_stock = [
+        str(item["variante_id"])
+        for item in items
+        if cantidad_comprometida.get(item["variante_id"], 0) < item["cantidad"]
+    ]
+    if sin_stock:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "mensaje": "Tu reserva ya no respalda estas prendas (se atendio, expiro o cambio)",
+                "variantes_sin_stock": sin_stock,
+            },
+        )
+    return reserva["sucursal_id"]
+
+
 async def _aplicar_cupon(
     conn: asyncpg.Connection, codigo: str, items: list[asyncpg.Record], subtotal: Decimal
 ) -> tuple[UUID, Decimal]:
@@ -221,11 +281,10 @@ async def iniciar_checkout(
     destino_envio: tuple[float | None, float | None] | None = None
 
     if carrito["reserva_id"] is not None:
-        # una compra nacida de una reserva se retira en la misma sucursal donde se comprometio el stock
-        reserva = await conn.fetchrow(
-            "SELECT sucursal_id FROM reserva WHERE id = $1", carrito["reserva_id"]
-        )
-        sucursal_id = reserva["sucursal_id"]
+        # una compra nacida de una reserva se retira en la misma sucursal donde se comprometio el stock.
+        # Primera validacion (sin transaccion, para fallar rapido); la que cuenta se repite con la
+        # reserva bloqueada justo antes de insertar la venta, mas abajo.
+        sucursal_id = await _validar_reserva_del_carrito(conn, carrito["reserva_id"], items)
         entrega = "RETIRO_SUCURSAL"
         direccion_id = None
     else:
@@ -273,34 +332,8 @@ async def iniciar_checkout(
             )
 
     variante_ids = [item["variante_id"] for item in items]
-    if carrito["reserva_id"] is not None:
-        # Estas unidades ya estan comprometidas por fn_reserva_compromete_stock: inventario.disponible
-        # (cantidad_fisica - cantidad_reservada) las excluye a proposito, asi que exigirles
-        # disponibilidad libre las rechaza aunque sean del propio cliente (p.ej. si eran la ultima
-        # unidad de la sucursal). Se valida en cambio que la reserva siga sosteniendo el compromiso.
-        comprometido = await conn.fetch(
-            """
-            SELECT variante_id, cantidad
-            FROM reserva_detalle
-            WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO', 'PROBADO')
-            """,
-            carrito["reserva_id"],
-        )
-        cantidad_comprometida = {fila["variante_id"]: fila["cantidad"] for fila in comprometido}
-        sin_stock = [
-            str(item["variante_id"])
-            for item in items
-            if cantidad_comprometida.get(item["variante_id"], 0) < item["cantidad"]
-        ]
-        if sin_stock:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "mensaje": "Tu reserva ya no respalda estas prendas (se atendio, expiro o cambio)",
-                    "variantes_sin_stock": sin_stock,
-                },
-            )
-    else:
+    if carrito["reserva_id"] is None:
+        # (con reserva, _validar_reserva_del_carrito ya comprobo que el compromiso respalde el carrito)
         disponibilidad = await conn.fetch(
             """
             SELECT variante_id, COALESCE(disponible, 0) AS disponible
@@ -350,7 +383,8 @@ async def iniciar_checkout(
         """
         SELECT v.id AS venta_id, v.numero, v.subtotal, v.descuento, v.costo_envio, v.iva,
                v.total, v.estado, v.promocion_id, v.sucursal_id, v.entrega, v.direccion_id,
-               p.id AS pago_id, p.pasarela, p.id_transaccion, pr.codigo_cupon
+               p.id AS pago_id, p.metodo::text AS metodo, p.pasarela, p.id_transaccion,
+               p.informado_en, pr.codigo_cupon
         FROM venta v
         JOIN pago p ON p.venta_id = v.id
         LEFT JOIN promocion pr ON pr.id = v.promocion_id
@@ -361,7 +395,10 @@ async def iniciar_checkout(
         carrito["id"],
     )
     formula_vigente = False
+    metodo_pendiente = None
     if pendiente is not None:
+        # EFECTIVO no tiene pasarela (NULL): se compara contra lo que eligio la clienta
+        metodo_pendiente = pendiente["pasarela"] or pendiente["metodo"]
         base_esperada = pendiente["subtotal"] - pendiente["descuento"]
         iva_esperado = (base_esperada * IVA_TASA).quantize(Decimal("0.01"))
         total_esperado = (base_esperada + iva_esperado + pendiente["costo_envio"]).quantize(
@@ -370,7 +407,7 @@ async def iniciar_checkout(
         formula_vigente = pendiente["iva"] == iva_esperado and pendiente["total"] == total_esperado
     reusar = pendiente is not None and (
         formula_vigente
-        and pendiente["pasarela"] == body.metodo_pago
+        and metodo_pendiente == body.metodo_pago
         and pendiente["sucursal_id"] == sucursal_id
         and pendiente["entrega"] == entrega
         and pendiente["direccion_id"] == direccion_id
@@ -390,9 +427,22 @@ async def iniciar_checkout(
         # que retomar, asi que se abandona igual que si el pedido hubiera cambiado y se arma uno
         # nuevo. Devolverlo sin client_secret dejaba a la clienta sin forma de pagar ese carrito.
         reusar = client_secret is not None
+    if not reusar and pendiente is not None and pendiente["informado_en"] is not None:
+        # 2.19.1.c: la clienta ya aviso que deposito el QR de ese pedido. Abandonarlo en silencio
+        # (como se hace abajo con cualquier otro intento viejo) dejaria un deposito real sin
+        # pedido: primero lo tiene que resolver el cajero.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Ya informaste el pago QR del pedido {pendiente['numero']}. Espera a que la "
+                "sucursal lo verifique antes de armar otro pedido."
+            ),
+        )
     if reusar:
-        if pendiente["pasarela"] != "STRIPE":
+        if pendiente["pasarela"] == "QR":
             url_pago = f"/pago-simulado/{pendiente['venta_id']}"
+        elif pendiente["pasarela"] is None:
+            url_pago = f"/compra/{pendiente['venta_id']}"
         return CheckoutOut(
             venta_id=pendiente["venta_id"],
             numero=pendiente["numero"],
@@ -412,10 +462,21 @@ async def iniciar_checkout(
         # el intento anterior ya no corresponde al pedido actual: se abandona (sin notificar a la
         # clienta, no es un rechazo real) y se libera el uso del cupon que habia consumido, para
         # que _aplicar_cupon lo pueda volver a tomar aca abajo
-        await conn.execute(
-            "UPDATE pago SET estado = 'RECHAZADO', confirmado_en = now() WHERE id = $1",
+        # "AND estado = 'PENDIENTE'": si justo lo aprobo el cajero o el webhook entre la lectura
+        # de arriba y esto, no se pisa un pago ya resuelto.
+        abandonado = await conn.fetchval(
+            """
+            UPDATE pago SET estado = 'RECHAZADO', confirmado_en = now()
+            WHERE id = $1 AND estado = 'PENDIENTE'
+            RETURNING id
+            """,
             pendiente["pago_id"],
         )
+        if abandonado is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Tu pedido anterior se acaba de resolver. Revisa Mis compras.",
+            )
         await conn.execute(
             "UPDATE venta SET estado = 'ANULADA' WHERE id = $1", pendiente["venta_id"]
         )
@@ -461,6 +522,28 @@ async def iniciar_checkout(
 
     numero = f"V-{uuid4().hex[:10].upper()}"
     async with conn.transaction():
+        # Todo lo de arriba se leyo sin bloquear. Antes de crear la venta se bloquea el carrito
+        # (carrito/router.py toma el mismo lock para modificarlo) y se confirma que no cambio: la
+        # venta congela el subtotal, y el cajero/webhook vuelcan despues el carrito TAL COMO ESTE.
+        await conn.execute("SELECT id FROM carrito WHERE id = $1 FOR UPDATE", carrito["id"])
+        items_ahora = await conn.fetch(
+            "SELECT variante_id, cantidad, precio_unitario FROM carrito_item WHERE carrito_id = $1",
+            carrito["id"],
+        )
+        if sorted(
+            (str(i["variante_id"]), i["cantidad"], i["precio_unitario"]) for i in items_ahora
+        ) != sorted((str(i["variante_id"]), i["cantidad"], i["precio_unitario"]) for i in items):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Tu carrito cambio mientras confirmabas el pedido; revisalo y volve a intentar",
+            )
+        if carrito["reserva_id"] is not None:
+            # Con la reserva bloqueada, ni el job de expiracion (SKIP LOCKED) ni cancelar/rechazar
+            # (FOR UPDATE + _exigir_sin_pago_en_curso) pueden liberar su compromiso entre esta
+            # validacion y el INSERT de la venta; y una vez que la venta PENDIENTE existe, ambos la
+            # ven y dejan la reserva quieta.
+            await _validar_reserva_del_carrito(conn, carrito["reserva_id"], items, bloquear=True)
+
         venta = await conn.fetchrow(
             """
             INSERT INTO venta (sucursal_id, usuario_id, canal, entrega, direccion_id, reserva_id,
@@ -495,8 +578,10 @@ async def iniciar_checkout(
             id_transaccion = f"SIM-{uuid4().hex}"
             url_pago = f"/pago-simulado/{venta['id']}"
         else:
-            # EFECTIVO: no hay pasarela, se aprueba al toque mas abajo (retiro lo cobra la
-            # sucursal, domicilio queda a cargo del servicio de delivery)
+            # EFECTIVO: no hay pasarela. 2.19.1.b: el pago queda PENDIENTE (antes se aprobaba solo
+            # aca, descontando stock y emitiendo comprobante sin que nadie cobrara) y lo aprueba el
+            # CAJERO de la sucursal desde caja: al cobrarle a la clienta si retira en tienda, o al
+            # recibir lo que rinde el delivery externo si es a domicilio.
             pasarela_val = None
             id_transaccion = None
             url_pago = f"/compra/{venta['id']}"
@@ -515,16 +600,16 @@ async def iniciar_checkout(
             id_transaccion,
         )
 
-    estado_final = venta["estado"]
-    if body.metodo_pago == "EFECTIVO":
-        venta_para_confirmar = {
-            "id": venta["id"],
-            "carrito_id": carrito["id"],
-            "reserva_id": carrito["reserva_id"],
-            "sucursal_id": sucursal_id,
-        }
-        resultado = await confirmar_aprobado(conn, pago["id"], venta_para_confirmar)
-        estado_final = resultado["venta_estado"]
+        if body.metodo_pago == "EFECTIVO":
+            como = "retira en tienda" if entrega == "RETIRO_SUCURSAL" else "contra entrega a domicilio"
+            await notificar_cajeros(
+                conn,
+                sucursal_id,
+                venta["id"],
+                "Pedido en efectivo por cobrar",
+                f"Pedido online {venta['numero']} por Bs {total} a pagar en efectivo ({como}). "
+                "Aprobalo desde caja cuando lo cobres.",
+            )
 
     return CheckoutOut(
         venta_id=venta["id"],
@@ -539,7 +624,7 @@ async def iniciar_checkout(
         costo_envio=float(venta["costo_envio"]),
         iva=float(venta["iva"]),
         total=float(venta["total"]),
-        estado=estado_final,
+        estado=venta["estado"],
     )
 
 
@@ -643,7 +728,8 @@ async def obtener_venta(
 
     pago = await conn.fetchrow(
         """
-        SELECT id, metodo, pasarela, monto, estado, id_transaccion, creado_en, confirmado_en
+        SELECT id, metodo, pasarela, monto, estado, id_transaccion, creado_en, confirmado_en,
+               informado_en, referencia_cliente
         FROM pago WHERE venta_id = $1
         ORDER BY creado_en DESC LIMIT 1
         """,
@@ -677,6 +763,8 @@ async def obtener_venta(
                 id_transaccion=pago["id_transaccion"],
                 creado_en=pago["creado_en"],
                 confirmado_en=pago["confirmado_en"],
+                informado_en=pago["informado_en"],
+                referencia_cliente=pago["referencia_cliente"],
             )
             if pago
             else None

@@ -5,6 +5,7 @@
       @if (auth.usuario(); as u) {
         <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
       }
+      <app-campana-notificaciones />
       <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
     </div>
   </header>
@@ -100,6 +101,33 @@
             }
 
             @switch (reserva.estado) {
+              @case ('PENDIENTE') {
+                <div class="formulario">
+                  <h3 class="subtitulo">Confirmar reserva</h3>
+                  <p class="estado">
+                    El stock ya está apartado. Confirmala si la sucursal puede atenderla, o rechazala
+                    indicando el motivo: se libera el stock y se le avisa al cliente.
+                  </p>
+                  <div class="campo">
+                    <label for="motivo-rechazo">Motivo del rechazo (solo si la rechazás)</label>
+                    <input
+                      id="motivo-rechazo"
+                      type="text"
+                      name="motivo-rechazo"
+                      maxlength="150"
+                      [(ngModel)]="motivoRechazo"
+                    />
+                  </div>
+                  <div class="acciones">
+                    <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="confirmarReserva()">
+                      {{ cargandoAccion() ? 'Guardando…' : 'Confirmar reserva' }}
+                    </button>
+                    <button type="button" class="boton boton--secundario" [disabled]="cargandoAccion()" (click)="rechazarReserva()">
+                      Rechazar
+                    </button>
+                  </div>
+                </div>
+              }
               @case ('CONFIRMADA') {
                 <div class="formulario">
                   <h3 class="subtitulo">Preparar prendas</h3>

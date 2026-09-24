@@ -10,6 +10,7 @@ import '../core/catalogo/catalogo_models.dart';
 import '../core/catalogo/catalogo_service.dart';
 import '../core/config.dart';
 import '../core/errores.dart';
+import 'notificaciones_pagina.dart' show BotonNotificaciones;
 import '../core/recomendaciones/recomendaciones_models.dart';
 import '../core/recomendaciones/recomendaciones_service.dart';
 import '../core/tema.dart';
@@ -289,6 +290,7 @@ class _TiendaPaginaState extends State<TiendaPagina> {
         appBar: AppBar(
           title: const Text('FashionStore'),
           actions: [
+            const BotonNotificaciones(),
             IconButton(
               tooltip: 'Filtrar',
               onPressed: _abrirFiltros,

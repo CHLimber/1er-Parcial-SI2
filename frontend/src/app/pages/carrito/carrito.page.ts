@@ -289,7 +289,8 @@ export class CarritoPage implements OnInit, OnDestroy {
         if (checkout.url_pago?.startsWith('http')) {
           window.location.href = checkout.url_pago;
         } else if (checkout.url_pago) {
-          // QR (pasarela simulada) o EFECTIVO (ya quedo pagada): navegacion interna de siempre
+          // QR (/pago-simulado: informar el pago) o EFECTIVO (/compra: queda pendiente de cobro
+          // en caja, 2.19.1.b): navegacion interna de siempre
           this.router.navigateByUrl(checkout.url_pago);
         }
       },

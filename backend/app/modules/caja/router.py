@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -8,10 +10,15 @@ from app.modules.caja.schemas import (
     ArqueoOut,
     CajaOut,
     CerrarSesionIn,
+    ItemPagoPendienteOut,
+    PagoPorVerificarOut,
+    RechazarPagoIn,
+    ResolucionPagoOut,
     SesionCajaOut,
     SesionCerradaOut,
     VarianteBusquedaOut,
 )
+from app.modules.pagos.servicio import confirmar_aprobado, confirmar_rechazado
 
 router = APIRouter(prefix="/caja", tags=["caja"])
 
@@ -236,4 +243,235 @@ async def buscar_variante(
         color=fila["color"],
         precio=float(fila["precio"]),
         disponible=fila["disponible"],
+    )
+
+
+# ---------------------------------------------------------------------------------------------
+# 2.19.1.b/c: pagos online que pasan por el cajero en vez de aprobarse solos.
+#   - EFECTIVO en el checkout web/movil: queda PENDIENTE hasta que el cajero cobra (retiro en
+#     tienda) o recibe lo que rinde el delivery externo (domicilio). Entra en el arqueo porque al
+#     aprobarlo la venta se ata a la sesion de caja abierta (fn_total_efectivo_sesion).
+#   - QR: la clienta solo informa "ya pague" (POST /pagos/qr/{venta_id}/informar); el cajero
+#     verifica el deposito y aprueba o rechaza. No suma al cajon: no es efectivo.
+# Stripe no pasa por aca: lo confirma su webhook firmado.
+# ---------------------------------------------------------------------------------------------
+
+# pago online que le toca verificar a la caja: EFECTIVO sin pasarela o pasarela QR
+_FILTRO_VERIFICABLE = """
+    v.canal IN ('WEB', 'MOVIL')
+    AND (p.metodo = 'EFECTIVO' OR p.pasarela = 'QR')
+"""
+
+
+@router.get("/pagos-pendientes", response_model=list[PagoPorVerificarOut])
+async def listar_pagos_pendientes(
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[PagoPorVerificarOut]:
+    """Pedidos online de la sucursal del cajero con el pago PENDIENTE de verificacion. Primero
+    los QR que la clienta ya informo (hay plata depositada esperando), despues por antiguedad."""
+    filas = await conn.fetch(
+        f"""
+        SELECT p.id AS pago_id, v.id AS venta_id, v.numero, v.fecha, v.entrega::text AS entrega,
+               v.total, v.costo_envio, v.subtotal, v.carrito_id,
+               u.nombre || ' ' || u.apellido AS cliente, u.email AS cliente_email,
+               CASE WHEN p.metodo = 'EFECTIVO' THEN 'EFECTIVO' ELSE 'QR' END AS metodo,
+               p.informado_en, p.referencia_cliente,
+               COALESCE((SELECT SUM(ci.precio_unitario * ci.cantidad)
+                           FROM carrito_item ci WHERE ci.carrito_id = v.carrito_id), 0)
+                   AS subtotal_carrito
+        FROM pago p
+        JOIN venta v   ON v.id = p.venta_id
+        JOIN usuario u ON u.id = v.usuario_id
+        WHERE v.sucursal_id = $1 AND v.estado = 'PENDIENTE' AND p.estado = 'PENDIENTE'
+          AND {_FILTRO_VERIFICABLE}
+        ORDER BY (p.informado_en IS NULL), v.fecha
+        """,
+        cajero["sucursal_id"],
+    )
+    if not filas:
+        return []
+
+    items = await conn.fetch(
+        """
+        SELECT ci.carrito_id, pv.sku, p.nombre AS producto, t.codigo AS talla,
+               c.nombre AS color, ci.cantidad
+        FROM carrito_item ci
+        JOIN producto_variante pv ON pv.id = ci.variante_id
+        JOIN producto p ON p.id = pv.producto_id
+        JOIN talla t    ON t.id = pv.talla_id
+        JOIN color c    ON c.id = pv.color_id
+        WHERE ci.carrito_id = ANY($1::uuid[])
+        ORDER BY p.nombre, t.codigo
+        """,
+        [fila["carrito_id"] for fila in filas],
+    )
+    items_por_carrito: dict = {}
+    for item in items:
+        items_por_carrito.setdefault(item["carrito_id"], []).append(
+            ItemPagoPendienteOut(
+                sku=item["sku"],
+                producto=item["producto"],
+                talla=item["talla"],
+                color=item["color"],
+                cantidad=item["cantidad"],
+            )
+        )
+
+    return [
+        PagoPorVerificarOut(
+            pago_id=fila["pago_id"],
+            venta_id=fila["venta_id"],
+            numero=fila["numero"],
+            fecha=fila["fecha"],
+            cliente=fila["cliente"],
+            cliente_email=fila["cliente_email"],
+            metodo=fila["metodo"],
+            entrega=fila["entrega"],
+            total=float(fila["total"]),
+            costo_envio=float(fila["costo_envio"]),
+            informado_en=fila["informado_en"],
+            referencia_cliente=fila["referencia_cliente"],
+            carrito_modificado=fila["subtotal_carrito"] != fila["subtotal"],
+            items=items_por_carrito.get(fila["carrito_id"], []),
+        )
+        for fila in filas
+    ]
+
+
+async def _bloquear_pago_verificable(
+    conn: asyncpg.Connection, pago_id: UUID, sucursal_id: UUID
+) -> tuple[asyncpg.Record, asyncpg.Record]:
+    """Bloquea pago y venta (mismo orden que pagos/router.py::_procesar_evento, para no cruzarse
+    en un deadlock con el webhook) y valida que sea un pago de esta sucursal que todavia espera
+    al cajero. Debe llamarse dentro de una transaccion."""
+    pago = await conn.fetchrow(
+        f"""
+        SELECT p.id, p.estado, p.metodo::text AS metodo, p.venta_id
+        FROM pago p
+        JOIN venta v ON v.id = p.venta_id
+        WHERE p.id = $1 AND v.sucursal_id = $2 AND {_FILTRO_VERIFICABLE}
+        FOR UPDATE OF p
+        """,
+        pago_id,
+        sucursal_id,
+    )
+    if pago is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay un pago online de tu sucursal con ese id",
+        )
+    if pago["estado"] != "PENDIENTE":
+        # idempotencia: doble click, dos cajeros a la vez, o la clienta abandono ese intento
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ese pago ya fue resuelto ({pago['estado']})",
+        )
+
+    venta = await conn.fetchrow(
+        """
+        SELECT id, sucursal_id, carrito_id, reserva_id, promocion_id, numero, estado, subtotal
+        FROM venta WHERE id = $1 FOR UPDATE
+        """,
+        pago["venta_id"],
+    )
+    if venta["estado"] != "PENDIENTE":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ese pedido ya no esta pendiente ({venta['estado']})",
+        )
+    return pago, venta
+
+
+@router.post("/pagos/{pago_id}/aprobar", response_model=ResolucionPagoOut)
+async def aprobar_pago(
+    pago_id: UUID,
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ResolucionPagoOut:
+    """El cajero confirma que cobro el efectivo o que el deposito QR esta en la cuenta. Recien
+    aca se descuenta el stock y se emite el comprobante (confirmar_aprobado). Si el stock ya no
+    alcanza, confirmar_aprobado anula la venta: el pago queda RECHAZADO si era efectivo (no se
+    cobro) o REEMBOLSADO si era QR (la clienta ya deposito) -- la respuesta lo informa con 200,
+    no es un error del cajero."""
+    async with conn.transaction():
+        pago, venta = await _bloquear_pago_verificable(conn, pago_id, cajero["sucursal_id"])
+
+        carrito_actual = await conn.fetchval(
+            """
+            SELECT COALESCE(SUM(precio_unitario * cantidad), 0)
+            FROM carrito_item WHERE carrito_id = $1
+            """,
+            venta["carrito_id"],
+        )
+        if carrito_actual != venta["subtotal"]:
+            # confirmar_aprobado vuelca el carrito TAL COMO ESTA HOY: si la clienta lo cambio
+            # despues del checkout se venderian otras prendas por el monto viejo
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "La clienta modifico su carrito despues de hacer el pedido: el monto ya no "
+                    "coincide. Rechazalo y pedile que vuelva a hacer el checkout."
+                ),
+            )
+
+        if pago["metodo"] == "EFECTIVO":
+            # la plata entra al cajon: la venta se ata a la sesion abierta para que la cuente
+            # el arqueo y el cierre (fn_total_efectivo_sesion), igual que una venta de POS
+            sesion = await obtener_sesion_abierta(conn, cajero["usuario_id"])
+            if sesion is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Abri una sesion de caja antes de cobrar un pedido en efectivo",
+                )
+            await conn.execute(
+                "UPDATE venta SET sesion_caja_id = $2 WHERE id = $1", venta["id"], sesion["id"]
+            )
+
+        resultado = await confirmar_aprobado(conn, pago["id"], dict(venta))
+        await conn.execute(
+            "UPDATE pago SET verificado_por_id = $2 WHERE id = $1",
+            pago["id"],
+            cajero["usuario_id"],
+        )
+
+    return ResolucionPagoOut(
+        pago_id=pago["id"], venta_id=venta["id"], numero=venta["numero"], **resultado
+    )
+
+
+@router.post("/pagos/{pago_id}/rechazar", response_model=ResolucionPagoOut)
+async def rechazar_pago(
+    pago_id: UUID,
+    body: RechazarPagoIn,
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ResolucionPagoOut:
+    """QR: el deposito no aparece. EFECTIVO: la clienta no se presento a pagar, o el delivery
+    no pudo cobrar. La venta se anula sin tocar stock (nunca se desconto) y la clienta recibe
+    una notificacion con el motivo."""
+    motivo = body.motivo.strip() if body.motivo and body.motivo.strip() else None
+    async with conn.transaction():
+        pago, venta = await _bloquear_pago_verificable(conn, pago_id, cajero["sucursal_id"])
+
+        if pago["metodo"] == "EFECTIVO":
+            texto = "Anulamos tu pedido {numero}: no se concreto el cobro en efectivo."
+        else:
+            texto = (
+                "No pudimos verificar el deposito QR del pedido {numero}, asi que lo anulamos. "
+                "Si ya pagaste, acercate a la sucursal con tu comprobante."
+            )
+        if motivo:
+            texto += f" Motivo: {motivo}."
+        texto += " Tu carrito sigue disponible para volver a intentarlo."
+
+        resultado = await confirmar_rechazado(conn, pago["id"], dict(venta), mensaje_cliente=texto)
+        await conn.execute(
+            "UPDATE pago SET verificado_por_id = $2 WHERE id = $1",
+            pago["id"],
+            cajero["usuario_id"],
+        )
+
+    return ResolucionPagoOut(
+        pago_id=pago["id"], venta_id=venta["id"], numero=venta["numero"], **resultado
     )
