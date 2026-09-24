@@ -1,0 +1,25 @@
+# Config de pytest y ruff para el backend. No hay build-system aca: este archivo no empaqueta
+# nada, solo junta la config de las dos herramientas de dev (ver requirements-dev.txt).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Conservador a proposito: E/F (pyflakes+pycodestyle) e I (import order). Nada de reglas de
+# estilo mas agresivas (docstrings, complejidad, etc.) para no generar ruido en modulos que
+# otros agentes estan tocando en paralelo.
+select = ["E", "F", "I"]
+ignore = [
+    "E501", # linea larga: el codigo existente ya tiene comentarios largos en espanol
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401"]

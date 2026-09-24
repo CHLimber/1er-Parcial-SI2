@@ -15,7 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
-from app.modules.inventario.schemas import AjusteIn, AjusteOut, MovimientoKardexOut, VarianteBuscadaOut
+from app.modules.inventario.schemas import (
+    AjusteIn,
+    AjusteOut,
+    MovimientoKardexOut,
+    VarianteBuscadaOut,
+)
 
 router = APIRouter(prefix="/inventario", tags=["inventario"])
 

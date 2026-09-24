@@ -3,6 +3,13 @@ export interface LoginRequest {
   password: string;
 }
 
+/** Cambiar mi propia contraseña (CLIENTE o STAFF), a diferencia del reset de CU13 que no
+ * pide la actual. */
+export interface CambiarPasswordRequest {
+  password_actual: string;
+  password_nueva: string;
+}
+
 export interface RegistroRequest {
   email: string;
   password: string;

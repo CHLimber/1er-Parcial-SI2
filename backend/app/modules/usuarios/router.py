@@ -8,7 +8,13 @@ from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario, obtener_permisos
 from app.core.security import create_access_token, hash_password, verify_password
-from app.modules.usuarios.schemas import LoginRequest, RegistroRequest, TokenResponse, UsuarioOut
+from app.modules.usuarios.schemas import (
+    CambiarPasswordRequest,
+    LoginRequest,
+    RegistroRequest,
+    TokenResponse,
+    UsuarioOut,
+)
 
 router = APIRouter(prefix="/auth", tags=["usuarios"])
 
@@ -206,3 +212,40 @@ async def usuario_actual(
         cargo=fila["cargo"],
         permisos=await obtener_permisos(conn, fila["id"]),
     )
+
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+async def cambiar_password(
+    body: CambiarPasswordRequest,
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> None:
+    """Cambiar mi propia contrasena: CLIENTE o STAFF, cualquiera logueado. CU13 (mas arriba
+    en este mismo archivo el bloque de /admin) resetea la de otro sin conocerla; aca se
+    exige la actual para no dejar que quien te robe la sesion te cambie la contrasena."""
+    fila = await conn.fetchrow("SELECT password_hash FROM usuario WHERE id = $1", usuario["id"])
+    if fila is None or not verify_password(body.password_actual, fila["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="La contrasena actual no es correcta"
+        )
+    if body.password_nueva == body.password_actual:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La contrasena nueva no puede ser igual a la actual",
+        )
+
+    async with conn.transaction():
+        await conn.execute(
+            "UPDATE usuario SET password_hash = $2 WHERE id = $1",
+            usuario["id"],
+            hash_password(body.password_nueva),
+        )
+        # nunca se guarda el hash en la auditoria, solo que el cambio ocurrio
+        await registrar_auditoria(
+            conn,
+            usuario_id=usuario["id"],
+            entidad="usuario",
+            entidad_id=usuario["id"],
+            accion="ACTUALIZAR",
+            datos_despues={"password": "cambiada por el propio usuario"},
+        )

@@ -53,6 +53,7 @@
           <span class="cabecera__rol">{{ esStaff() ? (u.rol ?? 'STAFF') : 'Cliente' }}</span>
         </span>
       }
+      <a class="cabecera__reserva" routerLink="/cambiar-password" (click)="cerrarMenu()">Cambiar contraseña</a>
       <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
     </div>
   </header>

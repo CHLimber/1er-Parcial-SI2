@@ -27,6 +27,9 @@ export interface IndicadoresOut {
   tasa_conversion_reservas: number;
   variantes_stock_bajo: number;
   variantes_agotadas: number;
+  // CU20: ventas del periodo que llevaron flete y cuanto se cobro por eso (venta.costo_envio).
+  envios_cantidad: number;
+  envios_monto: number;
 }
 
 export interface VentaDiariaOut {
@@ -45,6 +48,8 @@ export interface VentaPorSucursalOut {
   cantidad_ventas: number;
   monto_total: number;
   ticket_promedio: number;
+  // CU20: costo de envio cobrado (venta.costo_envio) sumado dentro del mismo grupo de sucursal.
+  costo_envio_total: number;
 }
 
 export interface ProductoRankingOut {

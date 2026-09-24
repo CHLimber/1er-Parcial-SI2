@@ -48,6 +48,7 @@ class _CajaPaginaState extends State<CajaPagina> {
   bool _buscando = false;
   bool _cobrando = false;
   bool _abriendo = false;
+  bool _cerrandoCaja = false;
   String? _error;
 
   List<PagoPorVerificarOut> _pagosPendientes = [];
@@ -226,6 +227,204 @@ class _CajaPaginaState extends State<CajaPagina> {
       if (mounted) setState(() => _abriendo = false);
     }
   }
+
+  /// CU07 (2.2): cierre de caja. Primero trae el arqueo (foto de la sesion abierta),
+  /// despues pide el monto que el cajero conto de verdad en el cajon y por ultimo
+  /// confirma el cierre. Al terminar la pantalla vuelve al estado "sin sesion abierta"
+  /// (igual que `pages/caja/caja.page.ts::aceptarCierreCaja` en la web).
+  Future<void> _cerrarCaja() async {
+    if (_cerrandoCaja) return;
+    setState(() => _cerrandoCaja = true);
+    ArqueoOut arqueo;
+    try {
+      arqueo = await cajaService.obtenerArqueo();
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+      return;
+    } finally {
+      if (mounted) setState(() => _cerrandoCaja = false);
+    }
+    if (!mounted) return;
+
+    final declarado = await _pedirMontoDeclarado(arqueo);
+    if (declarado == null || !mounted) return;
+
+    setState(() => _cerrandoCaja = true);
+    try {
+      final resultado = await cajaService.cerrarSesion(declarado);
+      if (!mounted) return;
+      await _mostrarResultadoCierre(resultado);
+      if (!mounted) return;
+      // vuelve a "sin sesion abierta": recarga la lista de cajas y los pagos pendientes
+      await _cargar();
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+      if (error is ApiException && error.statusCode == 409) {
+        // la sesion ya se habia cerrado en otro lado (doble click, otro dispositivo)
+        await _cargar();
+      }
+    } finally {
+      if (mounted) setState(() => _cerrandoCaja = false);
+    }
+  }
+
+  /// Muestra el arqueo y devuelve el monto que el cajero declaro, o null si cancelo.
+  Future<double?> _pedirMontoDeclarado(ArqueoOut arqueo) async {
+    final controlador = TextEditingController();
+    String? errorMonto;
+
+    final confirmado = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Paleta.paper,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      builder: (contexto) => StatefulBuilder(
+        builder: (contexto, actualizar) {
+          final declarado = double.tryParse(controlador.text.replaceAll(',', '.'));
+          final diferencia = declarado == null ? null : declarado - arqueo.montoSistema;
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(contexto).viewInsets.bottom),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Titular('Cerrar caja', tamano: 24),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Conta el efectivo del cajon y declara cuanto hay antes de cerrar la sesion.',
+                    style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  TarjetaPanel(
+                    hijo: Column(
+                      children: [
+                        _fila('Monto inicial', arqueo.montoInicial),
+                        for (final entrada in arqueo.porMetodo.entries)
+                          _fila(entrada.key, entrada.value),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Cantidad de ventas',
+                                style: TextStyle(color: Paleta.inkSuave, fontSize: 13),
+                              ),
+                              Text('${arqueo.cantidadVentas}', style: const TextStyle(fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        _fila('Total ventas', arqueo.totalVentas),
+                        const Divider(height: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Monto en sistema (efectivo)',
+                              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.3),
+                            ),
+                            Text(
+                              formatearPrecio(arqueo.montoSistema),
+                              style: const TextStyle(fontWeight: FontWeight.w800, color: Paleta.flameOscuro),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controlador,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => actualizar(() => errorMonto = null),
+                    decoration: InputDecoration(
+                      labelText: 'Monto contado en el cajon',
+                      prefixText: 'Bs ',
+                      errorText: errorMonto,
+                    ),
+                  ),
+                  if (diferencia != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Diferencia estimada: '
+                      '${diferencia > 0 ? '+' : ''}${formatearPrecio(diferencia)}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: diferencia == 0
+                            ? Paleta.inkSuave
+                            : (diferencia > 0 ? Paleta.verde : Paleta.rojo),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  ElevatedButton(
+                    onPressed: () {
+                      final valor = double.tryParse(controlador.text.replaceAll(',', '.'));
+                      if (valor == null || valor < 0) {
+                        actualizar(() => errorMonto = 'Ingresa el monto que contaste en caja.');
+                        return;
+                      }
+                      Navigator.pop(contexto, true);
+                    },
+                    child: const Text('CONFIRMAR CIERRE'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(contexto, false),
+                    child: const Text('Cancelar'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+    final valorFinal = double.tryParse(controlador.text.replaceAll(',', '.'));
+    controlador.dispose();
+    if (confirmado != true) return null;
+    return valorFinal;
+  }
+
+  Future<void> _mostrarResultadoCierre(SesionCerradaOut r) => showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (contexto) => AlertDialog(
+          backgroundColor: Paleta.blanco,
+          title: const Text('Caja cerrada'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FilaDato('Caja', r.cajaNombre),
+                FilaDato('Monto inicial', formatearPrecio(r.montoInicial)),
+                FilaDato('Monto en sistema', formatearPrecio(r.montoSistema)),
+                FilaDato('Monto declarado', formatearPrecio(r.montoDeclarado)),
+                FilaDato(
+                  'Diferencia',
+                  '${r.diferencia > 0 ? '+' : ''}${formatearPrecio(r.diferencia)}',
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(contexto),
+              child: const Text('Listo'),
+            ),
+          ],
+        ),
+      );
 
   Future<void> _buscarPrenda() async {
     final codigo = _codigo.text.trim();
@@ -562,7 +761,22 @@ class _CajaPaginaState extends State<CajaPagina> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _cerrandoCaja ? null : _cerrarCaja,
+            icon: _cerrandoCaja
+                ? const SizedBox(
+                    height: 14,
+                    width: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.point_of_sale_outlined, size: 18),
+            label: Text(_cerrandoCaja ? 'Cerrando…' : 'Cerrar caja'),
+          ),
+        ),
+        const SizedBox(height: 12),
         const EtiquetaDato('Agregar prenda'),
         const SizedBox(height: 8),
         TextField(

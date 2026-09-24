@@ -127,6 +127,12 @@ class _CuentaPaginaState extends State<CuentaPagina> {
             detalle: 'Prendas apartadas en el vestidor',
             alTocar: () => context.go('/mis-reservas'),
           ),
+          _Acceso(
+            icono: Icons.lock_outline,
+            titulo: 'Cambiar contrasena',
+            detalle: 'Actualiza la contrasena de tu cuenta',
+            alTocar: () => context.push('/cambiar-password'),
+          ),
           if (!auth.esStaff) ...[
             _Acceso(
               icono: Icons.location_on_outlined,

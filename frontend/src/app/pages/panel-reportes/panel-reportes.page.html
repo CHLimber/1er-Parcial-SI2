@@ -109,6 +109,11 @@
             <span class="kpi__valor">{{ ind.variantes_stock_bajo }}</span>
             <span class="kpi__detalle">Por debajo del mínimo definido</span>
           </div>
+          <div class="kpi">
+            <span class="kpi__etiqueta">Envíos a domicilio</span>
+            <span class="kpi__valor">Bs {{ ind.envios_monto | number: '1.0-2' }}</span>
+            <span class="kpi__detalle">{{ ind.envios_cantidad }} ventas con flete cobrado (CU20)</span>
+          </div>
         </div>
       }
     </section>
@@ -674,6 +679,14 @@
                       <td>Variantes agotadas</td>
                       <td class="tabla__numero">{{ ind.variantes_agotadas }}</td>
                     </tr>
+                    <tr>
+                      <td>Envíos a domicilio</td>
+                      <td class="tabla__numero">{{ ind.envios_cantidad }}</td>
+                    </tr>
+                    <tr>
+                      <td>Monto de envíos</td>
+                      <td class="tabla__numero">Bs {{ ind.envios_monto | number: '1.0-2' }}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -723,6 +736,7 @@
                       <th class="tabla__numero">Ventas</th>
                       <th class="tabla__numero">Monto total</th>
                       <th class="tabla__numero">Ticket promedio</th>
+                      <th class="tabla__numero">Costo de envíos</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -732,6 +746,7 @@
                         <td class="tabla__numero">{{ fila.cantidad_ventas }}</td>
                         <td class="tabla__numero">Bs {{ fila.monto_total | number: '1.0-2' }}</td>
                         <td class="tabla__numero">Bs {{ fila.ticket_promedio | number: '1.0-2' }}</td>
+                        <td class="tabla__numero">Bs {{ fila.costo_envio_total | number: '1.0-2' }}</td>
                       </tr>
                     }
                   </tbody>

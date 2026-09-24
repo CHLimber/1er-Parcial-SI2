@@ -30,6 +30,20 @@ class PanelPagina extends StatelessWidget {
         ],
       ),
       _AccesoPanel(
+        ruta: '/panel/inventario',
+        icono: Icons.inventory_2_outlined,
+        titulo: 'Inventario',
+        detalle: 'Ajustes manuales de stock y kardex',
+        permisos: const ['inventario.leer', 'inventario.actualizar'],
+      ),
+      _AccesoPanel(
+        ruta: '/panel/reportes',
+        icono: Icons.query_stats_outlined,
+        titulo: 'Reportes',
+        detalle: 'CU15 · Indicadores, reportes y consultas con IA',
+        permisos: const ['reportes.leer'],
+      ),
+      _AccesoPanel(
         ruta: '/panel/catalogo',
         icono: Icons.checkroom_outlined,
         titulo: 'Catalogo',
@@ -71,6 +85,32 @@ class PanelPagina extends StatelessWidget {
           'usuarios.actualizar',
           'usuarios.eliminar',
           'roles.leer',
+        ],
+      ),
+      _AccesoPanel(
+        ruta: '/panel/auditoria',
+        icono: Icons.fact_check_outlined,
+        titulo: 'Auditoria',
+        detalle: 'CU19 · Bitacora de altas, bajas y modificaciones',
+        permisos: const ['auditoria.leer'],
+      ),
+      _AccesoPanel(
+        ruta: '/panel/devoluciones',
+        icono: Icons.assignment_return_outlined,
+        titulo: 'Devoluciones',
+        detalle: 'Aprobar o rechazar devoluciones de ventas',
+        permisos: const ['devoluciones.leer', 'devoluciones.crear', 'devoluciones.actualizar'],
+      ),
+      _AccesoPanel(
+        ruta: '/panel/traspasos',
+        icono: Icons.compare_arrows_outlined,
+        titulo: 'Traspasos',
+        detalle: 'Mercaderia entre sucursales',
+        permisos: const [
+          'traspasos.leer',
+          'traspasos.crear',
+          'traspasos.actualizar',
+          'traspasos.eliminar',
         ],
       ),
     ];

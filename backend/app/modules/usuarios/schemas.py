@@ -11,6 +11,20 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class CambiarPasswordRequest(BaseModel):
+    """Cambiar la propia contrasena (CLIENTE o STAFF, cualquier usuario logueado). A
+    diferencia de PasswordIn (CU13, `POST /admin/usuarios/{id}/password`, que resetea la
+    de otro sin pedirla), esta exige la actual."""
+
+    password_actual: str = Field(max_length=72)
+    password_nueva: str = Field(max_length=72)
+
+    @field_validator("password_nueva")
+    @classmethod
+    def password_segura(cls, value: str) -> str:
+        return validar_password(value)
+
+
 class RegistroRequest(BaseModel):
     email: EmailStr
     password: str = Field(max_length=72)

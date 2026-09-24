@@ -24,6 +24,7 @@ from app.modules.envios.admin_schemas import (
     CambioEstadoIn,
     EnvioAdminDetalleOut,
     EnvioAdminOut,
+    EstadoEnvio,
     EventoAdminOut,
     ItemEnvioOut,
     ResumenEnviosOut,
@@ -113,7 +114,7 @@ async def _obtener(conn: asyncpg.Connection, envio_id: UUID, staff: dict) -> asy
 
 @router.get("", response_model=list[EnvioAdminOut])
 async def listar_envios(
-    estado: str | None = Query(default=None),
+    estado: EstadoEnvio | None = Query(default=None),
     sucursal_id: UUID | None = Query(default=None),
     solo_abiertos: bool = Query(default=False),
     limite: int = Query(default=100, ge=1, le=300),

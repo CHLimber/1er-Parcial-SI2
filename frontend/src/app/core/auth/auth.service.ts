@@ -3,7 +3,13 @@ import { Injectable, computed, signal } from '@angular/core';
 import { Observable, map, tap } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
-import { LoginRequest, RegistroRequest, TokenResponse, UsuarioOut } from './auth.models';
+import {
+  CambiarPasswordRequest,
+  LoginRequest,
+  RegistroRequest,
+  TokenResponse,
+  UsuarioOut,
+} from './auth.models';
 
 const STORAGE_KEY = 'fashionstore.sesion';
 
@@ -61,6 +67,11 @@ export class AuthService {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(guardada));
       }),
     );
+  }
+
+  /** Cambiar mi propia contraseña (CLIENTE o STAFF); no toca la sesion guardada. */
+  cambiarPassword(datos: CambiarPasswordRequest): Observable<void> {
+    return this.http.post<void>(`${environment.apiUrl}/auth/password`, datos);
   }
 
   cerrarSesion(): void {

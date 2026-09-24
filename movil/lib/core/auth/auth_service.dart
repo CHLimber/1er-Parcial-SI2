@@ -76,6 +76,17 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Cambiar mi propia contrasena (CLIENTE o STAFF); no toca la sesion guardada. El backend
+  /// devuelve 401 si la contrasena ACTUAL esta mal, por eso el POST va con
+  /// `notificarSesionExpirada: false`: si no, `api.dart` cerraria la sesion sola.
+  Future<void> cambiarPassword(String passwordActual, String passwordNueva) async {
+    await api.post(
+      '/auth/password',
+      cuerpo: {'password_actual': passwordActual, 'password_nueva': passwordNueva},
+      notificarSesionExpirada: false,
+    );
+  }
+
   Future<void> cerrarSesion() async {
     _token = null;
     _usuario = null;

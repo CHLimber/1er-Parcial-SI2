@@ -5,6 +5,7 @@ import 'core/auth/auth_service.dart';
 import 'paginas/asistente_pagina.dart';
 import 'paginas/atender_reservas_pagina.dart';
 import 'paginas/caja_pagina.dart';
+import 'paginas/cambiar_password_pagina.dart';
 import 'paginas/carrito_pagina.dart';
 import 'paginas/compra_pagina.dart';
 import 'paginas/cuenta_pagina.dart';
@@ -14,11 +15,16 @@ import 'paginas/mis_direcciones_pagina.dart';
 import 'paginas/mis_reservas_pagina.dart';
 import 'paginas/notificaciones_pagina.dart';
 import 'paginas/pago_simulado_pagina.dart';
+import 'paginas/panel_auditoria_pagina.dart';
 import 'paginas/panel_catalogo_pagina.dart';
+import 'paginas/panel_devoluciones_pagina.dart';
+import 'paginas/panel_inventario_pagina.dart';
 import 'paginas/panel_pagina.dart';
 import 'paginas/panel_proveedores_pagina.dart';
 import 'paginas/panel_recepciones_pagina.dart';
+import 'paginas/panel_reportes_pagina.dart';
 import 'paginas/panel_sucursales_pagina.dart';
+import 'paginas/panel_traspasos_pagina.dart';
 import 'paginas/panel_usuarios_pagina.dart';
 import 'paginas/producto_detalle_pagina.dart';
 import 'paginas/registro_pagina.dart';
@@ -45,6 +51,20 @@ const Map<String, List<String>> _permisosPorRuta = {
     'recepciones.crear',
     'recepciones.actualizar',
     'recepciones.eliminar',
+  ],
+  '/panel/inventario': ['inventario.leer', 'inventario.actualizar'],
+  '/panel/reportes': ['reportes.leer'],
+  '/panel/auditoria': ['auditoria.leer'],
+  '/panel/devoluciones': [
+    'devoluciones.leer',
+    'devoluciones.crear',
+    'devoluciones.actualizar',
+  ],
+  '/panel/traspasos': [
+    'traspasos.leer',
+    'traspasos.crear',
+    'traspasos.actualizar',
+    'traspasos.eliminar',
   ],
   '/panel/proveedores': [
     'proveedores.leer',
@@ -130,6 +150,12 @@ GoRouter construirRouter(AuthService auth) {
         builder: (contexto, estado) => const MisDireccionesPagina(),
       ),
       GoRoute(path: '/asistente', builder: (contexto, estado) => const AsistentePagina()),
+      // Cambiar mi propia contrasena: CLIENTE y STAFF, sin permiso de CU13 (no gestiona a
+      // otro). Se llega desde cuenta_pagina.dart.
+      GoRoute(
+        path: '/cambiar-password',
+        builder: (contexto, estado) => const CambiarPasswordPagina(),
+      ),
       // PENDIENTES 2.19.3: cliente y personal, cada uno ve solo las suyas.
       GoRoute(
         path: '/notificaciones',
@@ -163,6 +189,14 @@ GoRouter construirRouter(AuthService auth) {
         builder: (contexto, estado) => const PanelRecepcionesPagina(),
       ),
       GoRoute(
+        path: '/panel/inventario',
+        builder: (contexto, estado) => const PanelInventarioPagina(),
+      ),
+      GoRoute(
+        path: '/panel/reportes',
+        builder: (contexto, estado) => const PanelReportesPagina(),
+      ),
+      GoRoute(
         path: '/panel/proveedores',
         builder: (contexto, estado) => const PanelProveedoresPagina(),
       ),
@@ -173,6 +207,18 @@ GoRouter construirRouter(AuthService auth) {
       GoRoute(
         path: '/panel/usuarios',
         builder: (contexto, estado) => const PanelUsuariosPagina(),
+      ),
+      GoRoute(
+        path: '/panel/auditoria',
+        builder: (contexto, estado) => const PanelAuditoriaPagina(),
+      ),
+      GoRoute(
+        path: '/panel/devoluciones',
+        builder: (contexto, estado) => const PanelDevolucionesPagina(),
+      ),
+      GoRoute(
+        path: '/panel/traspasos',
+        builder: (contexto, estado) => const PanelTraspasosPagina(),
       ),
     ],
   );

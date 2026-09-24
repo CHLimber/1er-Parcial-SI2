@@ -133,6 +133,28 @@ class CatalogoAdminService {
     });
     return MarcaAdminOut.desdeJson(respuesta as Map<String, dynamic>);
   }
+
+  Future<List<PromocionAdminOut>> listarPromociones({bool? activa}) async {
+    final respuesta = await api.get('/admin/catalogo/promociones', query: {'activa': activa});
+    return comoLista(respuesta).map(PromocionAdminOut.desdeJson).toList();
+  }
+
+  Future<PromocionAdminOut> crearPromocion(PromocionIn datos) async {
+    final respuesta = await api.post('/admin/catalogo/promociones', cuerpo: datos.aJson());
+    return PromocionAdminOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  Future<PromocionAdminOut> actualizarPromocion(String promocionId, PromocionIn datos) async {
+    final respuesta =
+        await api.put('/admin/catalogo/promociones/$promocionId', cuerpo: datos.aJson());
+    return PromocionAdminOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  Future<PromocionAdminOut> cambiarEstadoPromocion(String promocionId, bool activa) async {
+    final respuesta = await api
+        .patch('/admin/catalogo/promociones/$promocionId/estado', cuerpo: {'activa': activa});
+    return PromocionAdminOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
 }
 
 final catalogoAdminService = CatalogoAdminService();

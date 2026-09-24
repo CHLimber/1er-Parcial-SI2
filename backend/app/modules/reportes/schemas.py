@@ -16,6 +16,11 @@ class IndicadoresOut(BaseModel):
     tasa_conversion_reservas: float
     variantes_stock_bajo: int
     variantes_agotadas: int
+    # CU20: cuantas ventas del periodo llevaron flete y cuanto se cobro por eso (venta.costo_envio,
+    # sin IVA -- ver CLAUDE.md). No es el mismo dato que "envios por estado" (esa es la foto actual
+    # del despacho, esta es plata cobrada en el periodo filtrado).
+    envios_cantidad: int
+    envios_monto: float
 
 
 class VentaDiariaOut(BaseModel):
@@ -34,6 +39,8 @@ class VentaPorSucursalOut(BaseModel):
     cantidad_ventas: int
     monto_total: float
     ticket_promedio: float
+    # CU20: costo de envio cobrado (venta.costo_envio) sumado dentro del mismo grupo de sucursal.
+    costo_envio_total: float
 
 
 class ProductoRankingOut(BaseModel):

@@ -55,7 +55,7 @@ class _PanelCatalogoPaginaState extends State<PanelCatalogoPagina> {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-        length: 2,
+        length: 3,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('Catalogo'),
@@ -63,7 +63,11 @@ class _PanelCatalogoPaginaState extends State<PanelCatalogoPagina> {
               labelColor: Paleta.paper,
               unselectedLabelColor: Paleta.paperLinea,
               indicatorColor: Paleta.flame,
-              tabs: [Tab(text: 'PRENDAS'), Tab(text: 'CATEGORIAS')],
+              tabs: [
+                Tab(text: 'PRENDAS'),
+                Tab(text: 'CATEGORIAS'),
+                Tab(text: 'PROMOCIONES'),
+              ],
             ),
           ),
           body: VistaAsincrona(
@@ -79,6 +83,7 @@ class _PanelCatalogoPaginaState extends State<PanelCatalogoPagina> {
                         referencias: _referencias!,
                         alCambiar: _cargarReferencias,
                       ),
+                      _PestanaPromociones(referencias: _referencias!),
                     ],
                   ),
           ),
@@ -1380,4 +1385,480 @@ class _PestanaCategoriasState extends State<_PestanaCategorias> {
       ),
     );
   }
+}
+
+// --- Promociones (PENDIENTES.txt 2.1) ---------------------------------------
+
+class _PestanaPromociones extends StatefulWidget {
+  const _PestanaPromociones({required this.referencias});
+
+  final ReferenciasOut referencias;
+
+  @override
+  State<_PestanaPromociones> createState() => _PestanaPromocionesState();
+}
+
+class _PestanaPromocionesState extends State<_PestanaPromociones> {
+  List<PromocionAdminOut> _promociones = [];
+  bool? _activa;
+  bool _cargando = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final promociones = await catalogoAdminService.listarPromociones(activa: _activa);
+      if (!mounted) return;
+      setState(() {
+        _promociones = promociones;
+        _cargando = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = interpretarError(error);
+        _cargando = false;
+      });
+    }
+  }
+
+  String _etiquetaValor(PromocionAdminOut promocion) => promocion.tipo == 'PORCENTAJE'
+      ? '${promocion.valor.toStringAsFixed(promocion.valor % 1 == 0 ? 0 : 2)}%'
+      : formatearPrecio(promocion.valor);
+
+  String _etiquetaAlcance(PromocionAdminOut promocion) {
+    if (promocion.alcance == 'CATEGORIA') return promocion.categoria ?? 'Categoria';
+    if (promocion.alcance == 'TEMPORADA') return promocion.temporada ?? 'Temporada';
+    return 'Todo el catalogo';
+  }
+
+  Future<void> _editarPromocion({PromocionAdminOut? promocion}) async {
+    final datos = await mostrarFormularioPromocion(
+      context,
+      widget.referencias,
+      promocion: promocion,
+    );
+    if (datos == null) return;
+    try {
+      if (promocion == null) {
+        await catalogoAdminService.crearPromocion(datos);
+      } else {
+        await catalogoAdminService.actualizarPromocion(promocion.id, datos);
+      }
+      if (!mounted) return;
+      mostrarAviso(context, 'Cambios guardados');
+      await _cargar();
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    }
+  }
+
+  Future<void> _cambiarEstado(PromocionAdminOut promocion, bool activa) async {
+    try {
+      await catalogoAdminService.cambiarEstadoPromocion(promocion.id, activa);
+      if (!mounted) return;
+      await _cargar();
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final puedeGestionar = context.watch<AuthService>().tienePermiso([
+      'catalogo.crear',
+      'catalogo.actualizar',
+      'catalogo.eliminar',
+    ]);
+
+    return Scaffold(
+      backgroundColor: Paleta.paper,
+      floatingActionButton: puedeGestionar
+          ? FloatingActionButton.extended(
+              onPressed: () => _editarPromocion(),
+              backgroundColor: Paleta.flame,
+              foregroundColor: Paleta.blanco,
+              icon: const Icon(Icons.add),
+              label: const Text('PROMOCION'),
+            )
+          : null,
+      body: Column(
+        children: [
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              children: [
+                _chipPromo('Todas', _activa == null, () {
+                  setState(() => _activa = null);
+                  _cargar();
+                }),
+                _chipPromo('Activas', _activa == true, () {
+                  setState(() => _activa = true);
+                  _cargar();
+                }),
+                _chipPromo('Dadas de baja', _activa == false, () {
+                  setState(() => _activa = false);
+                  _cargar();
+                }),
+              ],
+            ),
+          ),
+          Expanded(
+            child: VistaAsincrona(
+              cargando: _cargando,
+              error: _error,
+              alReintentar: _cargar,
+              hijo: _promociones.isEmpty
+                  ? const EstadoVacio(mensaje: 'No hay promociones que coincidan con el filtro.')
+                  : RefreshIndicator(
+                      color: Paleta.flame,
+                      onRefresh: _cargar,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 90),
+                        itemCount: _promociones.length,
+                        separatorBuilder: (contexto, indice) => const SizedBox(height: 10),
+                        itemBuilder: (contexto, indice) {
+                          final promocion = _promociones[indice];
+                          return TarjetaPanel(
+                            hijo: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        promocion.nombre,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ),
+                                    BadgeEstado(promocion.activa ? 'ACTIVA' : 'BAJA'),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  promocion.codigoCupon,
+                                  style: fuenteMono(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Paleta.flameOscuro,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                EtiquetaDato(
+                                  '${_etiquetaAlcance(promocion)} · ${promocion.fechaInicio} '
+                                  'a ${promocion.fechaFin}',
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _etiquetaValor(promocion),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: Paleta.flameOscuro,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      'Usos ${promocion.usosActuales}'
+                                      '${promocion.usoMaximo == null ? '' : ' / ${promocion.usoMaximo}'}',
+                                      style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                                    ),
+                                  ],
+                                ),
+                                if (puedeGestionar) ...[
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: () => _editarPromocion(promocion: promocion),
+                                        icon: const Icon(Icons.edit_outlined, size: 18),
+                                        label: const Text('Editar'),
+                                      ),
+                                      const Spacer(),
+                                      Switch(
+                                        value: promocion.activa,
+                                        activeThumbColor: Paleta.flame,
+                                        onChanged: (valor) => _cambiarEstado(promocion, valor),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipPromo(String etiqueta, bool elegido, VoidCallback alTocar) => Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: FilterChip(
+          label: Text(etiqueta),
+          selected: elegido,
+          selectedColor: Paleta.flame.withValues(alpha: 0.16),
+          onSelected: (_) => alTocar(),
+        ),
+      );
+}
+
+/// Formulario de alta/edicion de promocion. Devuelve null si se cancela. El alcance
+/// condiciona que select se muestra (categoria o temporada), igual que la web.
+Future<PromocionIn?> mostrarFormularioPromocion(
+  BuildContext context,
+  ReferenciasOut referencias, {
+  PromocionAdminOut? promocion,
+}) async {
+  final nombre = TextEditingController(text: promocion?.nombre ?? '');
+  final codigoCupon = TextEditingController(text: promocion?.codigoCupon ?? '');
+  final valor = TextEditingController(
+    text: promocion == null ? '' : promocion.valor.toStringAsFixed(2),
+  );
+  final montoMinimo = TextEditingController(
+    text: promocion?.montoMinimo == null ? '' : promocion!.montoMinimo!.toStringAsFixed(2),
+  );
+  final usoMaximo = TextEditingController(text: promocion?.usoMaximo?.toString() ?? '');
+  final formulario = GlobalKey<FormState>();
+
+  String tipo = promocion?.tipo ?? 'PORCENTAJE';
+  String alcance = promocion?.alcance ?? 'TODO';
+  String? categoriaId = promocion?.categoriaId ??
+      (referencias.categorias.isEmpty ? null : referencias.categorias.first.id);
+  String? temporadaId = promocion?.temporadaId ??
+      (referencias.temporadas.isEmpty ? null : referencias.temporadas.first.id);
+  DateTime fechaInicio = promocion == null
+      ? DateTime.now()
+      : DateTime.tryParse(promocion.fechaInicio) ?? DateTime.now();
+  DateTime fechaFin = promocion == null
+      ? DateTime.now().add(const Duration(days: 30))
+      : DateTime.tryParse(promocion.fechaFin) ?? DateTime.now();
+
+  final guardado = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Paleta.paper,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+    ),
+    builder: (contexto) => StatefulBuilder(
+      builder: (contexto, actualizar) {
+        Future<void> elegirFechaInicio() async {
+          final elegida = await showDatePicker(
+            context: contexto,
+            initialDate: fechaInicio,
+            firstDate: DateTime(2020),
+            lastDate: DateTime(2100),
+            helpText: 'Vigencia desde',
+          );
+          if (elegida != null) actualizar(() => fechaInicio = elegida);
+        }
+
+        Future<void> elegirFechaFin() async {
+          final elegida = await showDatePicker(
+            context: contexto,
+            initialDate: fechaFin,
+            firstDate: DateTime(2020),
+            lastDate: DateTime(2100),
+            helpText: 'Vigencia hasta',
+          );
+          if (elegida != null) actualizar(() => fechaFin = elegida);
+        }
+
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(contexto).viewInsets.bottom),
+          child: DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: 0.9,
+            maxChildSize: 0.95,
+            builder: (contexto, scroll) => Form(
+              key: formulario,
+              child: ListView(
+                controller: scroll,
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
+                children: [
+                  Titular(promocion == null ? 'Nueva promocion' : 'Editar promocion', tamano: 24),
+                  const SizedBox(height: 18),
+                  TextFormField(
+                    controller: nombre,
+                    decoration: const InputDecoration(labelText: 'Nombre'),
+                    validator: (v) =>
+                        (v?.trim().length ?? 0) < 2 ? 'Escribe el nombre' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: codigoCupon,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: 'Codigo de cupon',
+                      hintText: 'VERANO2026',
+                    ),
+                    validator: (v) =>
+                        (v?.trim().length ?? 0) < 2 ? 'Codigo de al menos 2 caracteres' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: tipo,
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Tipo'),
+                          items: const [
+                            DropdownMenuItem(value: 'PORCENTAJE', child: Text('Porcentaje')),
+                            DropdownMenuItem(value: 'MONTO_FIJO', child: Text('Monto fijo')),
+                          ],
+                          onChanged: (v) => actualizar(() => tipo = v ?? 'PORCENTAJE'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: valor,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: tipo == 'PORCENTAJE' ? 'Valor (%)' : 'Valor (Bs)',
+                          ),
+                          validator: (v) {
+                            final numero = double.tryParse((v ?? '').replaceAll(',', '.'));
+                            if (numero == null || numero <= 0) return 'Escribe un valor valido';
+                            if (tipo == 'PORCENTAJE' && numero > 100) return 'Maximo 100%';
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: alcance,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Alcance'),
+                    items: const [
+                      DropdownMenuItem(value: 'TODO', child: Text('Todo el catalogo')),
+                      DropdownMenuItem(value: 'CATEGORIA', child: Text('Una categoria')),
+                      DropdownMenuItem(value: 'TEMPORADA', child: Text('Una temporada')),
+                    ],
+                    onChanged: (v) => actualizar(() => alcance = v ?? 'TODO'),
+                  ),
+                  if (alcance == 'CATEGORIA') ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: categoriaId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Categoria'),
+                      items: referencias.categorias
+                          .map((c) => DropdownMenuItem(value: c.id, child: Text(c.nombre)))
+                          .toList(),
+                      onChanged: (v) => actualizar(() => categoriaId = v),
+                      validator: (v) => v == null ? 'Elige una categoria' : null,
+                    ),
+                  ],
+                  if (alcance == 'TEMPORADA') ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: temporadaId,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Temporada'),
+                      items: referencias.temporadas
+                          .map((t) => DropdownMenuItem(value: t.id, child: Text(t.nombre)))
+                          .toList(),
+                      onChanged: (v) => actualizar(() => temporadaId = v),
+                      validator: (v) => v == null ? 'Elige una temporada' : null,
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: elegirFechaInicio,
+                          child: Text('Desde ${fechaInicio.toIso8601String().split('T').first}'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: elegirFechaFin,
+                          child: Text('Hasta ${fechaFin.toIso8601String().split('T').first}'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: montoMinimo,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Monto minimo de compra (opcional)',
+                      prefixText: 'Bs ',
+                      helperText: 'Vacio = sin minimo.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: usoMaximo,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Usos maximos (opcional)',
+                      helperText: 'Vacio = sin limite.',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (formulario.currentState!.validate()) Navigator.pop(contexto, true);
+                    },
+                    child: const Text('GUARDAR'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+
+  final datos = PromocionIn(
+    nombre: nombre.text.trim(),
+    codigoCupon: codigoCupon.text.trim().toUpperCase(),
+    tipo: tipo,
+    valor: double.tryParse(valor.text.replaceAll(',', '.')) ?? 0,
+    alcance: alcance,
+    categoriaId: categoriaId,
+    temporadaId: temporadaId,
+    montoMinimo: montoMinimo.text.trim().isEmpty
+        ? null
+        : double.tryParse(montoMinimo.text.replaceAll(',', '.')),
+    fechaInicio: fechaInicio.toIso8601String().split('T').first,
+    fechaFin: fechaFin.toIso8601String().split('T').first,
+    usoMaximo: usoMaximo.text.trim().isEmpty ? null : int.tryParse(usoMaximo.text.trim()),
+  );
+  for (final control in [nombre, codigoCupon, valor, montoMinimo, usoMaximo]) {
+    control.dispose();
+  }
+  return guardado == true ? datos : null;
 }

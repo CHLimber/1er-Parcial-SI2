@@ -140,7 +140,7 @@ async def _consultar_indicadores(
     fila = await conn.fetchrow(
         """
         WITH filtro_venta AS (
-            SELECT total FROM venta v
+            SELECT total, costo_envio FROM venta v
             WHERE v.fecha::date BETWEEN $1 AND $2
               AND v.estado = ANY($3::estado_venta[])
               AND ($4::uuid IS NULL OR v.sucursal_id = $4)
@@ -172,6 +172,8 @@ async def _consultar_indicadores(
             COALESCE((SELECT AVG(total) FROM filtro_venta), 0)                   AS ticket_promedio,
             (SELECT COUNT(*) FROM filtro_reserva)                                AS reservas_creadas,
             (SELECT COUNT(*) FROM filtro_reserva WHERE estado = 'CONVERTIDA')    AS reservas_convertidas,
+            (SELECT COUNT(*) FROM filtro_venta WHERE costo_envio > 0)            AS envios_cantidad,
+            COALESCE((SELECT SUM(costo_envio) FROM filtro_venta), 0)             AS envios_monto,
             (
                 SELECT COUNT(*) FROM inventario i
                 JOIN sucursal s ON s.id = i.sucursal_id
@@ -257,7 +259,8 @@ async def _consultar_ventas_por_sucursal(
     filas = await conn.fetch(
         """
         SELECT v.sucursal_id, s.nombre AS sucursal,
-               COUNT(*) AS cantidad_ventas, SUM(v.total) AS monto_total, AVG(v.total) AS ticket_promedio
+               COUNT(*) AS cantidad_ventas, SUM(v.total) AS monto_total, AVG(v.total) AS ticket_promedio,
+               COALESCE(SUM(v.costo_envio), 0) AS costo_envio_total
         FROM venta v
         JOIN sucursal s ON s.id = v.sucursal_id
         WHERE v.estado = ANY($3::estado_venta[])
@@ -797,11 +800,14 @@ ETIQUETAS_CAMPO: dict[str, str] = {
     "tasa_conversion_reservas": "Conversión (%)",
     "variantes_stock_bajo": "Stock bajo",
     "variantes_agotadas": "Agotadas",
+    "envios_cantidad": "Envíos a domicilio",
+    "envios_monto": "Monto de envíos (Bs)",
     "dia": "Día",
     "sucursal": "Sucursal",
     "canal": "Canal",
     "cantidad_ventas": "Ventas",
     "monto_total": "Monto total (Bs)",
+    "costo_envio_total": "Costo de envíos (Bs)",
     "producto": "Producto",
     "unidades_vendidas": "Unidades vendidas",
     "monto_vendido": "Monto vendido (Bs)",

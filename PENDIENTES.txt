@@ -24,12 +24,14 @@
       (CLAUDE.md: admin + cliente + 5 STAFF = 7; 3 sucursales seed;
       03_datos_iniciales.sql no inserta ninguna fila en `recepcion`, asi que 0
       no es un hueco). Catalogo (6 productos) ya estaba confirmado antes.
+      [HISTORICO] Esos conteos cambiaron despues: el catalogo paso a 42 productos (2.8) y
+      personal_por_sucursal.sql (2.19) sumo cajera.scz, encargado.cbba y cajera.lapaz.
 
 -------------------------------------------------------------------------------
  2. ALCANCE DE LOS CU QUE QUEDO INCOMPLETO
 -------------------------------------------------------------------------------
 
-[2.1] [HECHO 2026-09-21, solo backend] CU10 "Gestionar Catalogo (incluye
+[2.1] [HECHO 2026-09-21 backend + web; movil 2026-09-24] CU10 "Gestionar Catalogo (incluye
       promociones)": alta/baja/edicion de promociones.
       Antes el backend solo las consumia: /ventas/checkout validaba el codigo
       de cupon contra la tabla promocion y el webhook devolvia el uso si el
@@ -78,6 +80,12 @@
       /`.service.ts`, mismo patron que categorias/marcas del mismo archivo.
       FALTA: pestana en panel_catalogo_pagina.dart (movil) -- a proposito,
       mismo criterio que siempre: web primero.
+      [HECHO 2026-09-24, movil] Tercera pestana "Promociones" en panel_catalogo_pagina.dart:
+      chips de filtro (Todas/Activas/Dadas de baja), formulario en bottom sheet (alcance
+      condicional TODO/CATEGORIA/TEMPORADA como la web) y switch activar/desactivar. Modelos
+      PromocionAdminOut/PromocionIn en core/catalogo/catalogo_admin_models.dart. Probado con
+      curl (listar, crear CATEGORIA, PATCH estado; la promo de prueba TESTMOVIL01 quedo
+      desactivada). No se probo el PUT de edicion por curl ni se vio en el emulador.
 
 [2.2] [HECHO 2026-09-21] CU07: cierre de caja.
       La tabla sesion_caja (db/01_schema.sql) ya traia todo lo necesario desde
@@ -130,6 +138,11 @@
       vuelve a figurar libre). FALTA: movil/lib/paginas/caja_pagina.dart (CU07
       ya existe ahi para vender) todavia no tiene el boton de cierre -- se
       agrego al backend despues de que esa pantalla se escribio.
+      [HECHO 2026-09-24, movil] Boton "Cerrar caja" en caja_pagina.dart: trae el arqueo,
+      pide el monto contado en un bottom sheet con la diferencia en vivo, confirma y muestra
+      el resultado; al aceptar vuelve a "sin sesion abierta". ArqueoOut/SesionCerradaOut en
+      core/caja/caja_service.dart. Probado con curl (abrir 100, arqueo, cerrar declarando 95
+      -> diferencia -5, doble cierre -> 409). No se vio en el emulador.
 
 [2.3] [HECHO 2026-09-21] CU04 E2: job periodico que llama a fn_expirar_reservas().
       Antes nadie la invocaba y la unica forma de liberar una reserva vencida era
@@ -198,7 +211,25 @@
       limpio, `ng serve` compila.
       FALTA (a proposito, ver charla con el usuario):
         - Movil: panel_reportes_pagina.dart no se hizo, CU15 queda solo en backend+web.
+          [HECHO 2026-09-24, ver 2.5.7]
         - "Consultas por voz con IA" y exportacion PDF/Excel: resuelto en [2.5.5].
+
+      [2.5.7] [HECHO 2026-09-24] CU15 en el movil: paginas/panel_reportes_pagina.dart (ruta
+      /panel/reportes, permiso reportes.leer) + core/reportes/. 4 pestanas: Indicadores
+      (KPIs con desde/hasta/sucursal), Estaticos (los 7 originales + existencias), Dinamicos
+      (ventas-diarias/por-sucursal/top-productos con fecha/sucursal/categoria/canal/entrega;
+      SIN filtro de vendedor) y Reporte con IA (chat + dictado con speech_to_text, tabla cruda
+      en un DataTable). Sin graficos ni export PDF/Excel (quedan solo en la web). Selector de
+      sucursal solo con sucursales.actualizar. Los 12 endpoints probados con curl; no se vio
+      en el emulador ni se probo la voz con microfono real.
+
+      [2.5.8] [HECHO 2026-09-24] Costo de envio en CU15 (cierra el pendiente de 2.13):
+      /reportes/indicadores suma envios_cantidad y envios_monto (mismos filtros del CTE
+      filtro_venta) y /reportes/ventas-por-sucursal suma costo_envio_total. No se reparte en
+      ventas-diarias/top-productos (el flete es por venta, no por linea). Web: tarjeta KPI
+      "Envios a domicilio", filas/columna nuevas en Dinamicos y en el export PDF/Excel. El
+      Reporte con IA lo recibe solo (mismas _consultar_*). Movil: lo muestra 2.5.7.
+      Verificado con curl + psql, incluido un caso con costo_envio > 0 simulado y revertido.
 
       [2.5.1] [HECHO 2026-09-18] Ampliacion de CU15: mas filtros en los dinamicos +
       4 estaticos nuevos + 1 endpoint auxiliar, backend + web (movil sigue sin CU15,
@@ -408,6 +439,9 @@
       una sola herramienta no pega el limite de 16 union-params, asi que el
       `type: [string, null]` se puede dejar si no se combina con `enum`, pero
       convendria alinearlo al mismo patron por consistencia).
+      [CERRADO 2026-09-18, ver 2.11] CU18 se probo en vivo, pego el 400 que se
+      anticipaba aca y se corrigio con el mismo patron (asistente/router.py ya no
+      tiene `strict` ni `minimum`/`maximum`; reverificado 2026-09-24).
 
 [2.6] [HECHO 2026-09-21] Ajustes manuales de stock: backend.
       El permiso ya sembrado se llama `inventario.actualizar` (no
@@ -467,6 +501,11 @@
       ajuste 15->17->15 (revertido) con el kardex reflejando ambos
       movimientos encadenados. `ng build` limpio. FALTA: pantalla propia en
       movil (no existe todavia) -- a proposito, web primero.
+      [HECHO 2026-09-24, movil] paginas/panel_inventario_pagina.dart (ruta /panel/inventario)
+      + core/inventario/: buscador, ficha fisico/reservado/disponible, kardex y ajuste (solo
+      con inventario.actualizar; selector de sucursal solo con sucursales.actualizar). Probado
+      con curl (ajuste 17->15->17 revertido, kardex intacto). FALTA: probar el selector y el
+      403 del ajuste con una cuenta no ADMIN en el emulador.
 
       [2.6.1] [HECHO 2026-09-21] Revision de codigo (/code-review + /simplify,
       4 agentes en paralelo: reuse/simplification/efficiency/altitude) sobre
@@ -688,8 +727,9 @@
         - PERMISOS: CAMERA agregado a AndroidManifest.xml (+ uses-feature
           camera/autofocus no requeridos) y NSCameraUsageDescription a
           ios/Runner/Info.plist.
-        - FALTA PROBARLO CON UNA PERSONA DELANTE (no se pudo en la sesion que
-          lo escribio). Si la prenda se ve cruzada de lado, NO hace falta
+        - [HECHO 2026-09-19, ver 2.8.2] FALTA PROBARLO CON UNA PERSONA DELANTE
+          (no se pudo en la sesion que lo escribio). El boton "invertir lados"
+          descrito a continuacion se reemplazo en 2.8.2 (ahora invierte el espejo). Si la prenda se ve cruzada de lado, NO hace falta
           tocar codigo: la barra del visor tiene un boton "invertir lados"
           (icono de flip) que intercambia que hombro detectado va a que
           anclaje del PNG. Se agrego justamente porque si la camara frontal
@@ -1261,6 +1301,11 @@
       FALTA (a proposito, mismo criterio que CU15/CU17/CU18): movil no se toco. No se pudo probar
       la pantalla en un navegador real en esta sesion (sin herramienta de captura/automatizacion
       de navegador disponible) -- si algo se ve mal visualmente, avisar para ajustarlo.
+      [HECHO 2026-09-24, movil] paginas/panel_auditoria_pagina.dart (ruta /panel/auditoria,
+      permiso auditoria.leer) + core/auditoria/: mismos filtros que la web, paginacion, y el
+      detalle antes/despues (con mascara de campos sensibles) en una hoja modal. Probado con
+      curl: admin ve datos reales, vendedor y cliente 403, sin token 401. No se vio en el
+      emulador.
 
 [2.13] [HECHO 2026-09-18] CU20 "Entrega a Domicilio (Delivery)": backend + web + movil.
       Cierra tambien el pendiente 2.4 (la entrega a domicilio estaba aceptada por la API pero era
@@ -1272,6 +1317,9 @@
         - venta.costo_envio NUMERIC(12,2). Entra en la BASE IMPONIBLE junto con la mercaderia
           (base = subtotal - descuento + costo_envio, IVA 13% sobre eso): el flete se factura
           con el mismo IVA. Ojo si se comparan totales viejos contra nuevos.
+          [OBSOLETO] Despues se le saco el IVA al envio: hoy el 13% va solo sobre
+          subtotal - descuento y el flete se suma aparte (ventas/router.py, "el flete no
+          lleva impuesto"; CLAUDE.md tambien lo dice asi).
         - Tablas envio (una por venta, UNIQUE venta_id) y envio_evento (bitacora append-only).
           El envio CONGELA la direccion en texto + coordenadas porque la clienta puede editarla
           o borrarla despues y la hoja de ruta tiene que seguir diciendo a donde iba el paquete.
@@ -1329,18 +1377,21 @@
       el telefono: el repartidor marca "en camino" y "entregado" desde la calle. Verificado:
       `flutter analyze` sin issues y `flutter test` en verde.
 
-      FALTA / A TENER EN CUENTA:
-        - No se probo con ORS_API_KEY real (no habia clave en esta sesion): todo lo verificado
-          uso el respaldo Haversine. Con la key hay que confirmar la matriz de distancias y el
+      FALTA / A TENER EN CUENTA [revisado 2026-09-24]:
+        - [SIGUE ABIERTO: backend/.env sigue sin ORS_API_KEY] No se probo con ORS_API_KEY real
+          (no habia clave en esta sesion): todo lo verificado uso el respaldo Haversine. Con la key hay que confirmar la matriz de distancias y el
           geocoding. La clave se saca gratis en https://openrouteservice.org/dev/#/signup y va
           en backend/.env como ORS_API_KEY.
         - Las pantallas no se pudieron ver en un navegador ni en el emulador en esta sesion
           (mismo limite que CU19): compilan, pero si algo se ve mal visualmente, avisar.
+          [El panel de despacho ya no existe (2.17); queda sin ver la libreta de direcciones.]
         - No hay reintento automatico ni notificacion push cuando el envio cambia de estado; la
           clienta se entera al abrir la pantalla de la compra (hay una notificacion en la tabla
           `notificacion` cuando se crea el envio, igual que el resto de los avisos del sistema).
-        - Los reportes de CU15 no abren todavia el costo_envio como columna propia; el monto ya
-          esta incluido en venta.total.
+          [Desde 2.19.3 esa notificacion ya se LEE (campana web/movil, polling 60s); push real
+          sigue sin haber. Ademas el envio no cambia de estado, ver 2.17.]
+        - [HECHO 2026-09-24, ver 2.5.8] Los reportes de CU15 no abren todavia el costo_envio
+          como columna propia; el monto ya esta incluido en venta.total.
 
 [2.14] [HECHO 2026-09-18] Checkout web: Stripe embebido + Efectivo y QR (CU05/CU06).
       Pedido del usuario: 3 metodos de pago (Stripe, Efectivo, QR) y que Stripe se pague
@@ -1361,7 +1412,9 @@
           hospedado de siempre (Flutter no tiene SDK embebido, sigue abriendo el navegador
           del telefono -- ver 4.1).
         - QR es LIBELULA de toda la vida, solo con el nombre nuevo.
-        - EFECTIVO no pasa por ninguna pasarela: decision del usuario en la sesion de
+        - [OBSOLETO desde 2.19.1.b: EFECTIVO y QR quedan PENDIENTE hasta que el CAJERO los
+          aprueba; el webhook publico del QR se elimino]
+          EFECTIVO no pasa por ninguna pasarela: decision del usuario en la sesion de
           diseño fue que se aprueba al toque en el checkout mismo (retiro lo cobra la
           sucursal, domicilio queda a cargo del servicio de delivery, se asume cobrado sin
           confirmacion posterior) -- mismo resultado que un webhook aprobado, pero
@@ -1424,6 +1477,9 @@
       `ventas_service.dart`); la imagen QR se separo en un asset propio
       (`assets/images/pago-qr.jpeg`, copia de `frontend/public/pago-qr.jpeg`) porque la app no
       corre contra el frontend web para pedirsela ahi.
+      [RESUELTO 2026-09-19 en 4.8 -- la limitacion y el FALTA de este parrafo: 4.8 abandona el
+      intento de otro canal; el APK nativo se compilo y probo en 4.6; el pago real de punta a
+      punta contra Railway con webhook firmado se probo en 4.7 (2026-09-24)]
       LIMITACION CONOCIDA nueva: si el mismo carrito ya tiene un checkout STRIPE pendiente
       iniciado desde el OTRO canal (WEB crea Checkout Session `cs_...`, MOVIL PaymentIntent
       `pi_...`) y se reintenta desde este dispositivo antes de pagar, `_pago_pendiente_stripe`
@@ -1459,7 +1515,8 @@
       real (esta sesion no tiene herramienta de automatizacion de navegador; se verifico contra
       un `ng serve` corriendo en :3000 que sirve la imagen y contra la API real con curl, pero no
       se vio el render final).
-      LIMITACION CONOCIDA: si un checkout STRIPE se inicia por WEB (embebido, sin url) y se
+      [SIGUE ABIERTO el FALTA de arriba: no se vio el render en un navegador real]
+      LIMITACION CONOCIDA [RESUELTA 2026-09-19, ver 4.8]: si un checkout STRIPE se inicia por WEB (embebido, sin url) y se
       reintenta el mismo carrito por MOVIL antes de pagar, `_pago_pendiente_stripe` no tiene
       `sesion.url` para devolver y cae al mismo respaldo generico que un error de Stripe
       (`/pago-simulado/{id}`), que para STRIPE es una pantalla rota (el webhook simulado solo
@@ -1486,9 +1543,20 @@
           `inventario.disponible`.
       `estado_item = 'PROBADO'` y `reserva.estado = 'PENDIENTE'` siguen sin escribirse en ningun
       lado del backend (estados muertos del ENUM) -- no se toco, es inofensivo y no bloquea nada.
+      [ACTUALIZADO 2026-09-24] reserva.estado='PENDIENTE' ya se escribe (la reserva nace asi,
+      2.19.1.a); PROBADO sigue sin escribirse (anotado en 2.19 "QUEDA ABIERTO").
       Verificado: `python -c "import app.main"` limpio despues del cambio. FALTA probar el flujo
       completo con curl/UI contra Postgres real (reservar -> Encargado prepara -> cliente
-      convierte a carrito web -> paga) -- no se hizo en esta sesion.
+      convierte a carrito web -> paga) -- no se hizo en esta sesion. [PROBADO EN VIVO
+      2026-09-24, Docker local, sucursal Cala Cala] Reserva -> encargado confirma -> prepara ->
+      POST /carrito/desde-reserva -> checkout -> cajero aprueba, dos corridas en verde:
+      EFECTIVO forzando el caso limite (8 fisicas / 8 reservadas por la propia reserva,
+      disponible 0: el carrito acepta items PREPARADO y el checkout no rechaza por stock) y QR
+      (la clienta informa, el cajero aprueba). Resultado: reserva CONVERTIDA, items COMPRADO,
+      kardex RESERVA -> LIBERACION -> SALIDA y stock consistente, notificaciones "Reserva
+      confirmada" y "Pago aprobado" presentes. Sin bugs nuevos. Quedaron 2 ventas PAGADA
+      legitimas de prueba (V-0F3AC355B1, V-4C79750F5F) y la sesion de caja cerrada con
+      diferencia 0.
 
 [2.16] [HECHO 2026-09-18] CU20 simplificado a "delivery externo": decision de negocio, no bug.
       El diseño original de CU20 (2.13) modelaba el reparto como si fuera operacion propia de
@@ -1538,6 +1606,13 @@
       en el emulador en esta sesion (mismo limite que otras CU recientes) -- si algo se ve mal,
       avisar. Tampoco se corrio la migracion cu20_delivery_simplificado.sql contra una base
       real (ni local ni Railway) en esta sesion, solo se revisó a mano.
+      [VERIFICADO 2026-09-24] El enum ya esta simplificado en las dos bases: local
+      (enum_range = PENDIENTE/DESPACHADO/ENTREGADO/FALLIDO/CANCELADO, via down -v con el
+      01_schema.sql nuevo) y Railway (GET /admin/envios?estado=DESPACHADO -> 200,
+      ?estado=EN_RUTA -> 500 por valor invalido del enum). De paso: ese 500 deberia ser
+      un 422 (el filtro `estado` no se valida contra el enum antes del cast); hoy no lo
+      usa ninguna UI. [HECHO 2026-09-24] El Query `estado` ahora es el Literal EstadoEnvio
+      de admin_schemas.py: ?estado=EN_RUTA -> 422, ?estado=PENDIENTE -> 200 (probado).
 
 -------------------------------------------------------------------------------
 
@@ -1573,12 +1648,19 @@
 
       PENDIENTE ABIERTO: como en 2.16, con el panel de despacho afuera no hay ningun
       mecanismo (ni humano ni automatico) que mueva estado_envio de PENDIENTE en adelante.
+      [CERRADO POR DECISION 2026-09-24] No se va a hacer: el delivery es un servicio
+      externo y en el sistema solo se simula (cotizacion + alta del envio al pagar); el
+      seguimiento posterior no es alcance del proyecto. Consecuencia aceptada: los envios
+      quedan en PENDIENTE (Railway ya tiene 1) y la clienta ve ese estado en su compra.
+      El endpoint POST /admin/envios/{id}/estado queda en el backend sin UI, por si se
+      retoma.
       Si en algun momento el servicio de courier expone un webhook o hay que reactivar un
       cambio manual, admin_router.py ya tiene la validacion de transiciones lista para
       reusar -- no hubo que escribirla de nuevo. No se corrio `ng build`/`flutter analyze`
       en esta sesion para confirmar que no quedaron referencias sueltas; se verifico a mano
       con grep que ningun archivo restante menciona PanelEnviosPage/Pagina, los DTOs admin
-      eliminados ni panel-envios/panel_envios.
+      eliminados ni panel-envios/panel_envios. [CERRADO: `ng build` y `flutter analyze` se
+      corrieron en verde en sesiones posteriores (3.5, 2.19, 2.20).]
 
 [2.18] [HECHO 2026-09-22] Politica de contrasena unificada + intentos maximos de login:
       backend + web + movil, PROBADO EN VIVO contra Docker local.
@@ -1635,12 +1717,26 @@
       configuracion, idempotente) -- sin correrla, CUALQUIER login en Railway responde 500
       "column u.intentos_fallidos does not exist" porque el SELECT del login las pide
       siempre. Bloqueante para el deploy actual hasta que se corra.
-      FALTA: ni web ni movil tienen una pantalla de "cambiar mi propia contrasena" (solo
+      [RESUELTO, deducido 2026-09-24] Ya no bloquea: el 2026-09-24 hubo logins reales contra
+      Railway (la clienta de prueba de 4.7 y la verificacion de permisos de 2.19), cosa
+      imposible si faltaran esas columnas.
+      FALTA [HECHO 2026-09-24, ver abajo]: ni web ni movil tienen una pantalla de "cambiar mi propia contrasena" (solo
       CU13 resetea la de otro usuario desde el panel), asi que el checklist no se aplico
       ahi. Si se agrega esa pantalla en el futuro, reusar
       `passwordSeguraValidator`/`ListaRequisitosPassword` (web,
       shared/validacion-password.ts) o `validarPassword`/`ListaRequisitosPassword` (movil,
       compartido/widgets.dart) en vez de escribir la regla de nuevo.
+      [HECHO 2026-09-24] Cambiar mi propia contrasena (CLIENTE y STAFF), backend + web +
+      movil, PROBADO EN VIVO. POST /auth/password {password_actual, password_nueva}: 401 si
+      la actual no coincide, 422 si la nueva es debil (mismo REGLAS_PASSWORD) o igual a la
+      actual, 204 si cambia; audita en `auditoria` sin guardar hashes. Web:
+      pages/cambiar-password/ (ruta /cambiar-password, solo authGuard), enlazada desde la
+      cabecera de tienda y de panel-shell; tiene su propio interpretarError porque el
+      compartido lee todo 401 como sesion vencida. Movil: paginas/cambiar_password_pagina.dart
+      desde cuenta_pagina.dart; core/api.dart gano `notificarSesionExpirada` (default true) en
+      post()/_enviar() para que ese 401 no dispare el auto-logout. OJO: "demo1234" no cumple
+      la politica, asi que una cuenta demo cambiada no puede volver a demo1234 por el
+      endpoint -- las de prueba se restauraron copiando el hash por SQL.
 
 [2.19] [HECHO 2026-09-24, salvo lo listado en "QUEDA ABIERTO" al final; relevado el mismo dia] Auditoria contra la rubrica de la defensa y contra
       Instrucciones.md. El relevamiento original se conserva abajo; lo hecho esta en
@@ -1716,12 +1812,14 @@
          - La compra online no aparta stock entre checkout y pago: si dos clientes pagan la
            ultima unidad, al segundo se le reembolsa (confirmar_aprobado). Relacionado con
            2.19.1.b.
-         - El mutex de 4.7 no se probo con 2 requests concurrentes reales; la garantia es el
-           FOR UPDATE de fn_mover_inventario.
+         - El mutex de 4.9 (antes numerado 4.7) no se probo con 2 requests concurrentes
+           reales; la garantia es el FOR UPDATE de fn_mover_inventario. [PROBADO 2026-09-24
+           en la verificacion de 2.19: 2 clientes a la vez por la ultima unidad -> 201 y
+           409. Falta solo el caso con varios workers.]
          - Verificar que el documento (.docx) tenga el diagrama de estados UML de reserva y
            de reserva_detalle.estado_item; no esta en el repo.
-         - Siguen sin implementar devoluciones (objetivo 11 de la consigna) y traspasos
-           (ver 2.7).
+         - [HECHO 2026-09-24, ver 2.19.7] Siguen sin implementar devoluciones (objetivo 11
+           de la consigna) y traspasos (ver 2.7).
          - CLAUDE.md esta desactualizado: menciona LIBELULA (hoy pasarela 'QR') y el cargo
            REPARTIDOR (eliminado en 2.16). [HECHO 2026-09-24: CLAUDE.md actualizado]
          - Devoluciones y traspasos [HECHO 2026-09-24, ver 2.19.7]. Diagramas UML de estados
@@ -1775,7 +1873,11 @@
          AGOTADA + vendidas + proximas_a_ingresar), GET /reportes/existencias, solapa
          "Existencias" en panel-reportes y herramienta para el Reporte con IA.
       [2.19.7] Devoluciones y traspasos (cierra 2.7), backend + web (movil no, igual que
-         panel-inventario). Stock movido solo por triggers tg_devolucion_stock (al APROBAR,
+         panel-inventario). [MOVIL HECHO 2026-09-24: panel_devoluciones_pagina.dart y
+         panel_traspasos_pagina.dart + core/devoluciones/ y core/traspasos/, mismas
+         transiciones que la web; solo se probaron por curl los endpoints de LECTURA, las
+         escrituras (registrar/aprobar/despachar/recibir/anular) falta probarlas en el
+         emulador.] Stock movido solo por triggers tg_devolucion_stock (al APROBAR,
          DEVOLUCION) y tg_traspaso_stock (despachar = TRASPASO_SAL, recibir = TRASPASO_ENT por
          lo recibido, anular EN_TRANSITO = vuelve al origen). Devolucion SOLICITADA -> el
          encargado aprueba/rechaza; reembolso prorrateado sobre total - envio; pago
@@ -1845,11 +1947,21 @@
       `docker compose down -v && up --build`: el contenedor db ya llega a
       "Healthy" y el backend arranca sin esperar.
 
-[3.3] El backend no tiene tests ni linter configurados.
+[3.3] [HECHO 2026-09-24] El backend no tiene tests ni linter configurados.
       No existe backend/tests. El movil si tiene (flutter test, 3 casos) y el
       frontend tiene Karma/Jasmine.
+      Ahora: requirements-dev.txt (pytest, pytest-asyncio, ruff; la imagen Docker sigue
+      instalando solo requirements.txt), pyproject.toml y backend/tests/ con 54 tests sin
+      Postgres (politica de password, security, Haversine de ruteo, _validar_promocion,
+      _normalizar/_rango_fechas de reportes, formula de IVA, y endpoints con TestClient sin
+      lifespan: 401, 403, 503 de /asistente/chat). conftest.py fija env vars de prueba para
+      no leer backend/.env ni llamar a APIs externas. ruff (E/F/I): 0 hallazgos. Como correr:
+      backend/README.md. FALTA: tests de integracion contra una Postgres de prueba
+      (fn_mover_inventario, triggers) y CI.
 
-[3.4] STRIPE_WEBHOOK_SECRET depende del entorno y no esta documentado en el .env.
+[3.4] [RESUELTO, verificado 2026-09-24] STRIPE_WEBHOOK_SECRET depende del entorno y no esta documentado en el .env.
+      Ya esta documentado: backend/.env.example explica el de local (`stripe listen`) y
+      RAILWAY.md el de produccion (signing secret del endpoint, configurado en 4.7).
       En local sale de `stripe listen --forward-to localhost:8081/pagos/webhook/stripe`;
       en Railway es el signing secret del endpoint creado en el dashboard de
       Stripe. Son distintos y sin el correcto el webhook rechaza la firma.
@@ -1895,7 +2007,9 @@
  4. ESPECIFICO DE LA APP MOVIL
 -------------------------------------------------------------------------------
 
-[4.1] Sin deep link de retorno desde Stripe (CU06).
+[4.1] [OBSOLETO desde 2026-09-18] Sin deep link de retorno desde Stripe (CU06).
+      Ya no aplica: el movil cobra con el PaymentSheet nativo de flutter_stripe (2.14,
+      "ACTUALIZADO") y no sale de la app; url_launcher ya solo se usa para Scene Viewer.
       FRONTEND_URL apunta al frontend web, asi que la success_url de Stripe deja
       al usuario en la WEB, no de vuelta en la app. El pago se confirma igual
       (el webhook es server-to-server) y la app tiene el boton "consultar estado
@@ -1937,6 +2051,20 @@
                 esto no se cree, NINGUN pago real contra Railway (ni WEB ni
                 MOVIL) confirma solo: la venta queda PENDIENTE para siempre.
                 Es configuracion en Stripe, no codigo.
+      [RESUELTO 2026-09-24] Endpoint creado en el Dashboard (test mode, API
+                version 2026-04-22.dahlia -- da igual cual, el webhook solo lee
+                type, data.object.id y payment_status) con los 6 eventos de
+                arriba, y su Signing secret cargado en Railway como
+                STRIPE_WEBHOOK_SECRET. Primer intento: Railway tenia otro secret
+                y respondia 400 "Firma de webhook invalida" (Stripe dejaba el
+                evento con pending_webhooks=1). PROBADO EN VIVO contra Railway con
+                una clienta de prueba (prueba.webhook.1790279057@fashionstore.bo):
+                checkout canal MOVIL + STRIPE -> PaymentIntent confirmado con
+                pm_card_visa -> Stripe entrego payment_intent.succeeded solo
+                (pending_webhooks=0) y la venta V-1604C7143D quedo PAGADA con
+                comprobante en ~3s. La primera venta (V-6300D27737) se confirmo
+                reenviando el evento firmado a mano. No se probo el canal WEB
+                (Checkout Session embebido), pero usa el mismo endpoint y secret.
       NOTA    : no tenia nada que ver con el telefono (Huawei) ni con el APK.
 
 [4.8] [RESUELTO 2026-09-19] Un checkout pendiente no se podia retomar desde el otro canal.
@@ -2020,9 +2148,11 @@
   exactamente los campos que esperan los modelos Dart (verificado uno por uno).
 - Flujo de pago completo probado de punta a punta contra el backend local:
   checkout (canal MOVIL) -> webhook LIBELULA -> venta PAGADA con comprobante.
+  [HISTORICO: LIBELULA ahora es QR y ya no tiene webhook (lo aprueba el cajero, 2.19.1.c);
+  Stripe se probo de punta a punta contra Railway en 4.7.]
 - flutter analyze sin issues; flutter test 3/3 en verde.
 
-[4.7] [HECHO 2026-09-22] Mutex de aplicacion sobre CU04 (Reservar Prendas), pedido
+[4.9] (antes numerado 4.7, repetido) [HECHO 2026-09-22] Mutex de aplicacion sobre CU04 (Reservar Prendas), pedido
       para la defensa del punto de la rubrica "como se evita que 2 clientes
       reserven simultaneamente la misma prenda". `app/core/mutex.py` agrega un
       asyncio.Lock por (sucursal_id, variante_id), adquirido (ordenado por id,
@@ -2040,3 +2170,6 @@
       FALTA: probar en vivo con 2 requests concurrentes reales (ahora mismo solo
       se verifico que compila y que la logica no rompe el flujo normal de
       reserva de un solo cliente).
+      [HECHO 2026-09-24, ver 2.19 "VERIFICADO EN VIVO"] 2 clientes reservando la
+      ultima unidad a la vez: una 201, otra 409, disponible 0. Queda solo el caso
+      con varios workers/replicas (2.19 "QUEDA ABIERTO").

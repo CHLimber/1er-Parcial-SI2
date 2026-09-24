@@ -425,6 +425,107 @@ class ProductoIn {
       };
 }
 
+/// CU10 - Promociones (PENDIENTES.txt 2.1).
+class PromocionAdminOut {
+  PromocionAdminOut({
+    required this.id,
+    required this.nombre,
+    required this.codigoCupon,
+    required this.tipo,
+    required this.valor,
+    required this.alcance,
+    required this.categoriaId,
+    required this.categoria,
+    required this.temporadaId,
+    required this.temporada,
+    required this.montoMinimo,
+    required this.fechaInicio,
+    required this.fechaFin,
+    required this.usoMaximo,
+    required this.usosActuales,
+    required this.activa,
+  });
+
+  final String id;
+  final String nombre;
+  final String codigoCupon;
+  final String tipo;
+  final double valor;
+  final String alcance;
+  final String? categoriaId;
+  final String? categoria;
+  final String? temporadaId;
+  final String? temporada;
+  final double? montoMinimo;
+  final String fechaInicio;
+  final String fechaFin;
+  final int? usoMaximo;
+  final int usosActuales;
+  final bool activa;
+
+  factory PromocionAdminOut.desdeJson(Map<String, dynamic> j) => PromocionAdminOut(
+        id: j['id'] as String,
+        nombre: j['nombre'] as String,
+        codigoCupon: j['codigo_cupon'] as String,
+        tipo: j['tipo'] as String,
+        valor: aDouble(j['valor']),
+        alcance: j['alcance'] as String,
+        categoriaId: j['categoria_id'] as String?,
+        categoria: j['categoria'] as String?,
+        temporadaId: j['temporada_id'] as String?,
+        temporada: j['temporada'] as String?,
+        montoMinimo: aDoubleNulo(j['monto_minimo']),
+        fechaInicio: j['fecha_inicio'] as String,
+        fechaFin: j['fecha_fin'] as String,
+        usoMaximo: j['uso_maximo'] == null ? null : aEntero(j['uso_maximo']),
+        usosActuales: aEntero(j['usos_actuales']),
+        activa: j['activa'] as bool? ?? true,
+      );
+}
+
+/// Cuerpo de alta/edicion de promocion.
+class PromocionIn {
+  PromocionIn({
+    required this.nombre,
+    required this.codigoCupon,
+    required this.tipo,
+    required this.valor,
+    this.alcance = 'TODO',
+    this.categoriaId,
+    this.temporadaId,
+    this.montoMinimo,
+    required this.fechaInicio,
+    required this.fechaFin,
+    this.usoMaximo,
+  });
+
+  final String nombre;
+  final String codigoCupon;
+  final String tipo;
+  final double valor;
+  final String alcance;
+  final String? categoriaId;
+  final String? temporadaId;
+  final double? montoMinimo;
+  final String fechaInicio;
+  final String fechaFin;
+  final int? usoMaximo;
+
+  Map<String, dynamic> aJson() => {
+        'nombre': nombre,
+        'codigo_cupon': codigoCupon,
+        'tipo': tipo,
+        'valor': valor.toStringAsFixed(2),
+        'alcance': alcance,
+        'categoria_id': alcance == 'CATEGORIA' ? categoriaId : null,
+        'temporada_id': alcance == 'TEMPORADA' ? temporadaId : null,
+        'monto_minimo': montoMinimo?.toStringAsFixed(2),
+        'fecha_inicio': fechaInicio,
+        'fecha_fin': fechaFin,
+        'uso_maximo': usoMaximo,
+      };
+}
+
 /// Cuerpo de alta/edicion de variante. Si precio va vacio, hereda `producto.precio_base`.
 class VarianteIn {
   VarianteIn({

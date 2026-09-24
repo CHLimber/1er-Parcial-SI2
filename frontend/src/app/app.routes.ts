@@ -62,6 +62,16 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    // Cambiar mi propia contrasena: CLIENTE y STAFF, sin permiso de CU13 (no gestiona a
+    // otro). Se llega desde la cabecera de la tienda y desde panel-shell.
+    path: 'cambiar-password',
+    loadComponent: () =>
+      import('./pages/cambiar-password/cambiar-password.page').then(
+        (m) => m.CambiarPasswordPage,
+      ),
+    canActivate: [authGuard],
+  },
+  {
     path: 'asistente',
     loadComponent: () => import('./pages/asistente/asistente.page').then((m) => m.AsistentePage),
     canActivate: [authGuard],

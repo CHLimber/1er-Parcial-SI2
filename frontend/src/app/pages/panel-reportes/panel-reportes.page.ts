@@ -194,6 +194,7 @@ const COLUMNAS_DINAMICO: Record<Exclude<TipoDinamico, 'indicadores'>, ColumnaExp
     { clave: 'cantidad_ventas', etiqueta: 'Ventas' },
     { clave: 'monto_total', etiqueta: 'Monto total (Bs)' },
     { clave: 'ticket_promedio', etiqueta: 'Ticket promedio (Bs)' },
+    { clave: 'costo_envio_total', etiqueta: 'Costo de envíos (Bs)' },
   ],
   topProductos: [
     { clave: 'producto', etiqueta: 'Producto' },
@@ -1034,6 +1035,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
           },
           { etiqueta: 'Variantes agotadas', valor: `${ind.variantes_agotadas}` },
           { etiqueta: 'Stock bajo', valor: `${ind.variantes_stock_bajo}` },
+          { etiqueta: 'Envíos a domicilio', valor: `Bs ${ind.envios_monto.toFixed(2)} (${ind.envios_cantidad} ventas)` },
         ]
       : [];
 
@@ -1105,6 +1107,8 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
         { metrica: 'Tasa de conversión (%)', valor: ind.tasa_conversion_reservas },
         { metrica: 'Variantes con stock bajo', valor: ind.variantes_stock_bajo },
         { metrica: 'Variantes agotadas', valor: ind.variantes_agotadas },
+        { metrica: 'Envíos a domicilio', valor: ind.envios_cantidad },
+        { metrica: 'Monto de envíos (Bs)', valor: ind.envios_monto.toFixed(2) },
       ];
     }
     if (tipo === 'ventasDiarias') return this.dinVentasDiarias() as unknown as Record<string, unknown>[];

@@ -43,12 +43,18 @@ class ApiClient {
   Future<dynamic> get(String ruta, {Map<String, dynamic>? query}) =>
       _enviar(() => _http.get(_uri(ruta, query), headers: _cabeceras()));
 
-  Future<dynamic> post(String ruta, {Object? cuerpo, Map<String, dynamic>? query}) => _enviar(
+  Future<dynamic> post(
+    String ruta, {
+    Object? cuerpo,
+    Map<String, dynamic>? query,
+    bool notificarSesionExpirada = true,
+  }) => _enviar(
         () => _http.post(
           _uri(ruta, query),
           headers: _cabeceras(conCuerpo: true),
           body: jsonEncode(cuerpo ?? const <String, dynamic>{}),
         ),
+        notificarSesionExpirada: notificarSesionExpirada,
       );
 
   Future<dynamic> put(String ruta, {Object? cuerpo}) => _enviar(
@@ -70,7 +76,10 @@ class ApiClient {
   Future<dynamic> delete(String ruta) =>
       _enviar(() => _http.delete(_uri(ruta), headers: _cabeceras()));
 
-  Future<dynamic> _enviar(Future<http.Response> Function() peticion) async {
+  Future<dynamic> _enviar(
+    Future<http.Response> Function() peticion, {
+    bool notificarSesionExpirada = true,
+  }) async {
     late final http.Response respuesta;
     try {
       respuesta = await peticion().timeout(const Duration(seconds: 30));
@@ -91,7 +100,10 @@ class ApiClient {
       return jsonDecode(cuerpo);
     }
 
-    if (respuesta.statusCode == 401) alExpirarSesion?.call();
+    // Ojo: `POST /auth/password` (cambiar mi propia contrasena) tambien devuelve 401
+    // cuando la contrasena ACTUAL esta mal, no porque la sesion haya vencido -- ese
+    // llamado pasa `notificarSesionExpirada: false` para no cerrar la sesion sola.
+    if (respuesta.statusCode == 401 && notificarSesionExpirada) alExpirarSesion?.call();
     throw ApiException(
       mensajeDesdeCuerpo(cuerpo, respuesta.statusCode),
       statusCode: respuesta.statusCode,

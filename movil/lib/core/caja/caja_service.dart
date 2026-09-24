@@ -163,6 +163,78 @@ class PagoPorVerificarOut {
       );
 }
 
+/// CU07 (2.2): foto de la sesion abierta ANTES de declarar el cierre. monto_sistema es
+/// lo que deberia haber en efectivo: monto_inicial + ventas cobradas en EFECTIVO (las de
+/// TARJETA/QR/TRANSFERENCIA/PASARELA no tocan el cajon fisico).
+class ArqueoOut {
+  ArqueoOut({
+    required this.sesionId,
+    required this.montoInicial,
+    required this.montoSistema,
+    required this.cantidadVentas,
+    required this.totalVentas,
+    required this.porMetodo,
+  });
+
+  final String sesionId;
+  final double montoInicial;
+  final double montoSistema;
+  final int cantidadVentas;
+  final double totalVentas;
+  final Map<String, double> porMetodo;
+
+  factory ArqueoOut.desdeJson(Map<String, dynamic> j) => ArqueoOut(
+        sesionId: j['sesion_id'] as String,
+        montoInicial: aDouble(j['monto_inicial']),
+        montoSistema: aDouble(j['monto_sistema']),
+        cantidadVentas: aEntero(j['cantidad_ventas']),
+        totalVentas: aDouble(j['total_ventas']),
+        porMetodo: (j['por_metodo'] as Map<String, dynamic>? ?? const {})
+            .map((clave, valor) => MapEntry(clave, aDouble(valor))),
+      );
+}
+
+/// Resultado de POST /caja/cerrar: la sesion queda CERRADA y `diferencia` la calculo
+/// Postgres solo (columna GENERATED = monto_declarado - monto_sistema).
+class SesionCerradaOut {
+  SesionCerradaOut({
+    required this.id,
+    required this.cajaId,
+    required this.cajaNombre,
+    required this.abiertaEn,
+    required this.cerradaEn,
+    required this.montoInicial,
+    required this.montoSistema,
+    required this.montoDeclarado,
+    required this.diferencia,
+    required this.estado,
+  });
+
+  final String id;
+  final String cajaId;
+  final String cajaNombre;
+  final DateTime? abiertaEn;
+  final DateTime? cerradaEn;
+  final double montoInicial;
+  final double montoSistema;
+  final double montoDeclarado;
+  final double diferencia;
+  final String estado;
+
+  factory SesionCerradaOut.desdeJson(Map<String, dynamic> j) => SesionCerradaOut(
+        id: j['id'] as String,
+        cajaId: j['caja_id'] as String,
+        cajaNombre: j['caja_nombre'] as String,
+        abiertaEn: aFechaNula(j['abierta_en']),
+        cerradaEn: aFechaNula(j['cerrada_en']),
+        montoInicial: aDouble(j['monto_inicial']),
+        montoSistema: aDouble(j['monto_sistema']),
+        montoDeclarado: aDouble(j['monto_declarado']),
+        diferencia: aDouble(j['diferencia']),
+        estado: j['estado'] as String,
+      );
+}
+
 class ResolucionPagoOut {
   ResolucionPagoOut({
     required this.pagoId,
@@ -232,6 +304,21 @@ class CajaService {
       'motivo': (motivo?.trim().isEmpty ?? true) ? null : motivo!.trim(),
     });
     return ResolucionPagoOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// CU07 (2.2): arqueo de la sesion abierta, para que el cajero cuente el cajon antes
+  /// de declarar el cierre.
+  Future<ArqueoOut> obtenerArqueo() async {
+    final respuesta = await api.get('/caja/arqueo');
+    return ArqueoOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// CU07 (2.2): cierra la sesion abierta con lo que el cajero conto de verdad en el cajon.
+  Future<SesionCerradaOut> cerrarSesion(double montoDeclarado) async {
+    final respuesta = await api.post('/caja/cerrar', cuerpo: {
+      'monto_declarado': montoDeclarado,
+    });
+    return SesionCerradaOut.desdeJson(respuesta as Map<String, dynamic>);
   }
 }
 
