@@ -1791,7 +1791,8 @@
       traspaso con kardex. Ademas: init limpio de 01/02/03 en un Postgres descartable, ng build,
       flutter analyze y flutter test en verde.
 
-      RAILWAY (BLOQUEANTE, en este orden, despues de los scripts ya corridos alli):
+      RAILWAY [HECHO 2026-09-24: las 5 corridas y verificadas, ADMIN 44 / ENCARGADO 26 /
+      ALMACEN 8 / CAJERO 6 / VENDEDOR 4]. Orden en que se corrieron:
          db/reparaciones/consolidado_existencias.sql
          db/reparaciones/pagos_verificacion_caja.sql
          db/reparaciones/expirar_reservas_skip_locked.sql
@@ -1812,6 +1813,18 @@
            contando la venta devuelta por su monto completo.
          - El mutex de app/core/mutex.py sigue sin probarse con varios workers (la garantia es
            el FOR UPDATE, que si se probo en vivo).
+
+[2.20] [HECHO 2026-09-24] CU20: mapa con la ruta aproximada del delivery en el carrito. Los
+      repartidores siguen siendo externos y sin cuenta (2.16); esto es solo informativo.
+      POST /envios/cotizar devuelve ademas origen, destino, ruta ([lat, lon]) y
+      ruta_proveedor. app/core/ruteo.py::trazar_ruta prueba ORS directions (con API key),
+      despues el OSRM publico de demo (router.project-osrm.org, sin key) y, si nada responde,
+      una linea recta (LINEA_RECTA, se dibuja punteada). La distancia que se COBRA no cambia:
+      sigue saliendo de la matriz ORS / Haversine, asi que la linea y los km pueden no
+      coincidir exacto. Web: shared/mapa/mapa-ruta.ts (Leaflet) en carrito.page; movil:
+      compartido/mapa_ruta.dart (flutter_map) en carrito_pagina. Verificado: cotizacion local
+      con OSRM (52 puntos, <1 s), ng build, flutter analyze y flutter test. NO se vio todavia
+      en el navegador ni en el telefono.
 
 -------------------------------------------------------------------------------
  3. DEUDA TECNICA

@@ -36,6 +36,13 @@ class CotizacionOut(BaseModel):
     tarifa_base: float
     precio_km: float
     gratis_desde: float
+    # Mapa del carrito: la sucursal, el domicilio y por donde iria el delivery ([lat, lon] en
+    # orden). Es aproximado -- lo reparte un servicio externo -- y no cambia lo que se cobra.
+    origen: list[float]
+    destino: list[float]
+    ruta: list[list[float]]
+    # ORS, OSRM o LINEA_RECTA (ningun servicio de rutas respondio)
+    ruta_proveedor: str
 
 
 class EnvioEventoOut(BaseModel):

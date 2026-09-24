@@ -37,6 +37,9 @@ class Cotizacion:
     tarifa_base: float
     precio_km: float
     gratis_desde: float
+    # de donde sale el delivery, para dibujar la ruta en el mapa del carrito
+    origen_lat: float
+    origen_lon: float
 
 
 class SinCoordenadas(Exception):
@@ -79,6 +82,8 @@ async def cotizar(
         tarifa_base=float(tarifa["tarifa_base"]),
         precio_km=float(tarifa["precio_km"]),
         gratis_desde=float(tarifa["gratis_desde"]),
+        origen_lat=float(sucursal["latitud"]),
+        origen_lon=float(sucursal["longitud"]),
     )
 
 

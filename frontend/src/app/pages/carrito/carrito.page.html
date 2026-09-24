@@ -144,6 +144,28 @@
                 </div>
               }
 
+              <!-- Fuera del @if de cotizando a proposito: el mapa queda montado mientras se
+                   recotiza (cambiar una cantidad) y solo se redibuja la linea. -->
+              @if (cotizacion(); as cot) {
+                <figure class="envio__mapa">
+                  <app-mapa-ruta
+                    class="envio__mapa-lienzo"
+                    [origen]="cot.origen"
+                    [destino]="cot.destino"
+                    [ruta]="cot.ruta"
+                    [aproximada]="cot.ruta_proveedor === 'LINEA_RECTA'"
+                  />
+                  <figcaption class="envio__detalle">
+                    @if (cot.ruta_proveedor === 'LINEA_RECTA') {
+                      Recorrido aproximado en línea recta desde la sucursal hasta tu dirección.
+                    } @else {
+                      Ruta aproximada del delivery desde la sucursal hasta tu dirección.
+                    }
+                    El reparto lo hace un servicio externo y puede tomar otro camino.
+                  </figcaption>
+                </figure>
+              }
+
               @if (errorEnvio()) {
                 <p class="formulario__error" role="alert">{{ errorEnvio() }}</p>
               }

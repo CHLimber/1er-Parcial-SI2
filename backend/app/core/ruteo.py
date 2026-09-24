@@ -10,8 +10,11 @@ distancia Haversine (linea recta) multiplicada por un factor de sinuosidad urban
 cotizacion dice con que proveedor se calculo, y ese dato queda guardado en envio.proveedor_ruteo
 para poder auditar despues por que se cobro lo que se cobro.
 
-Solo resuelve GEOMETRIA (cuantos km y cuantos minutos hay hasta el domicilio). El precio lo
-pone Postgres en fn_cotizar_envio(), ver db/02_logica.sql.
+Solo resuelve GEOMETRIA (cuantos km y cuantos minutos hay hasta el domicilio, y por donde
+pasaria el delivery). El precio lo pone Postgres en fn_cotizar_envio(), ver db/02_logica.sql.
+
+El trazado para el mapa (trazar_ruta) va aparte de la distancia que se cobra: el reparto lo hace
+un servicio de delivery externo, asi que la linea es solo una aproximacion de por donde iria.
 """
 
 import math
@@ -29,12 +32,26 @@ VELOCIDAD_KMH = 22.0
 
 PROVEEDOR_ORS = "ORS"
 PROVEEDOR_RESPALDO = "HAVERSINE"
+PROVEEDOR_OSRM = "OSRM"
+PROVEEDOR_LINEA = "LINEA_RECTA"
+
+# Servidor publico de demostracion de OSRM (Project OSRM, datos de OpenStreetMap): no pide API
+# key, asi que el mapa muestra calles reales aunque no haya ORS_API_KEY. Es un servidor de demo
+# con politica de uso razonable -- sirve para dibujar una ruta por cotizacion, no para cobrar.
+OSRM_URL = "https://router.project-osrm.org/route/v1/driving"
 
 
 @dataclass(frozen=True)
 class Ruta:
     distancia_km: float
     duracion_min: int
+    proveedor: str
+
+
+@dataclass(frozen=True)
+class Trazado:
+    # puntos [latitud, longitud] en orden, desde la sucursal hasta el domicilio
+    puntos: list[list[float]]
     proveedor: str
 
 
@@ -108,6 +125,58 @@ async def calcular_ruta(
         duracion_min=max(int(round(segundos / 60)), 1) if km > 0 else 0,
         proveedor=PROVEEDOR_ORS,
     )
+
+
+async def trazar_ruta(
+    origen_lat: float, origen_lon: float, destino_lat: float, destino_lon: float
+) -> Trazado:
+    """Por donde iria el delivery, para dibujarlo en el mapa del carrito. Prueba ORS
+    (directions) si hay API key, despues OSRM publico y, si nada responde, una linea recta.
+    Nunca falla: el mapa es informativo y no puede trabar la compra."""
+    linea_recta = Trazado(
+        puntos=[[origen_lat, origen_lon], [destino_lat, destino_lon]], proveedor=PROVEEDOR_LINEA
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.ors_timeout) as cliente:
+            if hay_proveedor_externo():
+                try:
+                    respuesta = await cliente.post(
+                        f"{settings.ors_base_url}/v2/directions/{settings.ors_perfil}/geojson",
+                        json={
+                            "coordinates": [[origen_lon, origen_lat], [destino_lon, destino_lat]],
+                            # sin esto ORS falla si el pin cae a mas de 350 m de una calle
+                            "radiuses": [-1, -1],
+                        },
+                        headers={
+                            "Authorization": settings.ors_api_key,
+                            "Accept": "application/geo+json",
+                        },
+                    )
+                    respuesta.raise_for_status()
+                    coordenadas = respuesta.json()["features"][0]["geometry"]["coordinates"]
+                    return Trazado(puntos=_a_lat_lon(coordenadas), proveedor=PROVEEDOR_ORS)
+                except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+                    pass
+
+            respuesta = await cliente.get(
+                f"{OSRM_URL}/{origen_lon},{origen_lat};{destino_lon},{destino_lat}",
+                params={"overview": "full", "geometries": "geojson"},
+            )
+            respuesta.raise_for_status()
+            coordenadas = respuesta.json()["routes"][0]["geometry"]["coordinates"]
+            return Trazado(puntos=_a_lat_lon(coordenadas), proveedor=PROVEEDOR_OSRM)
+    except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError):
+        return linea_recta
+
+
+def _a_lat_lon(coordenadas: list) -> list[list[float]]:
+    """GeoJSON viene en [longitud, latitud]; los mapas (Leaflet, flutter_map) usan [lat, lon].
+    Se redondea a 5 decimales (~1 m) para no mandar de mas al telefono."""
+    puntos = [[round(float(c[1]), 5), round(float(c[0]), 5)] for c in coordenadas]
+    if len(puntos) < 2:
+        raise ValueError("ruta sin geometria")
+    return puntos
 
 
 async def buscar_direccion(texto: str, limite: int = 5) -> list[Lugar]:

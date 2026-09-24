@@ -34,8 +34,8 @@ import * as L from 'leaflet';
  *   - Esri World Street Map:
  *     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
  */
-const TILES_URL = 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
-const TILES_ATRIBUCION = '&copy; OpenStreetMap &copy; CARTO';
+export const TILES_URL = 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+export const TILES_ATRIBUCION = '&copy; OpenStreetMap &copy; CARTO';
 
 /**
  * Mapa de un solo punto (CU20). Lo usan la libreta de direcciones -- donde la clienta arrastra

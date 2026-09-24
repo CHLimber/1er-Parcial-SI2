@@ -355,6 +355,16 @@
   justify-self: start;
 }
 
+.envio__mapa {
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.envio__mapa-lienzo {
+  height: 15rem;
+}
+
 /* ==========================================================================
    Responsive
    --------------------------------------------------------------------------
@@ -378,6 +388,10 @@
 }
 
 @media (max-width: 30rem) {
+  .envio__mapa-lienzo {
+    height: 12rem;
+  }
+
   .resumen__linea,
   .resumen__total {
     gap: 0.5rem;

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario
+from app.core.ruteo import trazar_ruta
 from app.modules.envios.schemas import CotizacionIn, CotizacionOut, EnvioEventoOut, EnvioOut
 from app.modules.envios.servicio import SinCoordenadas, cotizar
 
@@ -60,6 +61,9 @@ async def cotizar_envio(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
         ) from error
 
+    # cotizar() ya valido que latitud/longitud no son None
+    trazado = await trazar_ruta(cotizacion.origen_lat, cotizacion.origen_lon, latitud, longitud)
+
     return CotizacionOut(
         distancia_km=cotizacion.distancia_km,
         duracion_min=cotizacion.duracion_min,
@@ -71,6 +75,10 @@ async def cotizar_envio(
         tarifa_base=cotizacion.tarifa_base,
         precio_km=cotizacion.precio_km,
         gratis_desde=cotizacion.gratis_desde,
+        origen=[cotizacion.origen_lat, cotizacion.origen_lon],
+        destino=[latitud, longitud],
+        ruta=trazado.puntos,
+        ruta_proveedor=trazado.proveedor,
     )
 
 

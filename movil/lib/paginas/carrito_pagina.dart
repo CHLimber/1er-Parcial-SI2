@@ -3,6 +3,7 @@ import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../compartido/mapa_ruta.dart';
 import '../compartido/widgets.dart';
 import '../core/carrito/carrito_service.dart';
 import '../core/config.dart';
@@ -548,6 +549,12 @@ class _CarritoPaginaState extends State<CarritoPagina> {
                               )
                             else if (_cotizacion != null)
                               _ResumenEnvio(cotizacion: _cotizacion!),
+                            // fuera del if de _cotizando: el mapa queda puesto mientras se
+                            // recotiza (cambiar una cantidad) en vez de parpadear
+                            if (_cotizacion != null) ...[
+                              const SizedBox(height: 12),
+                              MapaRuta(cotizacion: _cotizacion!),
+                            ],
                             if (_errorEnvio != null) ...[
                               const SizedBox(height: 10),
                               MensajeError(_errorEnvio!),

@@ -18,6 +18,10 @@ class CotizacionEnvio {
     required this.tarifaBase,
     required this.precioKm,
     required this.gratisDesde,
+    required this.origen,
+    required this.destino,
+    required this.ruta,
+    required this.rutaProveedor,
   });
 
   final double distanciaKm;
@@ -33,6 +37,15 @@ class CotizacionEnvio {
   final double precioKm;
   final double gratisDesde;
 
+  /// Mapa del carrito, todo en [latitud, longitud]: sucursal, domicilio y por donde iria el
+  /// delivery. Aproximado (lo reparte un servicio externo); no cambia lo que se cobra.
+  final List<double> origen;
+  final List<double> destino;
+  final List<List<double>> ruta;
+
+  /// ORS, OSRM o LINEA_RECTA (ningun servicio de rutas respondio).
+  final String rutaProveedor;
+
   factory CotizacionEnvio.desdeJson(Map<String, dynamic> j) => CotizacionEnvio(
         distanciaKm: aDouble(j['distancia_km']),
         duracionMin: aEntero(j['duracion_min']),
@@ -44,7 +57,13 @@ class CotizacionEnvio {
         tarifaBase: aDouble(j['tarifa_base']),
         precioKm: aDouble(j['precio_km']),
         gratisDesde: aDouble(j['gratis_desde']),
+        origen: _punto(j['origen']),
+        destino: _punto(j['destino']),
+        ruta: ((j['ruta'] as List?) ?? const []).map(_punto).toList(),
+        rutaProveedor: j['ruta_proveedor'] as String? ?? 'LINEA_RECTA',
       );
+
+  static List<double> _punto(dynamic p) => (p as List).map(aDouble).toList();
 }
 
 class EventoEnvio {

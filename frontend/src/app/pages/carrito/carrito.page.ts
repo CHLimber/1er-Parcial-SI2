@@ -23,11 +23,12 @@ import { CheckoutIn, MetodoPagoCheckout, ModoEntrega } from '../../core/ventas/v
 import { PagosService, VentasService } from '../../core/ventas/ventas.service';
 import { SucursalOut } from '../../core/sucursales/sucursales.models';
 import { SucursalesService } from '../../core/sucursales/sucursales.service';
+import { MapaRuta } from '../../shared/mapa/mapa-ruta';
 
 @Component({
   selector: 'app-carrito-page',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, MapaRuta],
   templateUrl: './carrito.page.html',
   styleUrls: ['./carrito.page.css', '../../shared/responsive.css'],
 })

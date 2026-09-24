@@ -26,6 +26,13 @@ export interface CotizacionOut {
   tarifa_base: number;
   precio_km: number;
   gratis_desde: number;
+  /** Mapa del carrito, todo en [latitud, longitud]: sucursal, domicilio y por donde iria el
+   * delivery. Aproximado (lo reparte un servicio externo); no cambia lo que se cobra. */
+  origen: [number, number];
+  destino: [number, number];
+  ruta: [number, number][];
+  /** ORS, OSRM o LINEA_RECTA (ningun servicio de rutas respondio). */
+  ruta_proveedor: string;
 }
 
 export interface EnvioEventoOut {
