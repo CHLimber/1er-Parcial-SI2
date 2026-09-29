@@ -119,6 +119,9 @@
             @for (linea of metodosArqueo(a); track linea.metodo) {
               <p>{{ linea.metodo }} <strong>{{ formatearPrecio(linea.total) }}</strong></p>
             }
+            @if (a.devoluciones_efectivo > 0) {
+              <p>Devoluciones en efectivo <strong>−{{ formatearPrecio(a.devoluciones_efectivo) }}</strong></p>
+            }
             <p>Cantidad de ventas <strong>{{ a.cantidad_ventas }}</strong></p>
             <p>Total ventas <strong>{{ formatearPrecio(a.total_ventas) }}</strong></p>
             <p class="resumen__total">
@@ -368,6 +371,57 @@
                     </button>
                   </div>
                 }
+              </li>
+            }
+          </ul>
+        }
+      </section>
+
+      <!-- Pedidos online ya pagados con retiro en tienda: se entregan cuando la clienta los pasa
+           a buscar (PAGADA -> ENTREGADA). Los de domicilio los lleva el delivery externo. -->
+      <section class="verificar">
+        <div class="verificar__cabecera">
+          <h2 class="verificar__titulo">Pedidos por retirar</h2>
+          <button
+            type="button"
+            class="verificar__secundario"
+            [disabled]="cargandoRetiros()"
+            (click)="cargarPedidosPorRetirar()"
+          >
+            {{ cargandoRetiros() ? 'Actualizando…' : 'Actualizar' }}
+          </button>
+        </div>
+
+        @if (mensajeRetiros(); as m) {
+          <p [class]="m.error ? 'formulario__error' : 'verificar__ok'" role="status">{{ m.texto }}</p>
+        }
+
+        @if (pedidosPorRetirar().length === 0) {
+          <p class="estado">No hay pedidos pagados esperando que los retiren.</p>
+        } @else {
+          <ul class="verificar__lista">
+            @for (p of pedidosPorRetirar(); track p.venta_id) {
+              <li class="verificar__pedido">
+                <div class="verificar__fila">
+                  <strong>{{ p.numero }}</strong>
+                  <span class="verificar__total">{{ formatearPrecio(p.total) }}</span>
+                </div>
+                <p class="verificar__linea">{{ p.cliente }} · {{ p.cliente_email }} · pagado {{ p.fecha | date: 'short' }}</p>
+                <ul class="verificar__items">
+                  @for (item of p.items; track item.sku) {
+                    <li>{{ item.cantidad }} × {{ item.producto }} ({{ item.talla }} · {{ item.color }}) · {{ item.sku }}</li>
+                  }
+                </ul>
+                <div class="verificar__acciones">
+                  <button
+                    type="button"
+                    class="boton"
+                    [disabled]="entregandoId() !== null"
+                    (click)="entregarPedido(p)"
+                  >
+                    {{ entregandoId() === p.venta_id ? 'Entregando…' : 'Entregar pedido' }}
+                  </button>
+                </div>
               </li>
             }
           </ul>

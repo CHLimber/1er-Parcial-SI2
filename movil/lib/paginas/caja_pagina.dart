@@ -25,6 +25,8 @@ class _LineaTicket {
 /// 2.19.1.b/c: abajo de todo, "Pagos online por verificar": pedidos web/app en EFECTIVO
 /// (se cobran en caja o al rendir el delivery, y entran al arqueo de la sesion abierta) y en QR
 /// (la clienta informa que pago y el cajero verifica el deposito). Nada de eso se aprueba solo.
+/// Debajo, "Pedidos por retirar": pedidos online ya pagados con retiro en tienda, que se
+/// entregan cuando la clienta los pasa a buscar (PAGADA -> ENTREGADA).
 class CajaPagina extends StatefulWidget {
   const CajaPagina({super.key});
 
@@ -55,6 +57,10 @@ class _CajaPaginaState extends State<CajaPagina> {
   bool _cargandoPagos = false;
   String? _pagoEnProceso;
 
+  List<PedidoPorRetirarOut> _pedidosPorRetirar = [];
+  bool _cargandoRetiros = false;
+  String? _entregando;
+
   @override
   void initState() {
     super.initState();
@@ -83,6 +89,55 @@ class _CajaPaginaState extends State<CajaPagina> {
       mostrarAviso(context, interpretarError(error), esError: true);
     } finally {
       if (mounted) setState(() => _cargandoPagos = false);
+    }
+  }
+
+  Future<void> _cargarPedidosPorRetirar() async {
+    setState(() => _cargandoRetiros = true);
+    try {
+      final pedidos = await cajaService.listarPedidosPorRetirar();
+      if (!mounted) return;
+      setState(() => _pedidosPorRetirar = pedidos);
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _cargandoRetiros = false);
+    }
+  }
+
+  Future<void> _entregarPedido(PedidoPorRetirarOut pedido) async {
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        backgroundColor: Paleta.blanco,
+        title: Text('Entregar ${pedido.numero}'),
+        content: Text('Confirmas que ${pedido.cliente} retiro su pedido?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(contexto, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(contexto, true),
+            child: const Text('Entregar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    setState(() => _entregando = pedido.ventaId);
+    try {
+      final numero = await cajaService.entregarPedido(pedido.ventaId);
+      if (!mounted) return;
+      mostrarAviso(context, 'Pedido $numero entregado a la clienta');
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _entregando = null);
+      await _cargarPedidosPorRetirar();
     }
   }
 
@@ -131,6 +186,8 @@ class _CajaPaginaState extends State<CajaPagina> {
     } finally {
       if (mounted) setState(() => _pagoEnProceso = null);
       await _cargarPagosPendientes();
+      // un pedido con retiro en tienda recien aprobado pasa a esperar que lo retiren
+      await _cargarPedidosPorRetirar();
     }
   }
 
@@ -181,8 +238,9 @@ class _CajaPaginaState extends State<CajaPagina> {
   }
 
   Future<void> _cargar() async {
-    // la lista de pagos online no bloquea la pantalla de caja: se carga aparte
+    // las listas de pedidos online no bloquean la pantalla de caja: se cargan aparte
     _cargarPagosPendientes();
+    _cargarPedidosPorRetirar();
     setState(() {
       _cargando = true;
       _error = null;
@@ -321,6 +379,8 @@ class _CajaPaginaState extends State<CajaPagina> {
                           ),
                         ),
                         _fila('Total ventas', arqueo.totalVentas),
+                        if (arqueo.devolucionesEfectivo > 0)
+                          _fila('Devoluciones en efectivo', -arqueo.devolucionesEfectivo),
                         const Divider(height: 18),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -605,6 +665,7 @@ class _CajaPaginaState extends State<CajaPagina> {
             ),
           ],
           ..._seccionPagosPendientes(),
+          ..._seccionPedidosPorRetirar(),
         ],
       );
 
@@ -633,6 +694,80 @@ class _CajaPaginaState extends State<CajaPagina> {
         else
           ..._pagosPendientes.map(_tarjetaPagoPendiente),
       ];
+
+  /// Pedidos online pagados con retiro en tienda: se entregan cuando la clienta los busca.
+  List<Widget> _seccionPedidosPorRetirar() => [
+        const SizedBox(height: 28),
+        Row(
+          children: [
+            const Expanded(child: EtiquetaDato('Pedidos por retirar')),
+            if (_cargandoRetiros)
+              const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: _cargarPedidosPorRetirar,
+                icon: const Icon(Icons.refresh, size: 20),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_pedidosPorRetirar.isEmpty)
+          const Text(
+            'No hay pedidos pagados esperando que los retiren.',
+            style: TextStyle(fontSize: 13, color: Paleta.inkSuave),
+          )
+        else
+          ..._pedidosPorRetirar.map(_tarjetaPedidoPorRetirar),
+      ];
+
+  Widget _tarjetaPedidoPorRetirar(PedidoPorRetirarOut pedido) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: TarjetaPanel(
+          hijo: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(pedido.numero, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                  Text(
+                    formatearPrecio(pedido.total),
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: Paleta.flameOscuro),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${pedido.cliente} · ${pedido.clienteEmail}',
+                style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave),
+              ),
+              const SizedBox(height: 6),
+              ...pedido.items.map(
+                (item) => Text(
+                  '${item.cantidad} x ${item.producto} (${item.talla} · ${item.color})',
+                  style: const TextStyle(fontSize: 12.5),
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _entregando != null ? null : () => _entregarPedido(pedido),
+                  child: _entregando == pedido.ventaId
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Paleta.blanco),
+                        )
+                      : const Text('ENTREGAR PEDIDO'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 
   Widget _tarjetaPagoPendiente(PagoPorVerificarOut pago) {
     final ocupado = _pagoEnProceso != null;
@@ -877,6 +1012,7 @@ class _CajaPaginaState extends State<CajaPagina> {
           ),
         ],
         ..._seccionPagosPendientes(),
+        ..._seccionPedidosPorRetirar(),
       ],
     );
   }

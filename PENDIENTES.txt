@@ -1906,13 +1906,13 @@
 
       QUEDA ABIERTO:
          - Nada se probo en un navegador ni en el telefono (solo API + compilacion).
-         - El reembolso del QR (simulado) y de una devolucion lo hace la sucursal fuera del
-           sistema; solo Stripe devuelve la plata por API (y solo en la anulacion automatica).
-         - estado_item_res PROBADO no lo setea nadie (resolver va de PREPARADO a COMPRADO/
-           DESCARTADO).
-         - Una venta de retiro en tienda queda PAGADA y nunca pasa a ENTREGADA.
-         - Devoluciones: sin plazo maximo ni cambios de prenda; los reportes de ventas siguen
-           contando la venta devuelta por su monto completo.
+         - [RESUELTO 4.11] El reembolso de una devolucion: Stripe ahora por la API, efectivo
+           desde la caja; QR (simulado)/tarjeta/transferencia siguen fuera del sistema.
+         - [RESUELTO 4.11] estado_item_res PROBADO: se saco del codigo y quedo documentado
+           como valor sin uso del ENUM.
+         - [RESUELTO 4.11] Una venta de retiro en tienda queda PAGADA y nunca pasa a ENTREGADA.
+         - [RESUELTO 4.11] Devoluciones: sin plazo maximo ni cambios de prenda; los reportes
+           de ventas contaban la venta devuelta por su monto completo.
          - El mutex de app/core/mutex.py sigue sin probarse con varios workers (la garantia es
            el FOR UPDATE, que si se probo en vivo).
 
@@ -2173,3 +2173,92 @@
       [HECHO 2026-09-24, ver 2.19 "VERIFICADO EN VIVO"] 2 clientes reservando la
       ultima unidad a la vez: una 201, otra 409, disponible 0. Queda solo el caso
       con varios workers/replicas (2.19 "QUEDA ABIERTO").
+
+[4.10] Revision de bugs 2026-09-24 (lectura de pagos/ventas/caja/carrito/reservas/jobs).
+      [RESUELTO] Doble venta / doble liberacion al atender una reserva con pago online en
+      curso: resolver_reserva y preparar_reserva no llamaban a _exigir_sin_pago_en_curso
+      (cancelar/rechazar/no-presentado si). Ahora 409. Ademas confirmar_aprobado
+      (pagos/servicio.py) bloquea la reserva y anula la venta si ya no respalda las prendas
+      (_reserva_respalda_items), en vez de dejar que tg_venta_descuenta_stock libere de nuevo
+      lo que reservaron otras clientas. Tests: tests/test_reserva_con_pago_en_curso.py.
+      [RESUELTO] JWT_SECRET: si queda el de ejemplo (o vacio) el lifespan corta el arranque en
+      Railway (detecta RAILWAY_ENVIRONMENT); en local solo avisa por log.
+      [RESUELTO] PaymentIntents del movil abandonados quedaban PENDIENTE para siempre (no
+      vencen solos, a diferencia de la Checkout Session web): el job los cancela en Stripe
+      pasado pago_pendiente_horas_vigencia y anula la venta. Tests: tests/test_menores.py.
+      FALTA probar en vivo los 3 contra Docker/Railway.
+      ABIERTOS (detectados, sin arreglar todavia):
+        a) [RESUELTO] Abandonar un intento Stripe en el checkout no expiraba la Session ni
+           cancelaba el PaymentIntent: si se pagaba igual, el webhook lo ignoraba sin
+           reembolsar. Ahora el checkout lo cierra en Stripe (cancelar_intento_stripe) y, si
+           igual llega un cobro para un pago RECHAZADO, el webhook lo reembolsa
+           (reembolsar_pago_tardio, pago -> REEMBOLSADO); si Stripe no acepta el reembolso
+           responde 502 para que reintente.
+        b) [RESUELTO] payment_intent.succeeded de la WEB (pi_ de la Checkout Session) no
+           matcheaba ningun pago -> 404 y Stripe reintentaba. Ahora 200 procesado=false.
+           Tests de a) y b): tests/test_webhook_stripe.py. FALTA probar en vivo el canal WEB.
+        c) [RESUELTO] _aplicar_cupon y el abandono del pendiente corrian fuera de la
+           transaccion: un checkout que fallaba despues consumia un uso del cupon y anulaba el
+           pedido anterior. Ahora abandono + cupon + cotizacion + venta + pago son una sola
+           transaccion (orden de locks pago -> venta -> carrito -> promocion, igual que
+           cajero/webhook) y el intento Stripe viejo se cierra recien despues del commit. El
+           cupon se lee FOR UPDATE (uso_maximo ya no se pasa con 2 checkouts simultaneos).
+           Contra: la cotizacion de ORS (hasta ors_timeout, 8 s) corre con el cupon bloqueado.
+        d) [RESUELTO] Cupon que cubre todo el pedido -> total 0 -> 500 por el CHECK de
+           pago.monto. Ahora 422 con mensaje; con envio a domicilio se cobra solo el flete.
+           Tests de c) y d): tests/test_checkout.py.
+        e) [RESUELTO] Efectivo cobrado en resolver_reserva no se ataba a sesion_caja y no
+           entraba al arqueo. Ahora la venta lleva la sesion abierta de quien atiende; en
+           EFECTIVO es obligatoria (409 si no hay), con TARJETA/QR es opcional. Consecuencia:
+           un VENDEDOR (sin caja.crear) solo puede cobrar la reserva con tarjeta o QR.
+        f) [RESUELTO] Ajuste de stock: ahora se puede contar 0 (schema ge=0, fn_mover_inventario
+           y el CHECK del kardex ck_movimiento_cantidad aceptan 0 solo para AJUSTE; web y movil
+           tambien) y un recuento menor a lo reservado da 409 con la cantidad reservada en vez
+           de 500. PROBADO contra un Postgres 16 descartable (init completo, AJUSTE a 0 ok,
+           SALIDA 0 rechazada, ck_inventario_saldos) y la migracion sobre una base con el
+           esquema viejo (idempotente). APLICADA EN RAILWAY 2026-09-24 (verificado: CHECK
+           ck_movimiento_cantidad + funcion nueva; AJUSTE a 0 probado dentro de un ROLLBACK).
+           FALTA aplicarla en la base local de Docker: db/reparaciones/ajuste_stock_a_cero.sql.
+           Tests de e) y f): tests/test_arqueo_y_ajuste.py.
+
+[4.11] [HECHO 2026-09-25] Huecos funcionales de 2.19 "QUEDA ABIERTO" (decisiones del usuario:
+      las 4 opciones recomendadas).
+      - Reportes netos de devoluciones: indicadores, ventas-diarias, ventas-por-sucursal,
+        top-productos y top-clientes restan lo reintegrado en devoluciones APROBADAS; una venta
+        devuelta entera (pago REEMBOLSADO) no cuenta. Mismo criterio en v_ventas_diarias y en
+        "vendidas" de v_existencias_consolidadas. La IA de reportes reusa esas funciones.
+      - Plazo de devolucion: configuracion.devolucion_plazo_dias = 30 (editable sin
+        redesplegar). GET /devoluciones/venta devuelve plazo_vence_en/fuera_de_plazo; POST
+        /devoluciones fuera de plazo -> 409.
+      - Cambio de prenda = devolucion aprobada + venta nueva cobrada en caja; POST
+        /devoluciones/{id}/cambio {venta_numero} la vincula (devolucion.venta_cambio_id).
+      - Reintegro al aprobar, segun como se pago la venta (devolucion.reintegro_metodo):
+        STRIPE -> reembolso parcial real (idempotency key por devolucion; si Stripe falla la
+        aprobacion se deshace con 502). EFECTIVO -> exige sesion de caja abierta de quien
+        aprueba (409 si no) y fn_total_efectivo_sesion la resta del arqueo/cierre
+        (ArqueoOut.devoluciones_efectivo). TARJETA/QR/TRANSFERENCIA -> fuera del sistema,
+        queda registrado.
+      - ENTREGADA: ventas POS y reservas atendidas nacen ENTREGADA; los pedidos online con
+        retiro quedan PAGADA hasta GET /caja/pedidos-por-retirar + POST
+        /caja/pedidos/{venta_id}/entregar (notifica a la clienta). La pagina de compra web ya
+        no cae en @default con ENTREGADA.
+      - PROBADO fuera del codigo. De paso: mis-reservas (web) no ofrecia "comprar" una
+        reserva PREPARADA (miraba PROBADO en vez de PREPARADO) -- corregido.
+      Web: caja (pedidos por retirar, devoluciones en el arqueo), panel-devoluciones
+      (plazo, reintegro, vincular cambio), compra. Movil: caja_pagina y
+      panel_devoluciones_pagina, mismas funciones. [2026-09-26] Movil tambien: compra_pagina
+      distingue retiro pendiente / ya retirado (ENTREGADA) y mis_reservas ofrece "comprar" solo
+      si hay items RESERVADO/PREPARADO (ReservaOut.esComprable, espejo de puedeComprar web).
+      PROBADO: 116 tests backend (tests/test_devoluciones_reintegro.py nuevos), ng build,
+      flutter analyze/test. DE PUNTA A PUNTA contra un Postgres 16 descartable + backend real
+      (30 chequeos: POS ENTREGADA, devolucion en efectivo con arqueo y cierre en diferencia 0,
+      reportes/vistas netas, cambio, plazo vencido, pedido online PAGADA -> entregar, ajuste a
+      0), y otra vez sobre una base creada con el esquema de HEAD + las migraciones (el camino
+      de Railway). No probado: reembolso parcial contra Stripe real (solo unit tests).
+      FALTA APLICAR en Railway y en el Docker local, ANTES de desplegar el backend nuevo (sin
+      esto fallan las devoluciones y el arqueo):
+        db/reparaciones/devoluciones_plazo_cambio_reintegro.sql
+      [RAILWAY HECHO 2026-09-29] Aplicada y verificada (columnas reintegro_*/sesion_caja_id/
+      venta_cambio_id, devolucion_plazo_dias=30, fn_total_efectivo_sesion y v_ventas_diarias
+      nuevas; ck_movimiento_cantidad ya estaba). FALTA el Docker local: correr esta y
+      ajuste_stock_a_cero.sql, o `docker compose down -v` para recrear la base.

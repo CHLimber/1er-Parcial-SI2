@@ -19,6 +19,11 @@ ADMIN y ENCARGADO en db/03_datos_iniciales.sql):
   variante x sucursal y paginado, sobre la vista `v_existencias_consolidadas` (db/02_logica.sql):
   disponible / reservada / vendidas / agotada / proxima a ingresar en una sola fila.
 
+Montos y unidades de venta son NETOS de devoluciones: se resta lo reintegrado en devoluciones
+APROBADAS (`_DEVUELTO_VENTA`, `_DEVUELTO_LINEA`) y una venta devuelta entera (su pago quedo
+REEMBOLSADO) no cuenta como venta (`_NO_DEVUELTA_ENTERA`). Mismo criterio en las vistas
+v_ventas_diarias y v_existencias_consolidadas (db/02_logica.sql).
+
 Un ENCARGADO solo ve su propia sucursal (igual que recepciones.py); un ADMIN (el que puede editar
 sucursales) ve la cadena completa y puede filtrar por sucursal. No hay motor de consultas
 generico: cada endpoint es una consulta SQL fija, en linea con el resto del backend (sin capa de
@@ -70,6 +75,20 @@ router = APIRouter(prefix="/reportes", tags=["reportes"])
 puede_ver = requiere_permiso("reportes.leer")
 
 VENTA_ESTADOS_CONTADOS = ("PAGADA", "ENTREGADA")
+
+# Fragmentos SQL para netear devoluciones (alias `v` = venta, `vd` = venta_detalle).
+_DEVUELTO_VENTA = (
+    "(SELECT COALESCE(SUM(dv.monto_devuelto), 0) FROM devolucion dv "
+    "WHERE dv.venta_id = v.id AND dv.estado = 'APROBADA')"
+)
+_DEVUELTO_LINEA = (
+    "(SELECT COALESCE(SUM(ddl.cantidad), 0) FROM devolucion_detalle ddl "
+    "JOIN devolucion dvl ON dvl.id = ddl.devolucion_id "
+    "WHERE ddl.venta_detalle_id = vd.id AND dvl.estado = 'APROBADA')"
+)
+_NO_DEVUELTA_ENTERA = (
+    "NOT EXISTS (SELECT 1 FROM pago pre WHERE pre.venta_id = v.id AND pre.estado = 'REEMBOLSADO')"
+)
 CANAL_PATTERN = "^(WEB|MOVIL|POS)$"
 ENTREGA_PATTERN = "^(RETIRO_SUCURSAL|DOMICILIO)$"
 SITUACIONES_EXISTENCIA = ("DISPONIBLE", "RESERVADA", "PROXIMA_A_INGRESAR", "AGOTADA")
@@ -138,11 +157,12 @@ async def _consultar_indicadores(
     entrega: str | None,
 ) -> dict:
     fila = await conn.fetchrow(
-        """
+        f"""
         WITH filtro_venta AS (
-            SELECT total, costo_envio FROM venta v
+            SELECT v.total - {_DEVUELTO_VENTA} AS total, v.costo_envio FROM venta v
             WHERE v.fecha::date BETWEEN $1 AND $2
               AND v.estado = ANY($3::estado_venta[])
+              AND {_NO_DEVUELTA_ENTERA}
               AND ($4::uuid IS NULL OR v.sucursal_id = $4)
               AND ($5::uuid IS NULL OR EXISTS (
                   SELECT 1 FROM venta_detalle vd
@@ -214,12 +234,14 @@ async def _consultar_ventas_diarias(
     entrega: str | None,
 ) -> list[dict]:
     filas = await conn.fetch(
-        """
+        f"""
         SELECT v.fecha::date AS dia, v.sucursal_id, s.nombre AS sucursal, v.canal::text AS canal,
-               COUNT(*) AS cantidad_ventas, SUM(v.total) AS monto_total, AVG(v.total) AS ticket_promedio
+               COUNT(*) AS cantidad_ventas, SUM(v.total - {_DEVUELTO_VENTA}) AS monto_total,
+               AVG(v.total - {_DEVUELTO_VENTA}) AS ticket_promedio
         FROM venta v
         JOIN sucursal s ON s.id = v.sucursal_id
         WHERE v.estado = ANY($3::estado_venta[])
+          AND {_NO_DEVUELTA_ENTERA}
           AND v.fecha::date BETWEEN $1 AND $2
           AND ($4::uuid IS NULL OR v.sucursal_id = $4)
           AND ($5::text IS NULL OR v.canal::text = $5)
@@ -257,13 +279,15 @@ async def _consultar_ventas_por_sucursal(
     entrega: str | None,
 ) -> list[dict]:
     filas = await conn.fetch(
-        """
+        f"""
         SELECT v.sucursal_id, s.nombre AS sucursal,
-               COUNT(*) AS cantidad_ventas, SUM(v.total) AS monto_total, AVG(v.total) AS ticket_promedio,
+               COUNT(*) AS cantidad_ventas, SUM(v.total - {_DEVUELTO_VENTA}) AS monto_total,
+               AVG(v.total - {_DEVUELTO_VENTA}) AS ticket_promedio,
                COALESCE(SUM(v.costo_envio), 0) AS costo_envio_total
         FROM venta v
         JOIN sucursal s ON s.id = v.sucursal_id
         WHERE v.estado = ANY($3::estado_venta[])
+          AND {_NO_DEVUELTA_ENTERA}
           AND v.fecha::date BETWEEN $1 AND $2
           AND ($4::uuid IS NULL OR v.sucursal_id = $4)
           AND ($5::text IS NULL OR v.canal::text = $5)
@@ -302,9 +326,10 @@ async def _consultar_top_productos(
     limite: int,
 ) -> list[dict]:
     filas = await conn.fetch(
-        """
+        f"""
         SELECT p.id AS producto_id, p.nombre AS producto,
-               SUM(vd.cantidad) AS unidades_vendidas, SUM(vd.subtotal) AS monto_vendido
+               SUM(vd.cantidad - {_DEVUELTO_LINEA}) AS unidades_vendidas,
+               SUM(vd.subtotal * (vd.cantidad - {_DEVUELTO_LINEA}) / vd.cantidad) AS monto_vendido
         FROM venta_detalle vd
         JOIN venta v              ON v.id = vd.venta_id
         JOIN producto_variante pv ON pv.id = vd.variante_id
@@ -317,6 +342,7 @@ async def _consultar_top_productos(
           AND ($7::uuid IS NULL OR v.registrada_por_id = $7)
           AND ($8::text IS NULL OR v.entrega::text = $8)
         GROUP BY p.id, p.nombre
+        HAVING SUM(vd.cantidad - {_DEVUELTO_LINEA}) > 0
         ORDER BY unidades_vendidas DESC, monto_vendido DESC
         LIMIT $9
         """,
@@ -410,12 +436,13 @@ async def _consultar_productos_sin_movimiento(
 
 async def _consultar_top_clientes(conn: asyncpg.Connection, sucursal: UUID | None, limite: int) -> list[dict]:
     filas = await conn.fetch(
-        """
+        f"""
         SELECT v.usuario_id, (u.nombre || ' ' || u.apellido) AS cliente, u.email,
-               COUNT(*) AS cantidad_compras, SUM(v.total) AS monto_total
+               COUNT(*) AS cantidad_compras, SUM(v.total - {_DEVUELTO_VENTA}) AS monto_total
         FROM venta v
         JOIN usuario u ON u.id = v.usuario_id
         WHERE v.estado = ANY($3::estado_venta[])
+          AND {_NO_DEVUELTA_ENTERA}
           AND v.usuario_id IS NOT NULL
           AND ($1::uuid IS NULL OR v.sucursal_id = $1)
         GROUP BY v.usuario_id, u.nombre, u.apellido, u.email

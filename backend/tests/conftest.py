@@ -10,6 +10,9 @@ puestas antes de cualquier "import app...." de los tests.
 
 import os
 
+import pytest
+import stripe
+
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5433/test")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-prod")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
@@ -25,3 +28,18 @@ os.environ.setdefault("ORS_API_KEY", "")
 os.environ.setdefault("MEDIA_DIR", "media")
 os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8081")
 os.environ.setdefault("EXPIRAR_RESERVAS_INTERVALO_SEGUNDOS", "120")
+
+
+@pytest.fixture
+def stripe_falso(monkeypatch):
+    """Registra las llamadas a Stripe en vez de hacerlas."""
+    llamadas: dict[str, list] = {"refund": [], "expire": [], "cancel": []}
+    monkeypatch.setattr(
+        stripe.checkout.Session, "retrieve", lambda cs: {"payment_intent": "pi_de_" + cs}
+    )
+    monkeypatch.setattr(
+        stripe.Refund, "create", lambda payment_intent: llamadas["refund"].append(payment_intent)
+    )
+    monkeypatch.setattr(stripe.checkout.Session, "expire", lambda cs: llamadas["expire"].append(cs))
+    monkeypatch.setattr(stripe.PaymentIntent, "cancel", lambda pi: llamadas["cancel"].append(pi))
+    return llamadas

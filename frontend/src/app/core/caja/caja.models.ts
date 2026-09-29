@@ -36,6 +36,8 @@ export interface ArqueoOut {
   cantidad_ventas: number;
   total_ventas: number;
   por_metodo: Record<string, number>;
+  /** Efectivo que salió del cajón por devoluciones aprobadas en esta sesión (ya restado en monto_sistema). */
+  devoluciones_efectivo: number;
 }
 
 export interface CerrarSesionIn {
@@ -81,6 +83,24 @@ export interface PagoPorVerificarOut {
   /** La clienta cambió su carrito después del checkout: no se puede aprobar, solo rechazar. */
   carrito_modificado: boolean;
   items: ItemPagoPendienteOut[];
+}
+
+/** Pedido online ya pagado con retiro en tienda que la clienta todavía no pasó a buscar. */
+export interface PedidoPorRetirarOut {
+  venta_id: string;
+  numero: string;
+  fecha: string;
+  cliente: string;
+  cliente_email: string;
+  total: number;
+  items: ItemPagoPendienteOut[];
+}
+
+export interface EntregaOut {
+  venta_id: string;
+  numero: string;
+  venta_estado: string;
+  mensaje: string;
 }
 
 export interface RechazarPagoIn {

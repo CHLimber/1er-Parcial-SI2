@@ -51,17 +51,27 @@ LEFT JOIN inventario i ON i.variante_id = pv.id
 GROUP BY pv.id, pv.sku, p.nombre;
  
 -- Ventas por dia, sucursal y canal: base de los dashboards (RF24)
+-- Neto de devoluciones: el monto resta lo reintegrado en devoluciones APROBADAS, y una venta
+-- devuelta entera (su pago quedo REEMBOLSADO) no cuenta como venta. Mismo criterio que los
+-- reportes de CU15 (reportes/router.py).
 CREATE OR REPLACE VIEW v_ventas_diarias AS
+WITH neta AS (
+    SELECT v.*,
+           v.total - COALESCE((SELECT SUM(d.monto_devuelto) FROM devolucion d
+                                WHERE d.venta_id = v.id AND d.estado = 'APROBADA'), 0) AS total_neto
+    FROM venta v
+    WHERE v.estado IN ('PAGADA','ENTREGADA')
+      AND NOT EXISTS (SELECT 1 FROM pago p WHERE p.venta_id = v.id AND p.estado = 'REEMBOLSADO')
+)
 SELECT
-    v.fecha::date  AS dia,
-    s.nombre       AS sucursal,
+    v.fecha::date      AS dia,
+    s.nombre           AS sucursal,
     v.canal,
-    COUNT(*)       AS cantidad_ventas,
-    SUM(v.total)   AS monto_total,
-    AVG(v.total)   AS ticket_promedio
-FROM venta v
+    COUNT(*)           AS cantidad_ventas,
+    SUM(v.total_neto)  AS monto_total,
+    AVG(v.total_neto)  AS ticket_promedio
+FROM neta v
 JOIN sucursal s ON s.id = v.sucursal_id
-WHERE v.estado IN ('PAGADA','ENTREGADA')
 GROUP BY 1, 2, 3;
  
  
@@ -88,7 +98,8 @@ DECLARE
     v_saldo_nuevo  INT;
     v_mov_id       BIGINT;
 BEGIN
-    IF p_cantidad <= 0 THEN
+    -- AJUSTE es un recuento absoluto y puede dejar la prenda en 0; el resto son deltas
+    IF p_cantidad < 0 OR (p_cantidad = 0 AND p_tipo <> 'AJUSTE') THEN
         RAISE EXCEPTION 'La cantidad del movimiento debe ser positiva (recibido: %)', p_cantidad;
     END IF;
  
@@ -190,19 +201,28 @@ COMMENT ON FUNCTION fn_mover_inventario IS
 
 -- Cuanto efectivo deberia haber en el cajon por las ventas de una sesion (sesion_caja.
 -- monto_inicial + esto = monto_sistema). Solo EFECTIVO: TARJETA/QR/TRANSFERENCIA/PASARELA no
--- tocan el cajon fisico. STABLE (no escribe nada) para que se pueda llamar tanto desde una
--- consulta de solo lectura (vista previa del arqueo) como adentro del UPDATE que cierra la
--- sesion, sin abrir una ventana entre "leer" el total y "escribirlo".
+-- tocan el cajon fisico. Resta el efectivo que salio del cajon por devoluciones aprobadas en
+-- esa sesion (devolucion.sesion_caja_id). Un pago en efectivo que una devolucion completa dejo
+-- REEMBOLSADO se sigue sumando: la plata entro al cajon, y lo que salio lo resta la devolucion.
+-- STABLE (no escribe nada) para que se pueda llamar tanto desde una consulta de solo lectura
+-- (vista previa del arqueo) como adentro del UPDATE que cierra la sesion, sin abrir una
+-- ventana entre "leer" el total y "escribirlo".
 CREATE OR REPLACE FUNCTION fn_total_efectivo_sesion(p_sesion_id UUID)
 RETURNS NUMERIC(12,2)
 LANGUAGE sql STABLE
 AS $$
-    SELECT COALESCE(SUM(p.monto), 0)
-    FROM pago p
-    JOIN venta v ON v.id = p.venta_id
-    WHERE v.sesion_caja_id = p_sesion_id
-      AND p.estado = 'APROBADO'
-      AND p.metodo = 'EFECTIVO';
+    SELECT
+        COALESCE((SELECT SUM(p.monto)
+                    FROM pago p
+                    JOIN venta v ON v.id = p.venta_id
+                   WHERE v.sesion_caja_id = p_sesion_id
+                     AND p.estado IN ('APROBADO', 'REEMBOLSADO')
+                     AND p.metodo = 'EFECTIVO'), 0)
+      - COALESCE((SELECT SUM(d.monto_devuelto)
+                    FROM devolucion d
+                   WHERE d.sesion_caja_id = p_sesion_id
+                     AND d.estado = 'APROBADA'
+                     AND d.reintegro_metodo = 'EFECTIVO'), 0);
 $$;
 
 COMMENT ON FUNCTION fn_total_efectivo_sesion IS
@@ -615,9 +635,15 @@ CREATE TRIGGER tg_envio_historial
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE VIEW v_existencias_consolidadas AS
 WITH vendidas AS (
-    -- Unidades vendidas historicas. venta_detalle se inserta recien al aprobar el pago, y se
-    -- cuentan los mismos estados que los reportes de CU15 (PAGADA/ENTREGADA).
-    SELECT v.sucursal_id, vd.variante_id, SUM(vd.cantidad)::int AS vendidas
+    -- Unidades vendidas historicas, netas de devoluciones APROBADAS. venta_detalle se inserta
+    -- recien al aprobar el pago, y se cuentan los mismos estados que los reportes de CU15
+    -- (PAGADA/ENTREGADA).
+    SELECT v.sucursal_id, vd.variante_id,
+           SUM(vd.cantidad - COALESCE((SELECT SUM(dd.cantidad)
+                                         FROM devolucion_detalle dd
+                                         JOIN devolucion d ON d.id = dd.devolucion_id
+                                        WHERE dd.venta_detalle_id = vd.id
+                                          AND d.estado = 'APROBADA'), 0))::int AS vendidas
     FROM venta_detalle vd
     JOIN venta v ON v.id = vd.venta_id
     WHERE v.estado IN ('PAGADA', 'ENTREGADA')

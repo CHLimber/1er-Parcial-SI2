@@ -48,7 +48,8 @@ export class MisReservasPage implements OnInit {
   protected puedeComprar(reserva: ReservaOut): boolean {
     return (
       ESTADOS_CONVERTIBLES.includes(reserva.estado) &&
-      reserva.items.some((item) => item.estado_item === 'RESERVADO' || item.estado_item === 'PROBADO')
+      // mismos estados de item que el backend acepta para armar el carrito (carrito/router.py)
+      reserva.items.some((item) => item.estado_item === 'RESERVADO' || item.estado_item === 'PREPARADO')
     );
   }
 

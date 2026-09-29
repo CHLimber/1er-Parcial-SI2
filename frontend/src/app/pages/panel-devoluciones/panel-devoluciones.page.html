@@ -108,6 +108,19 @@
               @if (Number(v.costo_envio) > 0) { · envío {{ precio(v.costo_envio) }} (no se reintegra) }
               @if (Number(v.total_devuelto) > 0) { · ya devuelto {{ precio(v.total_devuelto) }} }
             </p>
+            <p class="estado">
+              Reintegro: {{ etiquetaReintegro(v.reintegro_metodo) }}
+              @if (v.reintegro_metodo === 'EFECTIVO') {
+                <span class="secundario">(para aprobarla hace falta una sesión de caja abierta)</span>
+              }
+            </p>
+            @if (v.fuera_de_plazo) {
+              <p class="error" role="alert">
+                Venció el plazo de devolución el {{ fecha(v.plazo_vence_en) }}: ya no se puede registrar.
+              </p>
+            } @else {
+              <p class="estado secundario">Se puede devolver hasta el {{ fecha(v.plazo_vence_en) }}.</p>
+            }
 
             <div class="tabla-envoltorio">
               <table class="tabla">
@@ -170,7 +183,12 @@
             </p>
 
             <div class="acciones">
-              <button type="button" class="boton" [disabled]="ocupado() || unidadesElegidas() === 0" (click)="registrar()">
+              <button
+                type="button"
+                class="boton"
+                [disabled]="ocupado() || unidadesElegidas() === 0 || v.fuera_de_plazo"
+                (click)="registrar()"
+              >
                 {{ ocupado() ? 'Registrando…' : 'Registrar devolución' }}
               </button>
               <button type="button" class="boton boton--secundario" (click)="creando.set(false)">Cancelar</button>
@@ -207,6 +225,17 @@
           }
           @if (devolucion.motivo_rechazo) {
             <p class="estado"><strong>Motivo del rechazo:</strong> {{ devolucion.motivo_rechazo }}</p>
+          }
+          @if (devolucion.estado === 'APROBADA') {
+            <p class="estado">
+              <strong>Reintegro:</strong> {{ etiquetaReintegro(devolucion.reintegro_metodo) }}
+              @if (devolucion.reintegro_referencia) {
+                <span class="secundario mono">· {{ devolucion.reintegro_referencia }}</span>
+              }
+            </p>
+            @if (devolucion.venta_cambio_numero) {
+              <p class="estado"><strong>Cambio de prenda:</strong> venta {{ devolucion.venta_cambio_numero }}</p>
+            }
           }
 
           @if (aviso()) {
@@ -275,6 +304,34 @@
                 </div>
               </div>
             }
+          }
+
+          <!-- Cambio de prenda: la prenda nueva se cobra en caja como una venta normal y aca se
+               vincula esa venta a la devolucion aprobada. -->
+          @if (devolucion.estado === 'APROBADA' && !devolucion.venta_cambio_id && puedeRegistrar) {
+            <div class="carga">
+              <div class="campo">
+                <label for="venta-cambio">¿Se la cambió por otra prenda? Nº de la venta nueva</label>
+                <input
+                  id="venta-cambio"
+                  type="search"
+                  placeholder="V-…"
+                  [(ngModel)]="numeroVentaCambio"
+                  name="venta-cambio"
+                  (keyup.enter)="vincularCambio()"
+                />
+              </div>
+              <div class="acciones">
+                <button
+                  type="button"
+                  class="boton boton--secundario"
+                  [disabled]="ocupado() || !numeroVentaCambio.trim()"
+                  (click)="vincularCambio()"
+                >
+                  Vincular cambio
+                </button>
+              </div>
+            </div>
           }
         </div>
       } @else {

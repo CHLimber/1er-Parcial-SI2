@@ -10,8 +10,10 @@ from app.modules.caja.schemas import (
     ArqueoOut,
     CajaOut,
     CerrarSesionIn,
+    EntregaOut,
     ItemPagoPendienteOut,
     PagoPorVerificarOut,
+    PedidoPorRetirarOut,
     RechazarPagoIn,
     ResolucionPagoOut,
     SesionCajaOut,
@@ -129,32 +131,45 @@ async def _calcular_arqueo(conn: asyncpg.Connection, sesion: asyncpg.Record) -> 
     monto_sistema con fn_total_efectivo_sesion() dentro del propio UPDATE para no dejar una
     ventana entre "leer" y "escribir" donde una venta nueva quede afuera del cierre.
     cantidad_ventas usa el mismo filtro (sesion + pago APROBADO) que por_metodo/total_ventas en
-    una sola consulta -- contar TODAS las ventas de la sesion sin ese filtro las desalineaba."""
+    una sola consulta -- contar TODAS las ventas de la sesion sin ese filtro las desalineaba.
+    Un pago REEMBOLSADO por una devolucion tambien cuenta: se cobro en esta sesion; lo que se
+    devolvio del cajon va aparte en devoluciones_efectivo. monto_sistema sale de la misma
+    fn_total_efectivo_sesion que usa el cierre, para que la vista previa y el cierre coincidan."""
     filas = await conn.fetch(
         """
         SELECT p.metodo::text AS metodo, COALESCE(SUM(p.monto), 0) AS total,
                (SELECT COUNT(DISTINCT p2.venta_id)
                   FROM pago p2 JOIN venta v2 ON v2.id = p2.venta_id
-                 WHERE v2.sesion_caja_id = $1 AND p2.estado = 'APROBADO') AS cantidad_ventas
+                 WHERE v2.sesion_caja_id = $1
+                   AND p2.estado IN ('APROBADO', 'REEMBOLSADO')) AS cantidad_ventas
         FROM pago p
         JOIN venta v ON v.id = p.venta_id
-        WHERE v.sesion_caja_id = $1 AND p.estado = 'APROBADO'
+        WHERE v.sesion_caja_id = $1 AND p.estado IN ('APROBADO', 'REEMBOLSADO')
         GROUP BY p.metodo
+        """,
+        sesion["id"],
+    )
+    efectivo = await conn.fetchrow(
+        """
+        SELECT fn_total_efectivo_sesion($1) AS neto,
+               (SELECT COALESCE(SUM(monto_devuelto), 0) FROM devolucion
+                 WHERE sesion_caja_id = $1 AND estado = 'APROBADA'
+                   AND reintegro_metodo = 'EFECTIVO') AS devuelto
         """,
         sesion["id"],
     )
     por_metodo = {fila["metodo"]: float(fila["total"]) for fila in filas}
     cantidad_ventas = filas[0]["cantidad_ventas"] if filas else 0
     monto_inicial = float(sesion["monto_inicial"])
-    total_efectivo = por_metodo.get("EFECTIVO", 0.0)
 
     return ArqueoOut(
         sesion_id=sesion["id"],
         monto_inicial=monto_inicial,
-        monto_sistema=monto_inicial + total_efectivo,
+        monto_sistema=monto_inicial + float(efectivo["neto"]),
         cantidad_ventas=cantidad_ventas,
         total_ventas=sum(por_metodo.values()),
         por_metodo=por_metodo,
+        devoluciones_efectivo=float(efectivo["devuelto"]),
     )
 
 
@@ -474,4 +489,129 @@ async def rechazar_pago(
 
     return ResolucionPagoOut(
         pago_id=pago["id"], venta_id=venta["id"], numero=venta["numero"], **resultado
+    )
+
+
+# ---------------------------------------------------------------------------------------------
+# Pedidos online con retiro en tienda: quedan PAGADA hasta que la clienta los pasa a buscar y
+# el personal de caja los entrega (-> ENTREGADA). Las ventas de mostrador (POS y reservas
+# atendidas en el vestidor) ya nacen ENTREGADA: la clienta se lleva la prenda en el momento.
+# Los de DOMICILIO no pasan por aca: los lleva el delivery externo (PENDIENTES 2.17).
+# ---------------------------------------------------------------------------------------------
+
+
+@router.get("/pedidos-por-retirar", response_model=list[PedidoPorRetirarOut])
+async def listar_pedidos_por_retirar(
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> list[PedidoPorRetirarOut]:
+    filas = await conn.fetch(
+        """
+        SELECT v.id AS venta_id, v.numero, v.fecha, v.total,
+               u.nombre || ' ' || u.apellido AS cliente, u.email AS cliente_email
+        FROM venta v
+        JOIN usuario u ON u.id = v.usuario_id
+        WHERE v.sucursal_id = $1 AND v.estado = 'PAGADA'
+          AND v.canal IN ('WEB', 'MOVIL') AND v.entrega = 'RETIRO_SUCURSAL'
+        ORDER BY v.fecha
+        """,
+        cajero["sucursal_id"],
+    )
+    if not filas:
+        return []
+
+    items = await conn.fetch(
+        """
+        SELECT vd.venta_id, pv.sku, p.nombre AS producto, t.codigo AS talla,
+               c.nombre AS color, vd.cantidad
+        FROM venta_detalle vd
+        JOIN producto_variante pv ON pv.id = vd.variante_id
+        JOIN producto p ON p.id = pv.producto_id
+        JOIN talla t    ON t.id = pv.talla_id
+        JOIN color c    ON c.id = pv.color_id
+        WHERE vd.venta_id = ANY($1::uuid[])
+        ORDER BY p.nombre, t.codigo
+        """,
+        [fila["venta_id"] for fila in filas],
+    )
+    items_por_venta: dict = {}
+    for item in items:
+        items_por_venta.setdefault(item["venta_id"], []).append(
+            ItemPagoPendienteOut(
+                sku=item["sku"],
+                producto=item["producto"],
+                talla=item["talla"],
+                color=item["color"],
+                cantidad=item["cantidad"],
+            )
+        )
+
+    return [
+        PedidoPorRetirarOut(
+            venta_id=fila["venta_id"],
+            numero=fila["numero"],
+            fecha=fila["fecha"],
+            cliente=fila["cliente"],
+            cliente_email=fila["cliente_email"],
+            total=float(fila["total"]),
+            items=items_por_venta.get(fila["venta_id"], []),
+        )
+        for fila in filas
+    ]
+
+
+@router.post("/pedidos/{venta_id}/entregar", response_model=EntregaOut)
+async def entregar_pedido(
+    venta_id: UUID,
+    cajero: dict = Depends(get_cajero_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> EntregaOut:
+    """La clienta paso a retirar su pedido online: PAGADA -> ENTREGADA."""
+    async with conn.transaction():
+        venta = await conn.fetchrow(
+            """
+            SELECT id, numero, estado::text AS estado, entrega::text AS entrega,
+                   canal::text AS canal
+            FROM venta
+            WHERE id = $1 AND sucursal_id = $2
+            FOR UPDATE
+            """,
+            venta_id,
+            cajero["sucursal_id"],
+        )
+        if venta is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No hay un pedido de tu sucursal con ese id",
+            )
+        if venta["entrega"] != "RETIRO_SUCURSAL" or venta["canal"] not in ("WEB", "MOVIL"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Solo se entregan en caja los pedidos online con retiro en tienda",
+            )
+        if venta["estado"] != "PAGADA":
+            # idempotencia: doble click (ENTREGADA), o todavia sin pagar / anulado
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"El pedido {venta['numero']} esta {venta['estado'].lower()}: "
+                "solo se entrega un pedido pagado",
+            )
+
+        await conn.execute("UPDATE venta SET estado = 'ENTREGADA' WHERE id = $1", venta_id)
+        await conn.execute(
+            """
+            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+            SELECT usuario_id, 'VENTA', 'Pedido entregado',
+                   'Retiraste tu pedido ' || numero || '. Gracias por comprar en FashionStore.',
+                   'VENTA', id
+            FROM venta WHERE id = $1 AND usuario_id IS NOT NULL
+            """,
+            venta_id,
+        )
+
+    return EntregaOut(
+        venta_id=venta_id,
+        numero=venta["numero"],
+        venta_estado="ENTREGADA",
+        mensaje=f"Pedido {venta['numero']} entregado",
     )

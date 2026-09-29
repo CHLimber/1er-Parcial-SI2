@@ -12,6 +12,7 @@ from app.modules.pagos.servicio import (
     confirmar_aprobado,
     confirmar_rechazado,
     notificar_cajeros,
+    reembolsar_pago_tardio,
 )
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
@@ -164,9 +165,11 @@ async def _procesar_evento(
         id_transaccion,
     )
     if pago is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="No existe un pago con esa transaccion"
-        )
+        # 200 y no 404: el Checkout Session de la web crea su propio PaymentIntent (`pi_...`) y
+        # Stripe tambien manda payment_intent.succeeded por el, pero el pago guarda el `cs_...` y
+        # ese evento ya se resuelve con checkout.session.completed. Cualquier respuesta no-2xx
+        # hace que Stripe lo reintente durante dias y termine deshabilitando el endpoint.
+        return WebhookOut(procesado=False, mensaje="Evento sin pago asociado, ignorado")
 
     async with conn.transaction():
         try:
@@ -185,6 +188,22 @@ async def _procesar_evento(
         pago_actual = await conn.fetchrow(
             "SELECT estado FROM pago WHERE id = $1 FOR UPDATE", pago["id"]
         )
+        if aprobado and pago_actual["estado"] == "RECHAZADO":
+            # Stripe cobro un intento que nosotros ya habiamos dado por abandonado (la clienta
+            # cambio el carrito y rehizo el checkout, pero pago igual la sesion vieja desde otra
+            # pestania). No hay venta que entregar: se devuelve la plata.
+            if not await reembolsar_pago_tardio(conn, pago["id"], pago["venta_id"], id_transaccion):
+                # se deshace la transaccion (incluido evento_pasarela) para que Stripe reintente
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="No se pudo reembolsar en Stripe; reintentar",
+                )
+            return WebhookOut(
+                procesado=True,
+                venta_estado="ANULADA",
+                pago_estado="REEMBOLSADO",
+                mensaje="Pago de un intento abandonado: reembolsado",
+            )
         if pago_actual["estado"] != "PENDIENTE":
             return WebhookOut(
                 procesado=False,

@@ -322,10 +322,14 @@ class _CompraPaginaState extends State<CompraPagina> {
     final pago = venta.pago;
     switch (estadoPago) {
       case 'APROBADO':
-        return venta.entrega == 'DOMICILIO'
-            ? 'Tu pedido ${venta.numero} quedo registrado y sale a reparto desde ${venta.sucursal}.'
-            : 'Tu pedido ${venta.numero} quedo registrado. Presenta este numero '
-                'en ${venta.sucursal} para retirarlo.';
+        if (venta.entrega == 'DOMICILIO') {
+          return 'Tu pedido ${venta.numero} quedo registrado y sale a reparto desde ${venta.sucursal}.';
+        }
+        // ENTREGADA: caja ya marco el retiro (POST /caja/pedidos/{id}/entregar)
+        return venta.estado == 'ENTREGADA'
+            ? 'Ya retiraste tu pedido ${venta.numero} en ${venta.sucursal}.'
+            : 'Tu pedido ${venta.numero} te espera en ${venta.sucursal}: presenta este numero '
+                'para retirarlo.';
       case 'PENDIENTE':
         if (pago?.metodo == 'EFECTIVO') {
           return venta.entrega == 'DOMICILIO'

@@ -7,6 +7,7 @@ import {
   DevolucionDetalleOut,
   DevolucionOut,
   EstadoDevolucion,
+  MetodoReintegro,
   VentaDevolvibleOut,
 } from '../../core/devoluciones/devoluciones.models';
 import { DevolucionesService } from '../../core/devoluciones/devoluciones.service';
@@ -17,6 +18,9 @@ import { PanelShell } from '../../shared/panel/panel-shell';
  * Devoluciones de ventas (PENDIENTES 2.7). Dos pasos, los dos del personal: registrar la
  * devolucion sobre una venta pagada (nace SOLICITADA, no mueve stock) y resolverla: aprobar
  * reingresa el stock (trigger en la base) y calcula lo que se reintegra; rechazar pide motivo.
+ * PENDIENTES 4.11: plazo desde la venta (configuracion.devolucion_plazo_dias), reintegro segun
+ * como se pago (Stripe por la API, efectivo desde la caja abierta, el resto manual) y cambio de
+ * prenda = devolucion aprobada + venta nueva en caja vinculada aca.
  */
 @Component({
   selector: 'app-panel-devoluciones-page',
@@ -51,6 +55,7 @@ export class PanelDevolucionesPage implements OnInit {
   protected readonly ocupado = signal(false);
   protected motivoRechazo = '';
   protected readonly rechazando = signal(false);
+  protected numeroVentaCambio = '';
 
   // --- alta ---
   protected readonly creando = signal(false);
@@ -187,7 +192,7 @@ export class PanelDevolucionesPage implements OnInit {
         this.seleccionada.set(detalle);
         this.aviso.set(
           `Devolución aprobada: ${detalle.unidades} unidad(es) volvieron al stock de ${detalle.sucursal}. ` +
-            `Reintegrar ${this.precio(detalle.monto_devuelto)} a la clienta.` +
+            this.instruccionReintegro(detalle.reintegro_metodo, detalle.monto_devuelto) +
             (detalle.pago_reembolsado ? ' La venta quedó devuelta completa y el pago pasó a reembolsado.' : ''),
         );
         this.cargar();
@@ -224,7 +229,57 @@ export class PanelDevolucionesPage implements OnInit {
     });
   }
 
+  /** Cambio de prenda: la prenda nueva se cobra en caja y aca se vincula esa venta. */
+  protected vincularCambio(): void {
+    const devolucion = this.seleccionada();
+    const numero = this.numeroVentaCambio.trim();
+    if (!devolucion || !numero) return;
+    this.ocupado.set(true);
+    this.errorDetalle.set(null);
+    this.servicio.vincularCambio(devolucion.id, numero).subscribe({
+      next: (detalle) => {
+        this.ocupado.set(false);
+        this.numeroVentaCambio = '';
+        this.seleccionada.set(detalle);
+        this.aviso.set(`Cambio registrado: la venta ${detalle.venta_cambio_numero} reemplaza lo devuelto.`);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        this.errorDetalle.set(interpretarError(e));
+      },
+    });
+  }
+
   // ------------------------------------------------------------ formato
+
+  protected etiquetaReintegro(metodo: MetodoReintegro | null): string {
+    switch (metodo) {
+      case 'STRIPE':
+        return 'Reembolso automático a la tarjeta (Stripe)';
+      case 'EFECTIVO':
+        return 'Efectivo, desde la caja abierta';
+      case 'TARJETA':
+        return 'Tarjeta (reversar en el POS, fuera del sistema)';
+      case 'QR':
+        return 'QR / transferencia a la clienta (fuera del sistema)';
+      case 'TRANSFERENCIA':
+        return 'Transferencia a la clienta (fuera del sistema)';
+      default:
+        return 'Sin pago aprobado registrado';
+    }
+  }
+
+  private instruccionReintegro(metodo: MetodoReintegro | null, monto: number | string): string {
+    const importe = this.precio(monto);
+    switch (metodo) {
+      case 'STRIPE':
+        return `Stripe ya reembolsó ${importe} a la tarjeta de la clienta.`;
+      case 'EFECTIVO':
+        return `Entregale ${importe} en efectivo: ya se descontó del arqueo de tu caja.`;
+      default:
+        return `Reintegrar ${importe} a la clienta (${this.etiquetaReintegro(metodo).toLowerCase()}).`;
+    }
+  }
 
   protected precio(valor: number | string | null | undefined): string {
     return valor === null || valor === undefined ? '—' : `Bs ${Number(valor).toFixed(2)}`;

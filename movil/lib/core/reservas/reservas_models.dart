@@ -85,6 +85,12 @@ class ReservaOut {
       estado == 'PREPARADA' ||
       estado == 'CLIENTE_PRESENTE';
 
+  /// Espejo de puedeComprar (web): vigente y con alguna prenda en los estados de item que el
+  /// backend acepta para armar el carrito (carrito/router.py: RESERVADO o PREPARADO).
+  bool get esComprable =>
+      estaVigente &&
+      items.any((i) => i.estadoItem == 'RESERVADO' || i.estadoItem == 'PREPARADO');
+
   /// 2.19.2: espejo de ESTADOS_CANCELABLES_CLIENTE del backend (reservas/router.py).
   bool get esCancelable =>
       estado == 'PENDIENTE' || estado == 'CONFIRMADA' || estado == 'PREPARADA';

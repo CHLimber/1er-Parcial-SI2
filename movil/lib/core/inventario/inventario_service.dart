@@ -140,8 +140,8 @@ class InventarioService {
     return comoLista(respuesta).map(MovimientoKardexOut.desdeJson).toList();
   }
 
-  /// `cantidadFisicaNueva` es el saldo ABSOLUTO nuevo (no un delta) y tiene que ser > 0:
-  /// fn_mover_inventario no permite dejar una variante en 0 unidades por esta via todavia.
+  /// `cantidadFisicaNueva` es el saldo ABSOLUTO nuevo (no un delta) y puede ser 0 (se perdio o
+  /// se danio la ultima unidad). No puede quedar por debajo de lo reservado: el backend da 409.
   Future<AjusteOut> ajustar({
     required String sucursalId,
     required String varianteId,

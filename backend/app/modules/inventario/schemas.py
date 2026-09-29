@@ -25,10 +25,9 @@ class AjusteIn(BaseModel):
     sucursal_id: UUID
     variante_id: UUID
     # fn_mover_inventario() trata AJUSTE como el saldo fisico ABSOLUTO nuevo, no como un delta.
-    # La funcion tambien exige cantidad > 0 (ver db/02_logica.sql), asi que hoy no se puede dejar
-    # una variante en 0 por esta via -- se valida aca para devolver un 422 claro en vez de dejar
-    # que la excepcion de Postgres llegue cruda.
-    cantidad_fisica_nueva: int = Field(gt=0, le=1_000_000)
+    # Puede ser 0: el recuento que registra que se perdio o se danio la ultima unidad (necesita
+    # db/reparaciones/ajuste_stock_a_cero.sql en una base creada antes de ese cambio).
+    cantidad_fisica_nueva: int = Field(ge=0, le=1_000_000)
     motivo: str = Field(min_length=3, max_length=200)
 
 

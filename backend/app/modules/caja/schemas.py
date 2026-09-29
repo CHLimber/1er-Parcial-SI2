@@ -29,7 +29,8 @@ class SesionCajaOut(BaseModel):
 class ArqueoOut(BaseModel):
     """Foto de la sesion abierta para que el cajero cuente el cajon ANTES de declarar el cierre.
     monto_sistema es lo que deberia haber en efectivo: monto_inicial + ventas cobradas en
-    EFECTIVO (las de TARJETA/QR/TRANSFERENCIA/PASARELA no tocan el cajon fisico)."""
+    EFECTIVO - efectivo devuelto por devoluciones aprobadas en la sesion (las de TARJETA/QR/
+    TRANSFERENCIA/PASARELA no tocan el cajon fisico)."""
 
     sesion_id: UUID
     monto_inicial: float
@@ -37,6 +38,7 @@ class ArqueoOut(BaseModel):
     cantidad_ventas: int
     total_ventas: float
     por_metodo: dict[str, float]
+    devoluciones_efectivo: float = 0.0
 
 
 class CerrarSesionIn(BaseModel):
@@ -99,6 +101,25 @@ class PagoPorVerificarOut(BaseModel):
 
 class RechazarPagoIn(BaseModel):
     motivo: str | None = Field(default=None, max_length=200)
+
+
+class PedidoPorRetirarOut(BaseModel):
+    """Pedido online ya pagado con retiro en tienda que la clienta todavia no paso a buscar."""
+
+    venta_id: UUID
+    numero: str
+    fecha: datetime
+    cliente: str
+    cliente_email: str
+    total: float
+    items: list[ItemPagoPendienteOut]
+
+
+class EntregaOut(BaseModel):
+    venta_id: UUID
+    numero: str
+    venta_estado: str
+    mensaje: str
 
 
 class ResolucionPagoOut(BaseModel):

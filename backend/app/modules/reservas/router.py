@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario, get_encargado_actual
 from app.core.mutex import mutex_variante
+from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.reservas.schemas import (
     CancelarReservaIn,
     ClienteBreveOut,
@@ -750,6 +751,9 @@ async def preparar_reserva(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La reserva no esta en estado CONFIRMADA",
             )
+        # E2 libera el compromiso de las prendas que faltan: si la clienta ya las esta pagando
+        # online, el trigger de la venta lo liberaria otra vez al aprobarse el pago
+        await _exigir_sin_pago_en_curso(conn, reserva_id)
 
         pendientes = await conn.fetch(
             "SELECT variante_id, cantidad FROM reserva_detalle "
@@ -871,6 +875,9 @@ async def resolver_reserva(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="La reserva no esta en estado CLIENTE_PRESENTE",
             )
+        # si la clienta ya esta pagando estas prendas online (carrito armado desde la reserva),
+        # venderlas aca y despues aprobar ese pago las venderia dos veces
+        await _exigir_sin_pago_en_curso(conn, reserva_id)
 
         candidatos = await conn.fetch(
             """
@@ -900,6 +907,23 @@ async def resolver_reserva(
                 detail="Indica el metodo de pago para las prendas que el cliente compra",
             )
 
+        # La venta se ata a la sesion de caja abierta de quien atiende, igual que una venta de
+        # POS: sin esto el efectivo cobrado en el vestidor quedaba en el cajon pero fuera del
+        # arqueo (fn_total_efectivo_sesion suma por sesion_caja_id) y el cierre daba sobrante.
+        # Con tarjeta/QR la sesion es opcional (no mueve el cajon); con efectivo es obligatoria.
+        sesion_caja_id = None
+        if comprados:
+            sesion = await obtener_sesion_abierta(conn, encargado["usuario_id"])
+            if sesion is None and body.metodo_pago == "EFECTIVO":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Para cobrar en efectivo abri una sesion de caja primero, o cobra con "
+                        "tarjeta o QR. Si no operas caja, pedile al encargado o al cajero."
+                    ),
+                )
+            sesion_caja_id = sesion["id"] if sesion is not None else None
+
         await conn.execute("UPDATE reserva SET estado = 'ATENDIDA' WHERE id = $1", reserva_id)
 
         venta_id = None
@@ -911,13 +935,14 @@ async def resolver_reserva(
             numero = f"V-{uuid4().hex[:10].upper()}"
             venta = await conn.fetchrow(
                 """
-                INSERT INTO venta (sucursal_id, canal, entrega, reserva_id, numero,
+                INSERT INTO venta (sucursal_id, canal, entrega, reserva_id, sesion_caja_id, numero,
                                     subtotal, descuento, iva, total, registrada_por_id)
-                VALUES ($1, 'POS', 'RETIRO_SUCURSAL', $2, $3, 0, 0, 0, 0, $4)
+                VALUES ($1, 'POS', 'RETIRO_SUCURSAL', $2, $3, $4, 0, 0, 0, 0, $5)
                 RETURNING id
                 """,
                 reserva["sucursal_id"],
                 reserva_id,
+                sesion_caja_id,
                 numero,
                 encargado["usuario_id"],
             )
@@ -952,8 +977,9 @@ async def resolver_reserva(
 
             iva = (subtotal * IVA_TASA).quantize(Decimal("0.01"))
             total_cobrado = (subtotal + iva).quantize(Decimal("0.01"))
+            # ENTREGADA de una: la clienta esta en el vestidor y se lleva lo que compra
             await conn.execute(
-                "UPDATE venta SET subtotal = $1, iva = $2, total = $3, estado = 'PAGADA' WHERE id = $4",
+                "UPDATE venta SET subtotal = $1, iva = $2, total = $3, estado = 'ENTREGADA' WHERE id = $4",
                 subtotal,
                 iva,
                 total_cobrado,

@@ -180,9 +180,24 @@ async def registrar_ajuste(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="La sucursal o la variante no existen",
         )
+    except asyncpg.CheckViolationError:
+        # ck_inventario_saldos: el fisico no puede quedar por debajo de lo que comprometen las
+        # reservas. Antes llegaba como 500. (La transaccion ya se deshizo, se puede leer.)
+        reservada = await conn.fetchval(
+            "SELECT cantidad_reservada FROM inventario WHERE sucursal_id = $1 AND variante_id = $2",
+            body.sucursal_id,
+            body.variante_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"No se puede dejar {body.cantidad_fisica_nueva} unidad(es): hay {reservada or 0} "
+                "comprometida(s) por reservas. Atende, rechaza o cancela esas reservas primero."
+            ),
+        )
     except asyncpg.RaiseError as error:
         # defensivo: hoy AJUSTE no dispara ningun RAISE de fn_mover_inventario mas alla del
-        # chequeo de cantidad > 0 (ya validado en el schema), pero SALIDA/RESERVA si lo hacen
+        # chequeo de cantidad >= 0 (ya validado en el schema), pero SALIDA/RESERVA si lo hacen
         # y comparten la misma funcion.
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
 

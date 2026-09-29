@@ -16,6 +16,15 @@ export interface RechazoIn {
   motivo: string;
 }
 
+/** Cómo vuelve la plata: por donde entró. STRIPE se reembolsa por la API; EFECTIVO sale del
+ * cajón de la sesión de caja de quien aprueba; el resto se devuelve fuera del sistema. */
+export type MetodoReintegro = 'STRIPE' | 'EFECTIVO' | 'TARJETA' | 'QR' | 'TRANSFERENCIA';
+
+/** Cambio de prenda: la venta nueva (cobrada en caja) que reemplaza lo devuelto. */
+export interface CambioIn {
+  venta_numero: string;
+}
+
 export interface LineaVentaOut {
   venta_detalle_id: string;
   variante_id: string;
@@ -49,6 +58,11 @@ export interface VentaDevolvibleOut {
   costo_envio: number;
   total: number;
   total_devuelto: number;
+  /** fecha de la venta + configuracion.devolucion_plazo_dias */
+  plazo_vence_en: string;
+  /** true: registrar la devolución responde 409 */
+  fuera_de_plazo: boolean;
+  reintegro_metodo: MetodoReintegro | null;
   lineas: LineaVentaOut[];
 }
 
@@ -83,6 +97,12 @@ export interface DevolucionOut {
   motivo_rechazo: string | null;
   lineas: number;
   unidades: number;
+  /** se fija al aprobar */
+  reintegro_metodo: MetodoReintegro | null;
+  /** id del reembolso en Stripe (re_...) */
+  reintegro_referencia: string | null;
+  venta_cambio_id: string | null;
+  venta_cambio_numero: string | null;
 }
 
 export interface DevolucionDetalleOut extends DevolucionOut {

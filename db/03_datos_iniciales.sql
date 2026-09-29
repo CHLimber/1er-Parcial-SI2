@@ -2335,6 +2335,8 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     -- Lo lee el job periodico (app/core/jobs.py): pedidos online en efectivo/QR que nadie pago
     -- ni informo en este plazo se anulan solos.
     ('pago_pendiente_horas_vigencia', '48', 'Horas antes de anular un pedido online en efectivo/QR sin pagar ni informar'),
+    -- Lo lee devoluciones/router.py: pasado este plazo desde la venta no se registra la devolucion.
+    ('devolucion_plazo_dias',  '30',  'Dias desde la venta para aceptar una devolucion'),
     ('empresa_razon_social',   'FashionStore Bolivia S.R.L.', 'Razon social para comprobantes'),
     ('empresa_nit',            '1234567890', 'NIT para comprobantes'),
     -- CU20: los lee fn_cotizar_envio(). Valores tomados del mercado boliviano de delivery
