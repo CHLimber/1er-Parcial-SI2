@@ -2218,7 +2218,7 @@
            SALIDA 0 rechazada, ck_inventario_saldos) y la migracion sobre una base con el
            esquema viejo (idempotente). APLICADA EN RAILWAY 2026-09-24 (verificado: CHECK
            ck_movimiento_cantidad + funcion nueva; AJUSTE a 0 probado dentro de un ROLLBACK).
-           FALTA aplicarla en la base local de Docker: db/reparaciones/ajuste_stock_a_cero.sql.
+           [DOCKER LOCAL HECHO 2026-09-29] db/reparaciones/ajuste_stock_a_cero.sql aplicada.
            Tests de e) y f): tests/test_arqueo_y_ajuste.py.
 
 [4.11] [HECHO 2026-09-25] Huecos funcionales de 2.19 "QUEDA ABIERTO" (decisiones del usuario:
