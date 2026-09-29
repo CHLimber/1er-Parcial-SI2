@@ -2260,5 +2260,7 @@
         db/reparaciones/devoluciones_plazo_cambio_reintegro.sql
       [RAILWAY HECHO 2026-09-29] Aplicada y verificada (columnas reintegro_*/sesion_caja_id/
       venta_cambio_id, devolucion_plazo_dias=30, fn_total_efectivo_sesion y v_ventas_diarias
-      nuevas; ck_movimiento_cantidad ya estaba). FALTA el Docker local: correr esta y
-      ajuste_stock_a_cero.sql, o `docker compose down -v` para recrear la base.
+      nuevas; ck_movimiento_cantidad ya estaba). Backend d19f4e7 desplegado: /devoluciones,
+      /caja/pedidos-por-retirar y /reportes/indicadores -> 200 con admin.
+      [DOCKER LOCAL HECHO 2026-09-29] Aplicadas esta y ajuste_stock_a_cero.sql sobre el volumen
+      existente (sin down -v) y backend reconstruido; mismos 3 endpoints -> 200.
