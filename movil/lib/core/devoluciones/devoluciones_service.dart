@@ -4,6 +4,9 @@ import '../api.dart';
 /// `backend/app/modules/devoluciones/schemas.py`. Registrar nace SOLICITADA y no mueve
 /// stock; aprobar dispara `tg_devolucion_stock` (reingresa el stock, tipo DEVOLUCION) y
 /// recalcula el monto a reintegrar; rechazar solo pide un motivo.
+/// PENDIENTES 4.11: plazo desde la venta, reintegro segun como se pago (STRIPE por la API,
+/// EFECTIVO desde la caja abierta, TARJETA/QR/TRANSFERENCIA fuera del sistema) y cambio de
+/// prenda = devolucion aprobada + venta nueva en caja, vinculada con [vincularCambio].
 class LineaVentaOut {
   LineaVentaOut({
     required this.ventaDetalleId,
@@ -67,6 +70,9 @@ class VentaDevolvibleOut {
     required this.costoEnvio,
     required this.total,
     required this.totalDevuelto,
+    required this.plazoVenceEn,
+    required this.fueraDePlazo,
+    required this.reintegroMetodo,
     required this.lineas,
   });
 
@@ -83,6 +89,13 @@ class VentaDevolvibleOut {
   final double costoEnvio;
   final double total;
   final double totalDevuelto;
+
+  /// fecha de la venta + configuracion.devolucion_plazo_dias
+  final String plazoVenceEn;
+
+  /// true: registrar la devolucion responde 409
+  final bool fueraDePlazo;
+  final String? reintegroMetodo;
   final List<LineaVentaOut> lineas;
 
   factory VentaDevolvibleOut.desdeJson(Map<String, dynamic> j) => VentaDevolvibleOut(
@@ -99,6 +112,9 @@ class VentaDevolvibleOut {
         costoEnvio: aDouble(j['costo_envio']),
         total: aDouble(j['total']),
         totalDevuelto: aDouble(j['total_devuelto']),
+        plazoVenceEn: j['plazo_vence_en'] as String,
+        fueraDePlazo: j['fuera_de_plazo'] as bool? ?? false,
+        reintegroMetodo: j['reintegro_metodo'] as String?,
         lineas: comoLista(j['lineas']).map(LineaVentaOut.desdeJson).toList(),
       );
 }
@@ -161,6 +177,10 @@ class DevolucionOut {
     required this.motivoRechazo,
     required this.lineas,
     required this.unidades,
+    this.reintegroMetodo,
+    this.reintegroReferencia,
+    this.ventaCambioId,
+    this.ventaCambioNumero,
   });
 
   final String id;
@@ -180,6 +200,14 @@ class DevolucionOut {
   final String? motivoRechazo;
   final int lineas;
   final int unidades;
+
+  /// Se fija al aprobar: STRIPE, EFECTIVO, TARJETA, QR o TRANSFERENCIA.
+  final String? reintegroMetodo;
+
+  /// Id del reembolso en Stripe (re_...).
+  final String? reintegroReferencia;
+  final String? ventaCambioId;
+  final String? ventaCambioNumero;
 
   bool get solicitada => estado == 'SOLICITADA';
 
@@ -201,6 +229,10 @@ class DevolucionOut {
         motivoRechazo: j['motivo_rechazo'] as String?,
         lineas: aEntero(j['lineas']),
         unidades: aEntero(j['unidades']),
+        reintegroMetodo: j['reintegro_metodo'] as String?,
+        reintegroReferencia: j['reintegro_referencia'] as String?,
+        ventaCambioId: j['venta_cambio_id'] as String?,
+        ventaCambioNumero: j['venta_cambio_numero'] as String?,
       );
 }
 
@@ -223,6 +255,10 @@ class DevolucionDetalleOut extends DevolucionOut {
     required super.motivoRechazo,
     required super.lineas,
     required super.unidades,
+    super.reintegroMetodo,
+    super.reintegroReferencia,
+    super.ventaCambioId,
+    super.ventaCambioNumero,
     required this.detalle,
     required this.pagoReembolsado,
   });
@@ -250,6 +286,10 @@ class DevolucionDetalleOut extends DevolucionOut {
       motivoRechazo: base.motivoRechazo,
       lineas: base.lineas,
       unidades: base.unidades,
+      reintegroMetodo: base.reintegroMetodo,
+      reintegroReferencia: base.reintegroReferencia,
+      ventaCambioId: base.ventaCambioId,
+      ventaCambioNumero: base.ventaCambioNumero,
       detalle: comoLista(j['detalle']).map(DetalleDevolucionOut.desdeJson).toList(),
       pagoReembolsado: j['pago_reembolsado'] as bool? ?? false,
     );
@@ -301,6 +341,14 @@ class DevolucionesService {
   Future<DevolucionDetalleOut> rechazar(String devolucionId, String motivo) async {
     final respuesta = await api.post('/devoluciones/$devolucionId/rechazar', cuerpo: {
       'motivo': motivo,
+    });
+    return DevolucionDetalleOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// Cambio de prenda: vincula la venta nueva (cobrada en caja) a una devolucion aprobada.
+  Future<DevolucionDetalleOut> vincularCambio(String devolucionId, String ventaNumero) async {
+    final respuesta = await api.post('/devoluciones/$devolucionId/cambio', cuerpo: {
+      'venta_numero': ventaNumero,
     });
     return DevolucionDetalleOut.desdeJson(respuesta as Map<String, dynamic>);
   }

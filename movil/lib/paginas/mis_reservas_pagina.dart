@@ -224,7 +224,7 @@ class _MisReservasPaginaState extends State<MisReservasPagina> {
               ),
             ),
           ),
-          if (reserva.estaVigente) ...[
+          if (reserva.esComprable) ...[
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,

@@ -163,9 +163,41 @@ class PagoPorVerificarOut {
       );
 }
 
+/// Pedido online ya pagado con retiro en tienda que la clienta todavia no paso a buscar.
+class PedidoPorRetirarOut {
+  PedidoPorRetirarOut({
+    required this.ventaId,
+    required this.numero,
+    required this.fecha,
+    required this.cliente,
+    required this.clienteEmail,
+    required this.total,
+    required this.items,
+  });
+
+  final String ventaId;
+  final String numero;
+  final DateTime? fecha;
+  final String cliente;
+  final String clienteEmail;
+  final double total;
+  final List<ItemPagoPendienteOut> items;
+
+  factory PedidoPorRetirarOut.desdeJson(Map<String, dynamic> j) => PedidoPorRetirarOut(
+        ventaId: j['venta_id'] as String,
+        numero: j['numero'] as String,
+        fecha: aFechaNula(j['fecha']),
+        cliente: j['cliente'] as String,
+        clienteEmail: j['cliente_email'] as String,
+        total: aDouble(j['total']),
+        items: comoLista(j['items']).map(ItemPagoPendienteOut.desdeJson).toList(),
+      );
+}
+
 /// CU07 (2.2): foto de la sesion abierta ANTES de declarar el cierre. monto_sistema es
-/// lo que deberia haber en efectivo: monto_inicial + ventas cobradas en EFECTIVO (las de
-/// TARJETA/QR/TRANSFERENCIA/PASARELA no tocan el cajon fisico).
+/// lo que deberia haber en efectivo: monto_inicial + ventas cobradas en EFECTIVO - efectivo
+/// devuelto por devoluciones aprobadas en la sesion (las de TARJETA/QR/TRANSFERENCIA/PASARELA
+/// no tocan el cajon fisico).
 class ArqueoOut {
   ArqueoOut({
     required this.sesionId,
@@ -174,6 +206,7 @@ class ArqueoOut {
     required this.cantidadVentas,
     required this.totalVentas,
     required this.porMetodo,
+    required this.devolucionesEfectivo,
   });
 
   final String sesionId;
@@ -183,6 +216,9 @@ class ArqueoOut {
   final double totalVentas;
   final Map<String, double> porMetodo;
 
+  /// Efectivo que salio del cajon por devoluciones (ya restado en montoSistema).
+  final double devolucionesEfectivo;
+
   factory ArqueoOut.desdeJson(Map<String, dynamic> j) => ArqueoOut(
         sesionId: j['sesion_id'] as String,
         montoInicial: aDouble(j['monto_inicial']),
@@ -191,6 +227,7 @@ class ArqueoOut {
         totalVentas: aDouble(j['total_ventas']),
         porMetodo: (j['por_metodo'] as Map<String, dynamic>? ?? const {})
             .map((clave, valor) => MapEntry(clave, aDouble(valor))),
+        devolucionesEfectivo: aDouble(j['devoluciones_efectivo'] ?? 0),
       );
 }
 
@@ -304,6 +341,19 @@ class CajaService {
       'motivo': (motivo?.trim().isEmpty ?? true) ? null : motivo!.trim(),
     });
     return ResolucionPagoOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// Pedidos online pagados con retiro en tienda que esperan que la clienta los pase a buscar.
+  Future<List<PedidoPorRetirarOut>> listarPedidosPorRetirar() async {
+    final respuesta = await api.get('/caja/pedidos-por-retirar');
+    return comoLista(respuesta).map(PedidoPorRetirarOut.desdeJson).toList();
+  }
+
+  /// La clienta retiro su pedido: PAGADA -> ENTREGADA. Devuelve el numero de la venta.
+  Future<String> entregarPedido(String ventaId) async {
+    final respuesta =
+        await api.post('/caja/pedidos/$ventaId/entregar', cuerpo: <String, dynamic>{});
+    return (respuesta as Map<String, dynamic>)['numero'] as String;
   }
 
   /// CU07 (2.2): arqueo de la sesion abierta, para que el cajero cuente el cajon antes

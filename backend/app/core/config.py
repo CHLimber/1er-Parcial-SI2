@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -61,6 +63,22 @@ def _sin_comillas(valor: str) -> str:
     if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in {'"', "'"}:
         return valor[1:-1]
     return valor
+
+
+JWT_SECRET_DE_EJEMPLO = "dev-secret-change-me"
+
+
+def verificar_jwt_secret(ajustes: "Settings") -> None:
+    """Con el secreto de ejemplo cualquiera puede firmar un JWT de ADMIN. En Railway (que define
+    RAILWAY_ENVIRONMENT en todos sus servicios) el arranque se corta; en local solo avisa, para
+    no romper el `uvicorn --reload` de desarrollo."""
+    if ajustes.jwt_secret and ajustes.jwt_secret != JWT_SECRET_DE_EJEMPLO:
+        return
+    if os.getenv("RAILWAY_ENVIRONMENT"):
+        raise RuntimeError("JWT_SECRET no esta configurado: definilo en las variables de Railway")
+    logging.getLogger(__name__).warning(
+        "JWT_SECRET usa el valor de ejemplo: sirve solo para desarrollo local"
+    )
 
 
 settings = Settings()

@@ -265,7 +265,7 @@ async def crear_desde_reserva(
         FROM reserva_detalle rd
         JOIN producto_variante pv ON pv.id = rd.variante_id
         JOIN producto p ON p.id = pv.producto_id
-        WHERE rd.reserva_id = $1 AND rd.estado_item IN ('RESERVADO', 'PREPARADO', 'PROBADO')
+        WHERE rd.reserva_id = $1 AND rd.estado_item IN ('RESERVADO', 'PREPARADO')
         """,
         reserva_id,
     )

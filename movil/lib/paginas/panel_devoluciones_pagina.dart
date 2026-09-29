@@ -207,6 +207,17 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
 
 /// Registro de una devolucion: busca la venta por numero, se elige cuanto se devuelve
 /// de cada linea (tope: lo vendido menos lo ya devuelto o en tramite) y el motivo.
+/// Como vuelve la plata (PENDIENTES 4.11): por donde entro. STRIPE se reembolsa por la API,
+/// EFECTIVO sale del cajon de la caja abierta de quien aprueba, el resto fuera del sistema.
+String etiquetaReintegro(String? metodo) => switch (metodo) {
+      'STRIPE' => 'Reembolso automatico a la tarjeta (Stripe)',
+      'EFECTIVO' => 'Efectivo, desde la caja abierta',
+      'TARJETA' => 'Tarjeta (reversar en el POS, fuera del sistema)',
+      'QR' => 'QR / transferencia a la clienta (fuera del sistema)',
+      'TRANSFERENCIA' => 'Transferencia a la clienta (fuera del sistema)',
+      _ => 'Sin pago aprobado registrado',
+    };
+
 class NuevaDevolucionPagina extends StatefulWidget {
   const NuevaDevolucionPagina({super.key});
 
@@ -367,9 +378,23 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                   FilaDato('Total', formatearPrecio(venta.total)),
                   if (venta.totalDevuelto > 0)
                     FilaDato('Ya devuelto', formatearPrecio(venta.totalDevuelto)),
+                  FilaDato('Reintegro', etiquetaReintegro(venta.reintegroMetodo)),
+                  FilaDato('Plazo hasta', fechaLegible(DateTime.parse(venta.plazoVenceEn))),
+                  if (venta.reintegroMetodo == 'EFECTIVO')
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Para aprobarla hace falta una sesion de caja abierta.',
+                        style: TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                      ),
+                    ),
                 ],
               ),
             ),
+            if (venta.fueraDePlazo) ...[
+              const SizedBox(height: 12),
+              const MensajeError('Vencio el plazo de devolucion de esta venta: ya no se puede registrar.'),
+            ],
             const SizedBox(height: 20),
             const EtiquetaDato('Prendas'),
             const SizedBox(height: 8),
@@ -455,7 +480,8 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: (_registrando || _unidadesElegidas == 0) ? null : _registrar,
+              onPressed:
+                  (_registrando || _unidadesElegidas == 0 || venta.fueraDePlazo) ? null : _registrar,
               child: _registrando
                   ? const SizedBox(
                       height: 20,
@@ -534,9 +560,72 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
       mostrarAviso(
         context,
         'Devolucion aprobada: ${detalle.unidades} unidad(es) volvieron al stock de '
-        '${detalle.sucursal}. Reintegrar ${formatearPrecio(detalle.montoDevuelto)}.'
+        '${detalle.sucursal}. ${_instruccionReintegro(detalle)}'
         '${detalle.pagoReembolsado ? " La venta quedo devuelta completa y el pago paso a reembolsado." : ""}',
       );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _trabajando = false);
+      mostrarAviso(context, interpretarError(error), esError: true);
+    }
+  }
+
+  String _instruccionReintegro(DevolucionDetalleOut detalle) {
+    final importe = formatearPrecio(detalle.montoDevuelto);
+    return switch (detalle.reintegroMetodo) {
+      'STRIPE' => 'Stripe ya reembolso $importe a la tarjeta de la clienta.',
+      'EFECTIVO' => 'Entregale $importe en efectivo: ya se desconto del arqueo de tu caja.',
+      _ => 'Reintegrar $importe (${etiquetaReintegro(detalle.reintegroMetodo).toLowerCase()}).',
+    };
+  }
+
+  /// Cambio de prenda: la prenda nueva se cobra en caja y aca se vincula esa venta.
+  Future<void> _vincularCambio() async {
+    final numero = TextEditingController();
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (contexto) => AlertDialog(
+        backgroundColor: Paleta.blanco,
+        title: const Text('Cambio de prenda'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Cobra la prenda nueva en caja como una venta normal e ingresa aca su numero.',
+              style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: numero,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'Numero de la venta nueva (V-...)'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(contexto, false), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(contexto, true),
+            child: const Text('Vincular'),
+          ),
+        ],
+      ),
+    );
+    final texto = numero.text.trim();
+    numero.dispose();
+    if (confirmado != true || texto.isEmpty || !mounted) return;
+
+    setState(() => _trabajando = true);
+    try {
+      final detalle = await devolucionesService.vincularCambio(widget.devolucionId, texto);
+      if (!mounted) return;
+      setState(() {
+        _devolucion = detalle;
+        _trabajando = false;
+      });
+      mostrarAviso(context, 'Cambio registrado: la venta ${detalle.ventaCambioNumero} reemplaza lo devuelto.');
     } catch (error) {
       if (!mounted) return;
       setState(() => _trabajando = false);
@@ -648,6 +737,12 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                           FilaDato('Resuelta por', devolucion.resueltaPor!),
                         if (devolucion.motivoRechazo != null)
                           FilaDato('Motivo rechazo', devolucion.motivoRechazo!),
+                        if (devolucion.estado == 'APROBADA')
+                          FilaDato('Como se reintegra', etiquetaReintegro(devolucion.reintegroMetodo)),
+                        if (devolucion.reintegroReferencia != null)
+                          FilaDato('Ref. Stripe', devolucion.reintegroReferencia!),
+                        if (devolucion.ventaCambioNumero != null)
+                          FilaDato('Cambio de prenda', 'venta ${devolucion.ventaCambioNumero}'),
                         if (devolucion.pagoReembolsado)
                           const Padding(
                             padding: EdgeInsets.only(top: 4),
@@ -702,6 +797,16 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                         side: const BorderSide(color: Paleta.rojo),
                       ),
                       child: const Text('RECHAZAR'),
+                    ),
+                  ],
+                  if (devolucion.estado == 'APROBADA' &&
+                      devolucion.ventaCambioId == null &&
+                      context.watch<AuthService>().tienePermiso(['devoluciones.crear'])) ...[
+                    const SizedBox(height: 22),
+                    OutlinedButton.icon(
+                      onPressed: _trabajando ? null : _vincularCambio,
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('VINCULAR CAMBIO DE PRENDA'),
                     ),
                   ],
                 ],

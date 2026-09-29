@@ -15,7 +15,8 @@
     } @else {
       @let v = venta()!;
 
-      @switch (v.estado) {
+      <!-- ENTREGADA (retirado en tienda) es una compra confirmada mas: mismo bloque que PAGADA -->
+      @switch (v.estado === 'ENTREGADA' ? 'PAGADA' : v.estado) {
         @case ('PAGADA') {
           <section class="confirmacion confirmacion--exito">
             <span class="confirmacion__etiqueta">Compra confirmada</span>
@@ -29,6 +30,11 @@
             <p class="confirmacion__linea">
               {{ v.sucursal }} · {{ v.entrega === 'DOMICILIO' ? 'Envío a domicilio' : 'Retiro en sucursal' }}
             </p>
+            @if (v.estado === 'ENTREGADA') {
+              <p class="confirmacion__linea">Ya retiraste este pedido.</p>
+            } @else if (v.entrega === 'RETIRO_SUCURSAL') {
+              <p class="confirmacion__linea">Tu pedido te espera en la sucursal: pasá a retirarlo.</p>
+            }
           </section>
         }
         @case ('ANULADA') {

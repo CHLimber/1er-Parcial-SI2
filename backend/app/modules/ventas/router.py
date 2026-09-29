@@ -11,7 +11,11 @@ from app.core.db import get_connection
 from app.core.deps import get_cajero_actual, get_current_usuario
 from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.envios.servicio import SinCoordenadas, cotizar
-from app.modules.pagos.servicio import _alertar_stock_bajo, notificar_cajeros
+from app.modules.pagos.servicio import (
+    _alertar_stock_bajo,
+    cancelar_intento_stripe,
+    notificar_cajeros,
+)
 from app.modules.ventas.schemas import (
     CheckoutIn,
     CheckoutOut,
@@ -170,7 +174,7 @@ async def _validar_reserva_del_carrito(
         """
         SELECT variante_id, cantidad
         FROM reserva_detalle
-        WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO', 'PROBADO')
+        WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')
         """,
         reserva_id,
     )
@@ -194,12 +198,16 @@ async def _validar_reserva_del_carrito(
 async def _aplicar_cupon(
     conn: asyncpg.Connection, codigo: str, items: list[asyncpg.Record], subtotal: Decimal
 ) -> tuple[UUID, Decimal]:
+    """Valida el cupon y consume un uso. Debe llamarse dentro de la transaccion del checkout: el
+    FOR UPDATE serializa a dos clientas que usan el mismo cupon a la vez, asi la segunda ve el
+    uso de la primera y no se pasan juntas de uso_maximo."""
     promo = await conn.fetchrow(
         """
         SELECT id, tipo, valor, alcance, categoria_id, temporada_id, monto_minimo,
                uso_maximo, usos_actuales
         FROM promocion
         WHERE codigo_cupon = $1 AND activa AND CURRENT_DATE BETWEEN fecha_inicio AND fecha_fin
+        FOR UPDATE
         """,
         codigo.strip().upper(),
     )
@@ -458,70 +466,49 @@ async def iniciar_checkout(
             total=float(pendiente["total"]),
             estado=pendiente["estado"],
         )
-    if pendiente is not None:
-        # el intento anterior ya no corresponde al pedido actual: se abandona (sin notificar a la
-        # clienta, no es un rechazo real) y se libera el uso del cupon que habia consumido, para
-        # que _aplicar_cupon lo pueda volver a tomar aca abajo
-        # "AND estado = 'PENDIENTE'": si justo lo aprobo el cajero o el webhook entre la lectura
-        # de arriba y esto, no se pisa un pago ya resuelto.
-        abandonado = await conn.fetchval(
-            """
-            UPDATE pago SET estado = 'RECHAZADO', confirmado_en = now()
-            WHERE id = $1 AND estado = 'PENDIENTE'
-            RETURNING id
-            """,
-            pendiente["pago_id"],
-        )
-        if abandonado is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Tu pedido anterior se acaba de resolver. Revisa Mis compras.",
-            )
-        await conn.execute(
-            "UPDATE venta SET estado = 'ANULADA' WHERE id = $1", pendiente["venta_id"]
-        )
-        if pendiente["promocion_id"] is not None:
-            await conn.execute(
-                "UPDATE promocion SET usos_actuales = GREATEST(usos_actuales - 1, 0) WHERE id = $1",
-                pendiente["promocion_id"],
-            )
-
-    descuento = Decimal("0")
-    promocion_id = None
-    if body.codigo_cupon:
-        promocion_id, descuento = await _aplicar_cupon(conn, body.codigo_cupon, items, subtotal)
-
-    # CU20: el delivery se vuelve a cotizar aca, del lado del servidor. Lo que la clienta vio
-    # en /envios/cotizar es informativo; lo que se cobra es esto.
-    costo_envio = Decimal("0")
-    if entrega == "DOMICILIO" and destino_envio is not None:
-        try:
-            cotizacion = await cotizar(
-                conn, sucursal_id, destino_envio[0], destino_envio[1], subtotal - descuento
-            )
-        except SinCoordenadas as error:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
-            ) from error
-        if not cotizacion.dentro_cobertura:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Tu direccion esta a {cotizacion.distancia_km:.1f} km de la sucursal y el "
-                    f"reparto llega hasta {cotizacion.radio_km:.0f} km. Elegi otra sucursal o "
-                    "retira tu pedido en tienda."
-                ),
-            )
-        costo_envio = cotizacion.costo
-
-    # El IVA se calcula solo sobre las prendas (subtotal - descuento): el flete no lleva impuesto,
-    # se suma aparte tal cual lo cotizo fn_cotizar_envio().
-    base_imponible = subtotal - descuento
-    iva = (base_imponible * IVA_TASA).quantize(Decimal("0.01"))
-    total = (base_imponible + iva + costo_envio).quantize(Decimal("0.01"))
-
+    # Desde aca hasta el INSERT del pago es UNA transaccion: abandonar el intento anterior, tomar
+    # el cupon y crear la venta nueva se confirman juntos o no se confirma nada. Antes el abandono
+    # y el uso del cupon quedaban grabados aunque el checkout fallara mas abajo (direccion fuera
+    # de cobertura, Stripe caido, carrito modificado): la clienta perdia un uso del cupon y el
+    # pedido anterior, que seguia siendo valido.
+    # Orden de locks: pago -> venta -> carrito -> promocion, el mismo que usan el cajero y el
+    # webhook (pago -> venta -> carrito en confirmar_aprobado), para no cruzarse en un deadlock.
+    intento_a_cerrar = None
     numero = f"V-{uuid4().hex[:10].upper()}"
     async with conn.transaction():
+        if pendiente is not None:
+            # el intento anterior ya no corresponde al pedido actual: se abandona (sin notificar
+            # a la clienta, no es un rechazo real) y se libera el uso del cupon que habia
+            # consumido, para que _aplicar_cupon lo pueda volver a tomar aca abajo.
+            # "AND estado = 'PENDIENTE'": si justo lo aprobo el cajero o el webhook entre la
+            # lectura de arriba y esto, no se pisa un pago ya resuelto.
+            abandonado = await conn.fetchval(
+                """
+                UPDATE pago SET estado = 'RECHAZADO', confirmado_en = now()
+                WHERE id = $1 AND estado = 'PENDIENTE'
+                RETURNING id
+                """,
+                pendiente["pago_id"],
+            )
+            if abandonado is None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Tu pedido anterior se acaba de resolver. Revisa Mis compras.",
+                )
+            await conn.execute(
+                "UPDATE venta SET estado = 'ANULADA' WHERE id = $1", pendiente["venta_id"]
+            )
+            if pendiente["pasarela"] == "STRIPE" and pendiente["id_transaccion"]:
+                # se cierra en Stripe recien despues del commit: si este checkout falla, el
+                # intento anterior sigue PENDIENTE y tiene que poder pagarse
+                intento_a_cerrar = pendiente["id_transaccion"]
+            if pendiente["promocion_id"] is not None:
+                await conn.execute(
+                    "UPDATE promocion SET usos_actuales = GREATEST(usos_actuales - 1, 0) "
+                    "WHERE id = $1",
+                    pendiente["promocion_id"],
+                )
+
         # Todo lo de arriba se leyo sin bloquear. Antes de crear la venta se bloquea el carrito
         # (carrito/router.py toma el mismo lock para modificarlo) y se confirma que no cambio: la
         # venta congela el subtotal, y el cajero/webhook vuelcan despues el carrito TAL COMO ESTE.
@@ -537,6 +524,51 @@ async def iniciar_checkout(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Tu carrito cambio mientras confirmabas el pedido; revisalo y volve a intentar",
             )
+
+        descuento = Decimal("0")
+        promocion_id = None
+        if body.codigo_cupon:
+            promocion_id, descuento = await _aplicar_cupon(conn, body.codigo_cupon, items, subtotal)
+
+        # CU20: el delivery se vuelve a cotizar aca, del lado del servidor. Lo que la clienta vio
+        # en /envios/cotizar es informativo; lo que se cobra es esto.
+        costo_envio = Decimal("0")
+        if entrega == "DOMICILIO" and destino_envio is not None:
+            try:
+                cotizacion = await cotizar(
+                    conn, sucursal_id, destino_envio[0], destino_envio[1], subtotal - descuento
+                )
+            except SinCoordenadas as error:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+                ) from error
+            if not cotizacion.dentro_cobertura:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Tu direccion esta a {cotizacion.distancia_km:.1f} km de la sucursal y el "
+                        f"reparto llega hasta {cotizacion.radio_km:.0f} km. Elegi otra sucursal o "
+                        "retira tu pedido en tienda."
+                    ),
+                )
+            costo_envio = cotizacion.costo
+
+        # El IVA se calcula solo sobre las prendas (subtotal - descuento): el flete no lleva
+        # impuesto, se suma aparte tal cual lo cotizo fn_cotizar_envio().
+        base_imponible = subtotal - descuento
+        iva = (base_imponible * IVA_TASA).quantize(Decimal("0.01"))
+        total = (base_imponible + iva + costo_envio).quantize(Decimal("0.01"))
+        if total <= 0:
+            # un cupon MONTO_FIJO >= al subtotal (o uno del 100%) con retiro en tienda: pago.monto
+            # exige > 0 (el INSERT tiraba un 500) y Stripe tampoco cobra 0
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Con ese cupon el pedido queda en Bs 0 y no hay nada que cobrar. Suma otra "
+                    "prenda o guarda el cupon para una compra mayor."
+                ),
+            )
+
         if carrito["reserva_id"] is not None:
             # Con la reserva bloqueada, ni el job de expiracion (SKIP LOCKED) ni cancelar/rechazar
             # (FOR UPDATE + _exigir_sin_pago_en_curso) pueden liberar su compromiso entre esta
@@ -610,6 +642,11 @@ async def iniciar_checkout(
                 f"Pedido online {venta['numero']} por Bs {total} a pagar en efectivo ({como}). "
                 "Aprobalo desde caja cuando lo cobres.",
             )
+
+    if intento_a_cerrar is not None:
+        # sin esto la sesion vieja seguia cobrable (otra pestania, un PaymentSheet abierto) y la
+        # plata entraba sin pedido detras
+        await cancelar_intento_stripe(intento_a_cerrar)
 
     return CheckoutOut(
         venta_id=venta["id"],
@@ -788,7 +825,9 @@ async def registrar_venta_pos(
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> VentaPosOut:
     """CU07: el Cajero cobra en el mostrador. A diferencia del checkout web (CU05/CU06) el cobro
-    ya se confirmo en persona -- no hay pasarela ni webhook, la venta se marca PAGADA de una."""
+    ya se confirmo en persona -- no hay pasarela ni webhook. La venta nace ENTREGADA: la clienta
+    se lleva la prenda en el momento (un pedido online con retiro queda PAGADA hasta que lo
+    entregan en caja, POST /caja/pedidos/{venta_id}/entregar)."""
     sesion = await obtener_sesion_abierta(conn, cajero["usuario_id"])
     if sesion is None:
         # E1: sesion de caja no abierta -- el cajero debe abrirla antes de vender
@@ -900,7 +939,7 @@ async def registrar_venta_pos(
         total = (subtotal + iva).quantize(Decimal("0.01"))
 
         await conn.execute(
-            "UPDATE venta SET subtotal = $1, iva = $2, total = $3, estado = 'PAGADA' WHERE id = $4",
+            "UPDATE venta SET subtotal = $1, iva = $2, total = $3, estado = 'ENTREGADA' WHERE id = $4",
             subtotal,
             iva,
             total,

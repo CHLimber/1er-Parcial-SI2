@@ -121,8 +121,9 @@ export class PanelInventarioPage implements OnInit {
     const variante = this.elegida();
     if (!variante) return;
 
-    if (this.cantidadNueva == null || this.cantidadNueva <= 0) {
-      this.errorAjuste.set('La cantidad física nueva tiene que ser mayor a cero.');
+    // 0 vale: es el recuento que registra que se perdió o se dañó la última unidad
+    if (this.cantidadNueva == null || this.cantidadNueva < 0) {
+      this.errorAjuste.set('La cantidad física nueva no puede ser negativa.');
       return;
     }
     if (this.motivo.trim().length < 3) {

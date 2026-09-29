@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import settings
+from app.core.config import settings, verificar_jwt_secret
 from app.core.db import connect_pool, disconnect_pool
 from app.core.jobs import job_expirar_reservas
 from app.modules.asistente.router import router as asistente_router
@@ -39,6 +39,7 @@ from app.modules.ventas.router import router as ventas_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    verificar_jwt_secret(settings)
     await connect_pool()
     tarea_expirar_reservas = asyncio.create_task(
         job_expirar_reservas(settings.expirar_reservas_intervalo_segundos)

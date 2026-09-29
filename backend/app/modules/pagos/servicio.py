@@ -12,6 +12,7 @@ a si mismo" para las funciones que de verdad comparten varios casos.
 
 import asyncio
 import logging
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -45,6 +46,16 @@ async def confirmar_aprobado(conn: asyncpg.Connection, pago_id: UUID, venta: dic
     if subtotal_carrito != subtotal_venta:
         return await _anular_por_conflicto(
             conn, pago_id, venta, "el carrito cambio despues del checkout"
+        )
+
+    if venta["reserva_id"] is not None and not await _reserva_respalda_items(
+        conn, venta["reserva_id"], items
+    ):
+        # tg_venta_descuenta_stock libera el compromiso de la reserva antes de descontar: si la
+        # reserva ya lo libero (se atendio en el vestidor, se cancelo o expiro) se liberaria dos
+        # veces -- soltando lo que reservaron otras clientas -- y la prenda se venderia de nuevo
+        return await _anular_por_conflicto(
+            conn, pago_id, venta, "la reserva ya no respalda estas prendas"
         )
 
     try:
@@ -131,6 +142,28 @@ async def confirmar_aprobado(conn: asyncpg.Connection, pago_id: UUID, venta: dic
     return {"venta_estado": "PAGADA", "pago_estado": "APROBADO", "mensaje": "Pago confirmado"}
 
 
+async def _reserva_respalda_items(
+    conn: asyncpg.Connection, reserva_id: UUID, items: list[asyncpg.Record]
+) -> bool:
+    """Misma regla que ventas/router.py::_validar_reserva_del_carrito, pero al aprobar el pago:
+    la reserva sigue viva y compromete al menos lo que se va a vender. La bloquea (FOR UPDATE)
+    para que el Encargado no la resuelva entre este chequeo y el insert de venta_detalle."""
+    estado = await conn.fetchval(
+        "SELECT estado::text FROM reserva WHERE id = $1 FOR UPDATE", reserva_id
+    )
+    if estado not in ("PENDIENTE", "CONFIRMADA", "PREPARADA", "CLIENTE_PRESENTE"):
+        return False
+    comprometido = await conn.fetch(
+        """
+        SELECT variante_id, cantidad FROM reserva_detalle
+        WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')
+        """,
+        reserva_id,
+    )
+    cantidad = {fila["variante_id"]: fila["cantidad"] for fila in comprometido}
+    return all(cantidad.get(item["variante_id"], 0) >= item["cantidad"] for item in items)
+
+
 async def _anular_por_conflicto(
     conn: asyncpg.Connection, pago_id: UUID, venta: dict, motivo: str
 ) -> dict:
@@ -187,10 +220,11 @@ async def _anular_por_conflicto(
     }
 
 
-async def _reembolsar_stripe(id_transaccion: str) -> None:
+async def _reembolsar_stripe(id_transaccion: str) -> bool:
     """Pide el reembolso total del cobro a Stripe. id_transaccion es una Checkout Session (`cs_`,
-    web) o un PaymentIntent (`pi_`, movil). Si Stripe falla no se corta la anulacion (la venta no
-    se puede entregar igual): queda en el log para devolverlo a mano desde el dashboard."""
+    web) o un PaymentIntent (`pi_`, movil). Devuelve False si Stripe fallo; _anular_por_conflicto
+    no se corta por eso (la venta no se puede entregar igual): queda en el log para devolverlo a
+    mano desde el dashboard."""
     try:
         payment_intent = id_transaccion
         if id_transaccion.startswith("cs_"):
@@ -198,8 +232,67 @@ async def _reembolsar_stripe(id_transaccion: str) -> None:
             payment_intent = sesion["payment_intent"]
         if payment_intent:
             await asyncio.to_thread(stripe.Refund.create, payment_intent=payment_intent)
+        return True
     except stripe.error.StripeError:
         logger.exception("No se pudo reembolsar en Stripe la transaccion %s", id_transaccion)
+        return False
+
+
+async def reembolsar_parcial_stripe(id_transaccion: str, monto: Decimal, clave: str) -> str:
+    """Reembolso PARCIAL de un cobro de Stripe (devolucion de algunas prendas). Devuelve el id del
+    Refund (`re_...`). A diferencia de _reembolsar_stripe no se traga el error: la devolucion no
+    se puede aprobar si la plata no vuelve, asi que el llamador deshace la transaccion. `clave` va
+    como idempotency key, asi reintentar la misma aprobacion no reembolsa dos veces."""
+    payment_intent = id_transaccion
+    if id_transaccion.startswith("cs_"):
+        sesion = await asyncio.to_thread(stripe.checkout.Session.retrieve, id_transaccion)
+        payment_intent = sesion["payment_intent"]
+    reembolso = await asyncio.to_thread(
+        stripe.Refund.create,
+        payment_intent=payment_intent,
+        amount=int((monto * 100).to_integral_value()),
+        idempotency_key=clave,
+    )
+    return reembolso["id"]
+
+
+async def reembolsar_pago_tardio(
+    conn: asyncpg.Connection, pago_id: UUID, venta_id: UUID, id_transaccion: str
+) -> bool:
+    """Stripe confirmo el cobro de un intento que el checkout ya habia abandonado (pago
+    RECHAZADO, venta ANULADA): se devuelve la plata y el pago queda REEMBOLSADO. Devuelve False
+    si Stripe no acepto el reembolso, sin tocar la base, para que el webhook pida reintento."""
+    if not await _reembolsar_stripe(id_transaccion):
+        return False
+    await conn.execute(
+        "UPDATE pago SET estado = 'REEMBOLSADO', confirmado_en = now() WHERE id = $1", pago_id
+    )
+    await conn.execute(
+        """
+        INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+        SELECT usuario_id, 'VENTA', 'Pago reembolsado',
+               'Recibimos un pago del pedido ' || numero || ', que ya habias reemplazado por '
+               || 'otro. Te lo devolvimos completo a tu tarjeta.',
+               'VENTA', id
+        FROM venta WHERE id = $1 AND usuario_id IS NOT NULL
+        """,
+        venta_id,
+    )
+    return True
+
+
+async def cancelar_intento_stripe(id_transaccion: str) -> None:
+    """Cierra en Stripe un intento de cobro que el checkout abandono, para que ya no se pueda
+    pagar: expira la Checkout Session (web, `cs_`) o cancela el PaymentIntent (movil, `pi_`). Si
+    Stripe no deja (p.ej. justo se pago) no pasa nada: el webhook ve el pago RECHAZADO y lo
+    reembolsa (reembolsar_pago_tardio)."""
+    try:
+        if id_transaccion.startswith("cs_"):
+            await asyncio.to_thread(stripe.checkout.Session.expire, id_transaccion)
+        elif id_transaccion.startswith("pi_"):
+            await asyncio.to_thread(stripe.PaymentIntent.cancel, id_transaccion)
+    except stripe.error.StripeError:
+        logger.warning("No se pudo cerrar en Stripe el intento abandonado %s", id_transaccion)
 
 
 async def confirmar_rechazado(

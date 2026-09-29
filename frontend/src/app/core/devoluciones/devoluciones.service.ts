@@ -45,4 +45,11 @@ export class DevolucionesService {
   rechazar(id: string, motivo: string): Observable<DevolucionDetalleOut> {
     return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/rechazar`, { motivo });
   }
+
+  /** Cambio de prenda: vincula la venta nueva (cobrada en caja) a una devolución aprobada. */
+  vincularCambio(id: string, ventaNumero: string): Observable<DevolucionDetalleOut> {
+    return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/cambio`, {
+      venta_numero: ventaNumero,
+    });
+  }
 }

@@ -20,6 +20,12 @@ class RechazoIn(BaseModel):
     motivo: str = Field(min_length=3, max_length=250)
 
 
+class CambioIn(BaseModel):
+    """Cambio de prenda: la venta nueva (cobrada en caja) que reemplaza lo devuelto."""
+
+    venta_numero: str = Field(min_length=3, max_length=40)
+
+
 class LineaVentaOut(BaseModel):
     """Una linea de la venta con lo que todavia se puede devolver de ella."""
 
@@ -52,6 +58,9 @@ class VentaDevolvibleOut(BaseModel):
     costo_envio: Decimal
     total: Decimal
     total_devuelto: Decimal  # suma de devoluciones APROBADAS
+    plazo_vence_en: datetime  # venta.fecha + configuracion.devolucion_plazo_dias
+    fuera_de_plazo: bool  # True: POST /devoluciones responde 409
+    reintegro_metodo: str | None  # como se devolveria la plata (segun el pago de la venta)
     lineas: list[LineaVentaOut]
 
 
@@ -86,6 +95,13 @@ class DevolucionOut(BaseModel):
     motivo_rechazo: str | None
     lineas: int
     unidades: int
+    # Reintegro (se fija al aprobar): STRIPE (API, referencia = Refund re_...), EFECTIVO (sale
+    # del cajon de la sesion de caja de quien aprobo) o TARJETA/QR/TRANSFERENCIA (manual).
+    reintegro_metodo: str | None = None
+    reintegro_referencia: str | None = None
+    # Cambio de prenda: la venta nueva vinculada, si la hay
+    venta_cambio_id: UUID | None = None
+    venta_cambio_numero: str | None = None
 
 
 class DevolucionDetalleOut(DevolucionOut):

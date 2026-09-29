@@ -8,7 +8,9 @@ import {
   ArqueoOut,
   CajaOut,
   CerrarSesionIn,
+  EntregaOut,
   PagoPorVerificarOut,
+  PedidoPorRetirarOut,
   ResolucionPagoOut,
   SesionCajaOut,
   SesionCerradaOut,
@@ -55,5 +57,13 @@ export class CajaService {
 
   rechazarPago(pagoId: string, motivo: string | null): Observable<ResolucionPagoOut> {
     return this.http.post<ResolucionPagoOut>(`${this.base}/pagos/${pagoId}/rechazar`, { motivo });
+  }
+
+  listarPedidosPorRetirar(): Observable<PedidoPorRetirarOut[]> {
+    return this.http.get<PedidoPorRetirarOut[]>(`${this.base}/pedidos-por-retirar`);
+  }
+
+  entregarPedido(ventaId: string): Observable<EntregaOut> {
+    return this.http.post<EntregaOut>(`${this.base}/pedidos/${ventaId}/entregar`, {});
   }
 }

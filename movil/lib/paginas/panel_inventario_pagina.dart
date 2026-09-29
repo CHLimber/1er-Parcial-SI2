@@ -150,8 +150,9 @@ class _PanelInventarioPaginaState extends State<PanelInventarioPagina> {
     if (variante == null) return;
 
     final cantidad = int.tryParse(_cantidadNueva.text.trim());
-    if (cantidad == null || cantidad <= 0) {
-      setState(() => _errorAjuste = 'La cantidad fisica nueva tiene que ser mayor a cero.');
+    // 0 vale: es el recuento que registra que se perdio o se danio la ultima unidad
+    if (cantidad == null || cantidad < 0) {
+      setState(() => _errorAjuste = 'La cantidad fisica nueva no puede ser negativa.');
       return;
     }
     final motivo = _motivo.text.trim();

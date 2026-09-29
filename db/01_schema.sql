@@ -38,6 +38,9 @@ CREATE TYPE estado_recepcion  AS ENUM ('BORRADOR','CONFIRMADA','ANULADA');
 CREATE TYPE estado_traspaso   AS ENUM ('SOLICITADO','EN_TRANSITO','RECIBIDO','ANULADO');
 CREATE TYPE estado_reserva    AS ENUM ('PENDIENTE','CONFIRMADA','PREPARADA','CLIENTE_PRESENTE',
                                        'ATENDIDA','CONVERTIDA','CANCELADA','EXPIRADA');
+-- PROBADO no lo usa ningun flujo: al resolver la reserva (CU08) cada prenda PREPARADO pasa
+-- directo a COMPRADO o DESCARTADO. Queda en el tipo porque Postgres no permite quitar un valor de
+-- un ENUM sin recrearlo (y con el las columnas que lo usan).
 CREATE TYPE estado_item_res   AS ENUM ('RESERVADO','PREPARADO','PROBADO','COMPRADO','DESCARTADO');
 CREATE TYPE estado_carrito    AS ENUM ('ACTIVO','CONVERTIDO','ABANDONADO');
 CREATE TYPE canal_venta       AS ENUM ('WEB','MOVIL','POS');
@@ -384,14 +387,19 @@ CREATE TABLE movimiento_inventario (
     sucursal_id     UUID            NOT NULL REFERENCES sucursal(id),
     variante_id     UUID            NOT NULL REFERENCES producto_variante(id),
     tipo            tipo_movimiento NOT NULL,
-    cantidad        INT             NOT NULL CHECK (cantidad > 0),
+    cantidad        INT             NOT NULL,
     saldo_anterior  INT             NOT NULL,
     saldo_nuevo     INT             NOT NULL,
     motivo          VARCHAR(200),
     documento_tipo  VARCHAR(30),
     documento_id    UUID,
     usuario_id      UUID            REFERENCES usuario(id),
-    fecha           TIMESTAMPTZ     NOT NULL DEFAULT now()
+    fecha           TIMESTAMPTZ     NOT NULL DEFAULT now(),
+    -- AJUSTE guarda el saldo fisico absoluto contado, que puede ser 0 (se perdio o se danio la
+    -- ultima unidad); el resto de los movimientos son deltas y tienen que ser positivos
+    CONSTRAINT ck_movimiento_cantidad CHECK (
+        cantidad > 0 OR (tipo = 'AJUSTE' AND cantidad = 0)
+    )
 );
 CREATE INDEX ix_movimiento_variante ON movimiento_inventario(variante_id, fecha DESC);
 CREATE INDEX ix_movimiento_documento ON movimiento_inventario(documento_tipo, documento_id);
@@ -689,7 +697,18 @@ CREATE TABLE devolucion (
     -- tg_devolucion_stock firma el kardex con resuelta_por_id) y por que se rechazo.
     resuelta_por_id UUID             REFERENCES usuario(id),
     resuelta_en     TIMESTAMPTZ,
-    motivo_rechazo  VARCHAR(250)
+    motivo_rechazo  VARCHAR(250),
+    -- Reintegro del dinero, fijado al aprobar segun como se pago la venta: STRIPE se devuelve
+    -- por la API (reintegro_referencia = id del Refund `re_...`); EFECTIVO sale del cajon de la
+    -- sesion de caja de quien aprueba (sesion_caja_id, lo descuenta fn_total_efectivo_sesion);
+    -- TARJETA/QR/TRANSFERENCIA se devuelven fuera del sistema y aca queda el registro.
+    reintegro_metodo     VARCHAR(20)  CHECK (reintegro_metodo IN
+                             ('STRIPE','EFECTIVO','TARJETA','QR','TRANSFERENCIA')),
+    reintegro_referencia VARCHAR(80),
+    sesion_caja_id       UUID         REFERENCES sesion_caja(id),
+    -- Cambio de prenda = devolucion + venta nueva cobrada en caja; esto las vincula.
+    venta_cambio_id      UUID         REFERENCES venta(id),
+    CONSTRAINT ck_devolucion_cambio CHECK (venta_cambio_id <> venta_id)
 );
 CREATE INDEX ix_devolucion_venta ON devolucion(venta_id);
 COMMENT ON TABLE devolucion IS

@@ -9,6 +9,7 @@ import {
   ArqueoOut,
   CajaOut,
   PagoPorVerificarOut,
+  PedidoPorRetirarOut,
   SesionCajaOut,
   SesionCerradaOut,
   VarianteBusquedaOut,
@@ -84,6 +85,12 @@ export class CajaPage implements OnInit {
   protected motivoRechazo = '';
   protected readonly mensajePagos = signal<{ texto: string; error: boolean } | null>(null);
 
+  // Pedidos online pagados con retiro en tienda: se entregan aca (PAGADA -> ENTREGADA)
+  protected readonly pedidosPorRetirar = signal<PedidoPorRetirarOut[]>([]);
+  protected readonly cargandoRetiros = signal(false);
+  protected readonly entregandoId = signal<string | null>(null);
+  protected readonly mensajeRetiros = signal<{ texto: string; error: boolean } | null>(null);
+
   protected readonly diferenciaPreview = computed(() => {
     const arqueo = this.arqueo();
     if (arqueo === null || this.montoDeclarado == null) return null;
@@ -93,6 +100,39 @@ export class CajaPage implements OnInit {
   ngOnInit(): void {
     this.cargarSesion();
     this.cargarPagosPendientes();
+    this.cargarPedidosPorRetirar();
+  }
+
+  protected cargarPedidosPorRetirar(): void {
+    this.cargandoRetiros.set(true);
+    this.cajaService.listarPedidosPorRetirar().subscribe({
+      next: (pedidos) => {
+        this.pedidosPorRetirar.set(pedidos);
+        this.cargandoRetiros.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cargandoRetiros.set(false);
+        this.mensajeRetiros.set({ texto: interpretarError(error), error: true });
+      },
+    });
+  }
+
+  protected entregarPedido(pedido: PedidoPorRetirarOut): void {
+    if (this.entregandoId()) return;
+    this.entregandoId.set(pedido.venta_id);
+    this.mensajeRetiros.set(null);
+    this.cajaService.entregarPedido(pedido.venta_id).subscribe({
+      next: (resultado) => {
+        this.entregandoId.set(null);
+        this.mensajeRetiros.set({ texto: `Pedido ${resultado.numero} entregado a la clienta.`, error: false });
+        this.cargarPedidosPorRetirar();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.entregandoId.set(null);
+        this.mensajeRetiros.set({ texto: interpretarError(error), error: true });
+        this.cargarPedidosPorRetirar();
+      },
+    });
   }
 
   protected cargarPagosPendientes(): void {
@@ -124,6 +164,8 @@ export class CajaPage implements OnInit {
           error: !aprobado,
         });
         this.cargarPagosPendientes();
+        // un pedido con retiro en tienda que se acaba de aprobar pasa a esperar que lo retiren
+        this.cargarPedidosPorRetirar();
       },
       error: (error: HttpErrorResponse) => {
         this.pagoEnProceso.set(null);
