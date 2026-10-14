@@ -26,3 +26,22 @@
     font-size: 16px; /* Safari de iOS no hace zoom al enfocar */
   }
 }
+
+/* Segundo parcial (PENDIENTES 5.12): sugerencias de traspaso por demanda */
+.sugerencias {
+  margin-bottom: 1.25rem;
+}
+
+.grupo-sugerido {
+  border-top: 1px solid var(--paper-line);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.grupo-sugerido__cabecera {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}

@@ -96,7 +96,15 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Devoluciones'),
-        actions: [IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh))],
+        actions: [
+          IconButton(
+            tooltip: 'Cambios del mes',
+            icon: const Icon(Icons.calendar_month),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute<void>(builder: (_) => const CambiosMesPagina())),
+          ),
+          IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh)),
+        ],
       ),
       floatingActionButton: puedeRegistrar
           ? FloatingActionButton.extended(
@@ -171,7 +179,9 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
                                 FilaDato('Sucursal', devolucion.sucursal),
                                 if (devolucion.cliente != null)
                                   FilaDato('Clienta', devolucion.cliente!),
-                                FilaDato('Motivo', devolucion.motivo),
+                                FilaDato('Nota', devolucion.numero),
+                                FilaDato('Motivo',
+                                    '${motivosDevolucion[devolucion.motivoTipo] ?? devolucion.motivoTipo}: ${devolucion.motivo}'),
                                 FilaDato(
                                   'Contenido',
                                   '${devolucion.lineas} linea(s) · ${devolucion.unidades} unidad(es)',
@@ -231,6 +241,14 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
 
   VentaDevolvibleOut? _venta;
   final Map<String, int> _cantidades = {};
+  // Segundo parcial (PENDIENTES 5.8): motivo, condiciones y talla/color que se lleva a cambio
+  String _motivoTipo = 'TALLA';
+  bool _conComprobante = true;
+  bool _conEtiqueta = true;
+  bool _sinUso = true;
+  final Map<String, String> _solicitadas = {}; // venta_detalle_id -> variante a cambio
+  final Map<String, List<VarianteCambioOut>> _opciones = {}; // variante vendida -> opciones
+  bool get _esCambio => _motivoTipo == 'TALLA' || _motivoTipo == 'COLOR';
   bool _buscando = false;
   bool _registrando = false;
   String? _error;
@@ -268,6 +286,7 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
         _venta = venta;
         _buscando = false;
       });
+      if (_esCambio) _cargarOpciones();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -275,6 +294,28 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
         _buscando = false;
       });
     }
+  }
+
+  Future<void> _cargarOpciones() async {
+    final venta = _venta;
+    if (venta == null) return;
+    for (final linea in venta.lineas) {
+      if (_opciones.containsKey(linea.varianteId)) continue;
+      try {
+        final opciones = await devolucionesService.variantesCambio(linea.varianteId, venta.sucursalId);
+        if (!mounted) return;
+        setState(() => _opciones[linea.varianteId] = opciones);
+      } catch (_) {
+        // sin opciones: el selector queda vacio
+      }
+    }
+  }
+
+  List<VarianteCambioOut> _opcionesPara(LineaVentaOut linea) {
+    final todas = _opciones[linea.varianteId] ?? const <VarianteCambioOut>[];
+    return _motivoTipo == 'TALLA'
+        ? todas.where((o) => o.talla != linea.talla && o.color == linea.color).toList()
+        : todas.where((o) => o.color != linea.color && o.talla == linea.talla).toList();
   }
 
   void _fijarCantidad(String ventaDetalleId, int valor, int maximo) {
@@ -291,21 +332,30 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
       mostrarAviso(context, 'Indica al menos una prenda a devolver.', esError: true);
       return;
     }
+    if (_esCambio && lineas.any((l) => _solicitadas[l.key] == null)) {
+      mostrarAviso(context, 'Elegi que talla o color se lleva la clienta por cada prenda.', esError: true);
+      return;
+    }
     if (_motivo.text.trim().length < 3) {
-      mostrarAviso(context, 'Escribe el motivo de la devolucion.', esError: true);
+      mostrarAviso(context, 'Escribe el detalle del motivo.', esError: true);
       return;
     }
     setState(() => _registrando = true);
     try {
-      await devolucionesService.registrar(
+      final devolucion = await devolucionesService.registrar(
         ventaId: venta.ventaId,
         motivo: _motivo.text.trim(),
         lineas: lineas,
+        motivoTipo: _motivoTipo,
+        conComprobante: _conComprobante,
+        conEtiqueta: _conEtiqueta,
+        sinUso: _sinUso,
+        solicitadas: _esCambio ? _solicitadas : const {},
       );
       if (!mounted) return;
       mostrarAviso(
         context,
-        'Devolucion registrada. Queda pendiente de aprobacion: todavia no volvio al stock.',
+        'Nota ${devolucion.numero} registrada. Queda pendiente de aprobacion: todavia no volvio al stock.',
       );
       Navigator.of(context).pop(true);
     } catch (error) {
@@ -379,7 +429,9 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                   if (venta.totalDevuelto > 0)
                     FilaDato('Ya devuelto', formatearPrecio(venta.totalDevuelto)),
                   FilaDato('Reintegro', etiquetaReintegro(venta.reintegroMetodo)),
-                  FilaDato('Plazo hasta', fechaLegible(DateTime.parse(venta.plazoVenceEn))),
+                  FilaDato('Plazo devolucion', fechaLegible(DateTime.parse(venta.plazoVenceEn))),
+                  if (venta.cambioVenceEn != null)
+                    FilaDato('Plazo cambio', fechaLegible(DateTime.parse(venta.cambioVenceEn!))),
                   if (venta.reintegroMetodo == 'EFECTIVO')
                     const Padding(
                       padding: EdgeInsets.only(top: 4),
@@ -391,10 +443,57 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                 ],
               ),
             ),
-            if (venta.fueraDePlazo) ...[
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              initialValue: _motivoTipo,
+              decoration: const InputDecoration(labelText: 'Motivo'),
+              items: motivosDevolucion.entries
+                  .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .toList(),
+              onChanged: (valor) {
+                if (valor == null) return;
+                setState(() {
+                  _motivoTipo = valor;
+                  _solicitadas.clear();
+                });
+                if (_esCambio) _cargarOpciones();
+              },
+            ),
+            if (_esCambio ? venta.fueraDePlazoCambio : venta.fueraDePlazo) ...[
               const SizedBox(height: 12),
-              const MensajeError('Vencio el plazo de devolucion de esta venta: ya no se puede registrar.'),
+              MensajeError(_esCambio
+                  ? 'Vencio el plazo de cambio de esta venta: ya no se puede cambiar la prenda.'
+                  : 'Vencio el plazo de devolucion de esta venta: ya no se puede registrar.'),
             ],
+            const SizedBox(height: 10),
+            const EtiquetaDato('Condiciones de la prenda'),
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _conComprobante,
+              onChanged: (v) => setState(() => _conComprobante = v ?? false),
+              title: const Text('Trae el comprobante de compra'),
+            ),
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _conEtiqueta,
+              onChanged: (v) => setState(() => _conEtiqueta = v ?? false),
+              title: const Text('Conserva la etiqueta original'),
+            ),
+            CheckboxListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              value: _sinUso,
+              onChanged: (v) => setState(() => _sinUso = v ?? false),
+              title: const Text('Sin uso ni lavado'),
+            ),
+            Text(
+              _motivoTipo == 'DEFECTO'
+                  ? 'Por defecto de fabrica alcanza con el comprobante.'
+                  : 'Para cambios y devoluciones se exigen las tres.',
+              style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+            ),
             const SizedBox(height: 20),
             const EtiquetaDato('Prendas'),
             const SizedBox(height: 8),
@@ -461,6 +560,22 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                             ),
                           ],
                         ),
+                      if (_esCambio && elegida > 0)
+                        DropdownButtonFormField<String>(
+                          initialValue: _solicitadas[linea.ventaDetalleId],
+                          isExpanded: true,
+                          decoration: const InputDecoration(labelText: 'Se lleva a cambio'),
+                          items: _opcionesPara(linea)
+                              .map((o) => DropdownMenuItem(
+                                    value: o.varianteId,
+                                    enabled: o.disponible >= elegida,
+                                    child: Text('${o.talla} · ${o.color} (${o.disponible} disp.)'),
+                                  ))
+                              .toList(),
+                          onChanged: (valor) {
+                            if (valor != null) setState(() => _solicitadas[linea.ventaDetalleId] = valor);
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -471,7 +586,7 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
               controller: _motivo,
               maxLength: 250,
               maxLines: 2,
-              decoration: const InputDecoration(labelText: 'Motivo de la devolucion'),
+              decoration: const InputDecoration(labelText: 'Detalle del motivo'),
             ),
             const SizedBox(height: 6),
             Text(
@@ -481,14 +596,18 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed:
-                  (_registrando || _unidadesElegidas == 0 || venta.fueraDePlazo) ? null : _registrar,
+                  (_registrando ||
+                          _unidadesElegidas == 0 ||
+                          (_esCambio ? venta.fueraDePlazoCambio : venta.fueraDePlazo))
+                      ? null
+                      : _registrar,
               child: _registrando
                   ? const SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Paleta.blanco),
                     )
-                  : const Text('REGISTRAR DEVOLUCION'),
+                  : Text(_esCambio ? 'REGISTRAR CAMBIO' : 'REGISTRAR DEVOLUCION'),
             ),
           ],
         ],
@@ -727,7 +846,9 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                         const SizedBox(height: 8),
                         FilaDato('Sucursal', devolucion.sucursal),
                         if (devolucion.cliente != null) FilaDato('Clienta', devolucion.cliente!),
-                        FilaDato('Motivo', devolucion.motivo),
+                        FilaDato('Nota', devolucion.numero),
+                                FilaDato('Motivo',
+                                    '${motivosDevolucion[devolucion.motivoTipo] ?? devolucion.motivoTipo}: ${devolucion.motivo}'),
                         FilaDato('Venta total', formatearPrecio(devolucion.ventaTotal)),
                         FilaDato('Reintegro', formatearPrecio(devolucion.montoDevuelto)),
                         FilaDato('Fecha', fechaLegible(DateTime.parse(devolucion.fecha))),
@@ -768,7 +889,8 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                             Text(linea.producto, style: const TextStyle(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 4),
                             Text(
-                              '${linea.sku} · ${linea.talla} · ${linea.color}',
+                              '${linea.sku} · ${linea.talla} · ${linea.color}'
+                              '${linea.tallaSolicitada != null ? '  →  a cambio: ${linea.tallaSolicitada} · ${linea.colorSolicitado}' : ''}',
                               style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
                             ),
                             const SizedBox(height: 4),
@@ -811,6 +933,117 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                   ],
                 ],
               ),
+      ),
+    );
+  }
+}
+
+
+/// "Que prendas solicitaron cambio en el mes" (Segundo parcial, PENDIENTES 5.10), espejo de la
+/// solapa "Cambios del mes" de la web.
+class CambiosMesPagina extends StatefulWidget {
+  const CambiosMesPagina({super.key});
+
+  @override
+  State<CambiosMesPagina> createState() => _CambiosMesPaginaState();
+}
+
+class _CambiosMesPaginaState extends State<CambiosMesPagina> {
+  DateTime _mes = DateTime(DateTime.now().year, DateTime.now().month);
+  List<CambioMesOut>? _filas;
+  String? _error;
+
+  static const _meses = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _filas = null;
+      _error = null;
+    });
+    try {
+      final filas = await devolucionesService.cambiosDelMes(_mes.year, _mes.month);
+      if (mounted) setState(() => _filas = filas);
+    } catch (error) {
+      if (mounted) setState(() => _error = interpretarError(error));
+    }
+  }
+
+  void _moverMes(int delta) {
+    _mes = DateTime(_mes.year, _mes.month + delta);
+    _cargar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filas = _filas;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Cambios del mes')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        children: [
+          Row(
+            children: [
+              IconButton(onPressed: () => _moverMes(-1), icon: const Icon(Icons.chevron_left)),
+              Expanded(
+                child: Text(
+                  '${_meses[_mes.month - 1]} ${_mes.year}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+              IconButton(onPressed: () => _moverMes(1), icon: const Icon(Icons.chevron_right)),
+            ],
+          ),
+          if (_error != null) MensajeError(_error!),
+          if (filas == null && _error == null)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          if (filas != null && filas.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('Nadie pidio cambiar una prenda en este mes.', textAlign: TextAlign.center),
+            ),
+          if (filas != null)
+            ...filas.map(
+              (f) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TarjetaPanel(
+                  padding: const EdgeInsets.all(12),
+                  hijo: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(f.producto, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${motivosDevolucion[f.motivoTipo] ?? f.motivoTipo}: '
+                        '${f.tallaOriginal} · ${f.colorOriginal}'
+                        '${f.tallaSolicitada != null ? '  →  ${f.tallaSolicitada} · ${f.colorSolicitado}' : ''}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${f.solicitudes} solicitud(es) · ${f.unidades} prenda(s) · '
+                        '${f.aprobadas} aprob. · ${f.pendientes} pend. · ${f.rechazadas} rech.',
+                        style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                      ),
+                      Text(f.sucursales.join(', '), style: const TextStyle(fontSize: 12, color: Paleta.inkSuave)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

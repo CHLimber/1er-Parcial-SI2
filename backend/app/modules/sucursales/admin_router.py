@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.plan import exigir_limite
 from app.modules.sucursales.admin_schemas import (
     CajaEstadoIn,
     CajaIn,
@@ -108,6 +109,16 @@ async def crear_sucursal(
                 body.hora_apertura,
                 body.hora_cierre,
                 body.cantidad_vestidores,
+            )
+            # SaaS (PENDIENTES 5.6): cada sucursal es un tenant; nace con 14 dias de prueba del
+            # plan mas bajo y despues elige/paga su plan desde Mi suscripcion.
+            await conn.execute(
+                """
+                INSERT INTO suscripcion (sucursal_id, plan_id, estado, vence_en)
+                SELECT $1, id, 'PRUEBA', now() + interval '14 days'
+                  FROM plan WHERE activo ORDER BY orden LIMIT 1
+                """,
+                nuevo_id,
             )
             await registrar_auditoria(
                 conn,
@@ -307,6 +318,8 @@ async def crear_caja(
     staff: dict = Depends(puede_crear),
 ) -> CajaOut:
     await _obtener(conn, sucursal_id)
+    # SaaS (PENDIENTES 5.4): el plan de la sucursal limita cuantas cajas puede tener
+    await exigir_limite(conn, sucursal_id, "cajas")
     try:
         async with conn.transaction():
             nueva_id = await conn.fetchval(

@@ -228,7 +228,73 @@ class MovimientoTraspasoOut {
 /// Traspasos entre sucursales: crear (SOLICITADO, no mueve stock), despachar (sale del
 /// origen), recibir (entra al destino, se puede informar menos de lo despachado) y
 /// anular (revierte si ya estaba EN_TRANSITO).
+/// Prenda cuya demanda crece en el destino y que sobra en el origen (Segundo parcial, 5.12).
+class SugerenciaTraspasoOut {
+  SugerenciaTraspasoOut({
+    required this.varianteId,
+    required this.sku,
+    required this.producto,
+    required this.talla,
+    required this.color,
+    required this.sucursalDestinoId,
+    required this.destino,
+    required this.sucursalOrigenId,
+    required this.origen,
+    required this.vendidasRecientes,
+    required this.vendidasAnteriores,
+    required this.crecimientoPct,
+    required this.disponibleDestino,
+    required this.coberturaDestinoDias,
+    required this.excedenteOrigen,
+    required this.cantidadSugerida,
+  });
+
+  final String varianteId;
+  final String sku;
+  final String producto;
+  final String talla;
+  final String color;
+  final String sucursalDestinoId;
+  final String destino;
+  final String sucursalOrigenId;
+  final String origen;
+  final int vendidasRecientes;
+  final int vendidasAnteriores;
+  final double? crecimientoPct; // null: demanda nueva
+  final int disponibleDestino;
+  final double? coberturaDestinoDias;
+  final int excedenteOrigen;
+  final int cantidadSugerida;
+
+  factory SugerenciaTraspasoOut.desdeJson(Map<String, dynamic> j) => SugerenciaTraspasoOut(
+        varianteId: j['variante_id'] as String,
+        sku: j['sku'] as String,
+        producto: j['producto'] as String,
+        talla: j['talla'] as String,
+        color: j['color'] as String,
+        sucursalDestinoId: j['sucursal_destino_id'] as String,
+        destino: j['destino'] as String,
+        sucursalOrigenId: j['sucursal_origen_id'] as String,
+        origen: j['origen'] as String,
+        vendidasRecientes: aEntero(j['vendidas_recientes']),
+        vendidasAnteriores: aEntero(j['vendidas_anteriores']),
+        crecimientoPct: aDoubleNulo(j['crecimiento_pct']),
+        disponibleDestino: aEntero(j['disponible_destino']),
+        coberturaDestinoDias: aDoubleNulo(j['cobertura_destino_dias']),
+        excedenteOrigen: aEntero(j['excedente_origen']),
+        cantidadSugerida: aEntero(j['cantidad_sugerida']),
+      );
+}
+
 class TraspasosService {
+  /// Traspasos hacia donde la demanda crece (PENDIENTES 5.12). 403/402 si el plan del tenant
+  /// no incluye traspasos o esta vencido.
+  Future<List<SugerenciaTraspasoOut>> sugerencias({int dias = 14, int horizonte = 21}) async {
+    final respuesta =
+        await api.get('/traspasos/sugerencias', query: {'dias': dias, 'horizonte': horizonte});
+    return comoLista(respuesta).map(SugerenciaTraspasoOut.desdeJson).toList();
+  }
+
   Future<List<TraspasoOut>> listar({String? estado, String? direccion}) async {
     final respuesta = await api.get('/traspasos', query: {
       'estado': estado,

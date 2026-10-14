@@ -1,0 +1,138 @@
+<app-panel-shell
+  titulo="Clientas"
+  bajada="La cartera de la sucursal: quién compra y reserva acá, con la ficha que arma su administración. Cada sucursal tiene la suya."
+>
+  <div class="barra">
+    @if (eligeSucursal) {
+      <div class="campo">
+        <label for="sucursal">Sucursal</label>
+        <select id="sucursal" [(ngModel)]="sucursalId" name="sucursal" (change)="seleccionada.set(null); cargar()">
+          <option value="">La mía</option>
+          @for (s of sucursales(); track s.id) {
+            <option [value]="s.id">{{ s.nombre }}</option>
+          }
+        </select>
+      </div>
+    }
+    <div class="campo">
+      <label for="busqueda">Buscar</label>
+      <input id="busqueda" type="search" placeholder="Nombre o email" [(ngModel)]="busqueda" name="busqueda"
+        (keyup.enter)="cargar()" />
+    </div>
+    <div class="campo">
+      <label for="segmento">Segmento</label>
+      <select id="segmento" [value]="filtroSegmento" (change)="filtroSegmento = $any($event.target).value; cargar()">
+        <option value="">Todos</option>
+        @for (s of segmentos; track s.valor) {
+          <option [value]="s.valor">{{ s.etiqueta }}</option>
+        }
+      </select>
+    </div>
+    <span class="barra__espacio"></span>
+    @if (puedeEditar) {
+      <button type="button" class="boton" (click)="abrirAlta()">Agregar clienta</button>
+    }
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="columnas columnas--detalle">
+    <section class="panel">
+      <h2 class="panel__titulo">Cartera ({{ clientes().length }})</h2>
+      @if (cargando()) {
+        <p class="estado">Cargando…</p>
+      } @else if (clientes().length === 0) {
+        <p class="estado">No hay clientas en la cartera con esos filtros.</p>
+      } @else {
+        <ul class="lista">
+          @for (c of clientes(); track c.usuario_id) {
+            <li>
+              <button type="button" class="tarjeta" [class.tarjeta--activa]="seleccionada()?.usuario_id === c.usuario_id"
+                (click)="abrir(c)">
+                <span class="tarjeta__numero">{{ c.nombre }}</span>
+                <span class="tarjeta__proveedor">{{ c.email }}</span>
+                <span class="tarjeta__meta">
+                  <span class="badge" [class.badge--ok]="c.segmento === 'VIP' || c.segmento === 'FRECUENTE'"
+                    [class.badge--baja]="c.segmento === 'INACTIVA'">{{ etiquetaSegmento(c.segmento) }}</span>
+                  {{ c.compras }} compra(s) · {{ precio(c.total_comprado) }} · {{ c.reservas }} reserva(s)
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      @if (aviso()) {
+        <p class="exito">{{ aviso() }}</p>
+      }
+      @if (seleccionada() || agregando()) {
+        @if (seleccionada(); as c) {
+          <h2 class="panel__titulo">{{ c.nombre }}</h2>
+          <p class="estado">{{ c.email }} @if (c.telefono) { · {{ c.telefono }} }</p>
+          <p class="estado">
+            {{ c.compras }} compra(s) por {{ precio(c.total_comprado) }} · última {{ fecha(c.ultima_compra) }} ·
+            {{ c.reservas }} reserva(s)
+          </p>
+          <p class="estado secundario">
+            Segmento sugerido por el historial: <strong>{{ etiquetaSegmento(c.segmento_sugerido) }}</strong>
+            @if (c.actualizado_por) { · ficha editada por {{ c.actualizado_por }} el {{ fecha(c.actualizado_en) }} }
+          </p>
+        } @else {
+          <h2 class="panel__titulo">Agregar clienta a la cartera</h2>
+          <div class="campo">
+            <label for="email">Email de su cuenta</label>
+            <input id="email" type="email" [(ngModel)]="emailNueva" name="email" placeholder="clienta@correo.com" />
+            <span class="campo__ayuda">Tiene que estar registrada en la tienda.</span>
+          </div>
+        }
+
+        <div class="formulario">
+          <div class="campo">
+            <label for="seg">Segmento</label>
+            <select id="seg" [(ngModel)]="perfil.segmento" name="seg" [disabled]="!puedeEditar">
+              <option [ngValue]="null">Automático (según historial)</option>
+              @for (s of segmentos; track s.valor) {
+                <option [ngValue]="s.valor">{{ s.etiqueta }}</option>
+              }
+            </select>
+          </div>
+          <div class="campo">
+            <label for="talla">Talla habitual</label>
+            <input id="talla" maxlength="10" [(ngModel)]="perfil.talla_habitual" name="talla" [disabled]="!puedeEditar" />
+          </div>
+          <div class="campo">
+            <label for="estilo">Estilo preferido</label>
+            <input id="estilo" maxlength="60" [(ngModel)]="perfil.estilo_preferido" name="estilo"
+              placeholder="Casual, oficina, fiesta…" [disabled]="!puedeEditar" />
+          </div>
+          <div class="campo">
+            <label for="tel">Teléfono de contacto</label>
+            <input id="tel" maxlength="30" [(ngModel)]="perfil.telefono_contacto" name="tel" [disabled]="!puedeEditar" />
+          </div>
+          <label class="campo__casilla">
+            <input type="checkbox" [(ngModel)]="perfil.acepta_whatsapp" name="wa" [disabled]="!puedeEditar" />
+            Acepta avisos por WhatsApp
+          </label>
+          <div class="campo">
+            <label for="notas">Notas de la sucursal</label>
+            <textarea id="notas" rows="3" maxlength="500" [(ngModel)]="perfil.notas" name="notas"
+              [disabled]="!puedeEditar"></textarea>
+          </div>
+        </div>
+        @if (puedeEditar) {
+          <div class="acciones">
+            <button type="button" class="boton" [disabled]="ocupado() || (agregando() && !emailNueva.trim())" (click)="guardar()">
+              {{ ocupado() ? 'Guardando…' : 'Guardar ficha' }}
+            </button>
+          </div>
+        }
+      } @else {
+        <p class="estado">Elegí una clienta de la lista para ver o editar su ficha.</p>
+      }
+    </section>
+  </div>
+</app-panel-shell>

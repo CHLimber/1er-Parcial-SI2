@@ -3,6 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { ConexionService } from '../offline/conexion.service';
 import { CarritoItemIn, CarritoOut } from './carrito.models';
 
 @Injectable({ providedIn: 'root' })
@@ -12,6 +13,11 @@ export class CarritoService {
 
   private readonly cantidadItemsSignal = signal(0);
   readonly cantidadItems = this.cantidadItemsSignal.asReadonly();
+
+  constructor() {
+    // lo que se agrego sin conexion entra al carrito al sincronizar: refrescar el contador
+    inject(ConexionService).despuesDeSincronizar(() => this.refrescar());
+  }
 
   private registrar(carrito: CarritoOut): CarritoOut {
     this.cantidadItemsSignal.set(carrito.cantidad_items);

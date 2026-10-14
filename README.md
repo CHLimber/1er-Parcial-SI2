@@ -44,10 +44,15 @@ reserva de vestidor gratuita y pago presencial en caja (CU04/CU07).
 
 ```
 fashionstore/
-├── backend/     # FastAPI + asyncpg (Python 3.12)
-├── frontend/    # Angular 20 standalone
-├── movil/       # Flutter (por implementar)
-├── db/          # Esquema, logica y datos iniciales de Postgres
+├── backend/         # API: FastAPI + asyncpg (Python 3.12), un modulo por dominio en app/modules/
+├── frontend/        # PWA: Angular 20 standalone + service worker (funciona sin conexion)
+├── movil/           # App Flutter (Android/iOS) con base local SQLite
+├── db/              # Postgres: 01 esquema, 02 logica, 03 seed, 04 historial demo
+│   └── reparaciones/  # migraciones para bases ya inicializadas (Railway / Docker con volumen)
+├── docs/            # RAILWAY.md, catalogo demo, imagenes AR y uml/ (ICONIX, C4, estados, secuencias)
+├── recursos/        # material fuente que no es codigo (fotos originales del catalogo)
+├── scripts/         # aplicar_en_railway.sh, generar_qr.py
+├── PENDIENTES.txt   # relevamiento de lo que falta y lo hecho
 └── docker-compose.yml
 ```
 
@@ -123,10 +128,11 @@ proveedor no es usuario (sus datos los carga el Administrador en CU11). Caja (CU
 de reservas (CU08) se autorizan por permiso (`caja.crear` / `reservas.actualizar`), no por
 cargo; el ADMIN tambien puede operarlas en su sucursal (Equipetrol).
 
-El catalogo queda poblado con 6 productos de moda femenina (blusa de lino, vestido floral, jean de
-tiro alto, tapado de lana, botineta de cuero y chalina de alpaca), 63 variantes por talla/color e
-inventario en las 3 sucursales **repartido segun el clima de cada ciudad** (ver Modelo de negocio),
-mas 3 promociones de ejemplo (`BIENVENIDA10`, `VERANO15`, `INVIERNO30`).
+El catalogo queda poblado con prendas de moda femenina, variantes por talla/color e inventario en
+las 6 sucursales (Santa Cruz, La Paz, Cochabamba, Sucre, Tarija y Oruro) **repartido segun el clima
+de cada ciudad** (ver Modelo de negocio), mas 3 promociones de ejemplo (`BIENVENIDA10`,
+`VERANO15`, `INVIERNO30`), los tres planes SaaS con una suscripcion por sucursal y 60 dias de
+ventas de ejemplo (`db/04_historial_demo.sql`) para que los reportes tengan datos.
 
 ### Endpoints disponibles
 
@@ -151,6 +157,8 @@ uvicorn app.main:app --reload --port 8081
 ```
 
 ## Deploy en Railway
+
+El paso a paso completo esta en [`docs/RAILWAY.md`](docs/RAILWAY.md). Resumen:
 
 1. Crear un servicio Postgres en Railway y cargar `db/01_schema.sql`, `db/02_logica.sql` y
    (opcional en produccion) `db/03_datos_iniciales.sql` contra esa instancia.

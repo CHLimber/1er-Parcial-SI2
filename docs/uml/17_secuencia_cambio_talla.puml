@@ -1,0 +1,47 @@
+@startuml 17_secuencia_cambio_talla
+' ICONIX - Diagrama de secuencia de CU25 (derivado del diagrama de robustez 11): los controles
+' pasan a ser las operaciones reales de backend/app/modules/devoluciones/router.py.
+skinparam defaultFontName Arial
+autonumber
+title CU25 Registrar cambio de prenda por talla — Secuencia
+
+actor Encargado
+boundary "PanelDevolucionesPage" as UI
+participant "DevolucionesService\n(Angular)" as SVC
+participant "devoluciones/router.py" as R
+database "PostgreSQL" as DB
+
+Encargado -> UI : Nº de venta
+UI -> SVC : buscarVenta(numero)
+SVC -> R : GET /devoluciones/venta?numero=
+R -> DB : venta + líneas + plazos\n(devolucion_plazo_dias, cambio_plazo_dias)
+R --> UI : VentaDevolvibleOut (cambio_vence_en, fuera_de_plazo_cambio)
+Encargado -> UI : motivo TALLA
+UI -> SVC : variantesCambio(variante, sucursal)
+SVC -> R : GET /devoluciones/variantes-cambio
+R -> DB : otras tallas + inventario.disponible
+R --> UI : VarianteCambioOut[]
+Encargado -> UI : condiciones, unidades, talla elegida
+UI -> SVC : registrar(DevolucionIn)
+SVC -> R : POST /devoluciones
+R -> R : condiciones_faltantes(TALLA, …)
+alt falta etiqueta, uso o comprobante
+  R --> UI : 409 «falta …»
+else condiciones ok
+  R -> DB : SELECT … FOR UPDATE (venta)
+  R -> R : plazo = cambio_plazo_dias
+  R -> DB : _validar_cambio_linea: misma prenda, otra talla, disponible
+  alt sin stock de la talla pedida
+    R --> UI : 409 «no hay stock para el cambio»
+  else
+    R -> DB : INSERT devolucion (numero = NDV-…)\nINSERT devolucion_detalle (variante_solicitada_id)
+    R -> DB : registrar_auditoria
+    R --> UI : 201 DevolucionDetalleOut
+  end
+end
+Encargado -> UI : Imprimir nota
+UI -> SVC : nota(id)
+SVC -> R : GET /devoluciones/{id}/nota
+R --> UI : NotaDevolucionOut
+UI -> UI : window.print()
+@enduml

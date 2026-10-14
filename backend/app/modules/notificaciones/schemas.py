@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 class NotificacionOut(BaseModel):
     id: UUID
-    tipo: str  # tipo_notificacion: RESERVA / VENTA / STOCK / PROMO
+    tipo: str  # tipo_notificacion: RESERVA / VENTA / STOCK / PROMO / SUSCRIPCION
     titulo: str
     mensaje: str
     # A que apunta el aviso (RESERVA, VENTA, ENVIO, ...). VARCHAR libre en la tabla, no ENUM.

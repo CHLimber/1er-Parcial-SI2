@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.plan import exigir_limite
 from app.core.security import hash_password
 from app.modules.usuarios.admin_schemas import (
     ClienteUpdate,
@@ -168,6 +169,8 @@ async def crear_staff(
             detail="No se puede asignar personal a una sucursal dada de baja",
         )
 
+    # SaaS (PENDIENTES 5.4): el plan de la sucursal limita cuanto personal puede tener
+    await exigir_limite(conn, body.sucursal_id, "empleados")
     try:
         async with conn.transaction():
             nuevo_id = await conn.fetchval(

@@ -137,7 +137,7 @@ class GaleriaImagenOut {
 }
 
 /// Un anclaje normalizado (0-1) sobre el PNG de un overlay AR. Ver
-/// `IMAGENES_AR.txt` punto 4 para el formato completo.
+/// `docs/IMAGENES_AR.txt` punto 4 para el formato completo.
 class AnclajePunto {
   AnclajePunto({required this.x, required this.y});
 

@@ -1,0 +1,70 @@
+@startuml 05_secuencia_reserva_concurrente
+' Dos clientas reservan a la vez la última unidad de la misma variante en la misma sucursal.
+' Fuente: reservas/router.py::crear_reserva / _crear_reserva_pendiente, app/core/mutex.py,
+'         db/02_logica.sql::fn_mover_inventario + tg_reserva_compromete_stock.
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign left
+autonumber
+title Reserva concurrente de la última unidad (inventario.disponible = 1)
+
+actor "Cliente A" as A
+actor "Cliente B" as B
+participant "API FastAPI\nPOST /reservas" as API
+participant "mutex_variante\n(asyncio.Lock por\nsucursal+variante)" as MX
+database "PostgreSQL\nreserva / reserva_detalle" as DB
+participant "fn_mover_inventario\n(inventario FOR UPDATE)" as FN
+
+par solicitudes simultáneas
+  A -> API : POST /reservas {sucursal, variante, cantidad 1}
+else
+  B -> API : POST /reservas {sucursal, variante, cantidad 1}
+end
+
+group Capa opcional: mutex de aplicación (solo dentro de un mismo proceso de Uvicorn)
+  API -> MX : acquire() para A
+  MX --> API : concedido
+  API -> MX : acquire() para B
+  note right of MX : B espera: el lock lo tiene A
+end
+
+== Transacción de A ==
+API -> DB : SELECT disponible (pre-chequeo) -> 1
+API -> DB : BEGIN; INSERT reserva (estado PENDIENTE)
+API -> DB : SAVEPOINT; INSERT reserva_detalle
+DB -> FN : tg_reserva_compromete_stock\nfn_mover_inventario(RESERVA, 1)
+FN -> FN : SELECT ... FROM inventario\nWHERE sucursal, variante FOR UPDATE  (fila bloqueada)
+FN -> FN : disponible 1 >= 1: cantidad_reservada += 1\nINSERT movimiento_inventario (RESERVA)
+FN --> DB : ok
+API -> DB : INSERT notificacion (Encargados)
+API -> DB : COMMIT  (libera el bloqueo de fila)
+API -> MX : release()
+API --> A : 201 Created — reserva PENDIENTE,\nitems_confirmados = [variante]
+
+== Transacción de B ==
+alt Con mutex (mismo proceso): B ve el saldo ya actualizado en el pre-chequeo
+  MX --> API : concedido a B
+  API -> DB : SELECT disponible -> 0
+  API --> B : 409 "No hay stock suficiente para ninguna de las prendas"\nmotivo: "Stock insuficiente en esa sucursal (0 disponible(s))"
+else Sin mutex (varios workers/instancias) o carrera entre pre-chequeo e INSERT
+  API -> DB : SELECT disponible -> 1 (leído antes del COMMIT de A)
+  API -> DB : BEGIN; INSERT reserva; SAVEPOINT; INSERT reserva_detalle
+  DB -> FN : fn_mover_inventario(RESERVA, 1)
+  FN -> FN : SELECT ... FOR UPDATE
+  note right of FN : B queda BLOQUEADO hasta que A hace COMMIT;\nal despertar lee la fila ya actualizada
+  FN -> FN : disponible 0 < 1
+  FN --> DB : RAISE 'No se puede reservar: hay 0 disponible(s), se piden 1'
+  DB --> API : asyncpg.PostgresError -> ROLLBACK TO SAVEPOINT
+  API -> API : rechazados += "Otro cliente reservo esa unidad justo antes"
+  API -> DB : ROLLBACK (no quedó ningún ítem: se descarta la reserva vacía)
+  API --> B : 409 "No se pudo reservar ninguna prenda:\nel stock cambio mientras se confirmaba"\nrechazados[0].motivo = "Otro cliente reservo esa unidad justo antes"
+end
+
+note over DB, FN
+  La garantía real es el FOR UPDATE de fn_mover_inventario y el CHECK
+  cantidad_fisica >= cantidad_reservada: funciona entre procesos e instancias.
+  El mutex solo evita trabajo inútil dentro de un proceso (se adquiere
+  ordenado por id de variante para no generar deadlocks).
+  Si B pidió varias prendas, las demás siguen su curso: la reserva se crea
+  con las aceptadas y la respuesta lista las rechazadas.
+end note
+@enduml

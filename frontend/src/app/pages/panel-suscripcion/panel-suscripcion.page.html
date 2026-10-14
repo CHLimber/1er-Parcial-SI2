@@ -1,0 +1,183 @@
+<app-panel-shell
+  titulo="Suscripción"
+  bajada="Cada sucursal es un tenant de FashionStore con su propio plan. El plan decide qué funciones de gestión usa y cuánto personal y cajas admite."
+>
+  @if (aviso()) {
+    <p class="exito">{{ aviso() }}</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  @if (esAdmin && tenants().length > 1) {
+    <section class="panel">
+      <h2 class="panel__titulo">Tenants de la plataforma</h2>
+      <div class="tabla-envoltorio">
+        <table class="tabla">
+          <thead>
+            <tr>
+              <th>Sucursal</th>
+              <th>Plan</th>
+              <th>Estado</th>
+              <th>Vence</th>
+              <th class="tabla__numero">Personal</th>
+              <th class="tabla__numero">Cajas</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (t of tenants(); track t.sucursal_id) {
+              <tr [class.fila--activa]="actual()?.sucursal_id === t.sucursal_id">
+                <td>{{ t.sucursal }} <div class="secundario">{{ t.ciudad }}</div></td>
+                <td>{{ t.plan.nombre }}</td>
+                <td>
+                  <span class="badge" [class.badge--ok]="t.vigente" [class.badge--baja]="!t.vigente">
+                    {{ t.vigente ? (t.estado === 'PRUEBA' ? 'En prueba' : 'Al día') : 'Vencida' }}
+                  </span>
+                </td>
+                <td>{{ fecha(t.vence_en) }}</td>
+                <td class="tabla__numero">{{ t.empleados }} / {{ tope(t.plan.max_empleados) }}</td>
+                <td class="tabla__numero">{{ t.cajas }} / {{ tope(t.plan.max_cajas) }}</td>
+                <td class="tabla__acciones">
+                  <button type="button" class="boton boton--chico boton--secundario" (click)="elegir(t)">Ver</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+
+  @if (cargando()) {
+    <p class="estado">Cargando…</p>
+  } @else if (actual(); as s) {
+    <section class="panel">
+      <h2 class="panel__titulo">{{ s.sucursal }}</h2>
+      <div class="resumen">
+        <div>
+          <span class="resumen__etiqueta">Plan</span>
+          <strong class="resumen__valor">{{ s.plan.nombre }}</strong>
+        </div>
+        <div>
+          <span class="resumen__etiqueta">Estado</span>
+          <span class="badge" [class.badge--ok]="s.vigente" [class.badge--baja]="!s.vigente">
+            {{ s.vigente ? (s.estado === 'PRUEBA' ? 'En prueba' : 'Al día') : 'Vencida' }}
+          </span>
+        </div>
+        <div>
+          <span class="resumen__etiqueta">{{ s.vigente ? 'Vence' : 'Venció' }}</span>
+          <strong class="resumen__valor">{{ fecha(s.vence_en) }}</strong>
+          @if (s.vigente) { <span class="secundario">({{ s.dias_restantes }} días)</span> }
+        </div>
+        <div>
+          <span class="resumen__etiqueta">Personal</span>
+          <strong class="resumen__valor">{{ s.empleados }} / {{ tope(s.plan.max_empleados) }}</strong>
+        </div>
+        <div>
+          <span class="resumen__etiqueta">Cajas</span>
+          <strong class="resumen__valor">{{ s.cajas }} / {{ tope(s.plan.max_cajas) }}</strong>
+        </div>
+      </div>
+      @if (!s.vigente) {
+        <p class="error">
+          La suscripción venció: perfil de clientas, traspasos y reportes con IA quedan bloqueados hasta renovarla.
+        </p>
+      }
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Planes</h2>
+      @if (puedePagar) {
+        <div class="barra">
+          <div class="campo">
+            <label for="meses">Meses a pagar</label>
+            <select id="meses" [(ngModel)]="meses" name="meses">
+              @for (m of [1, 3, 6, 12]; track m) {
+                <option [ngValue]="m">{{ m }}</option>
+              }
+            </select>
+          </div>
+          @if (esAdmin) {
+            <div class="campo">
+              <label for="metodo">Pago manual por</label>
+              <select id="metodo" [(ngModel)]="metodoManual" name="metodo">
+                <option value="TRANSFERENCIA">Transferencia</option>
+                <option value="EFECTIVO">Efectivo</option>
+              </select>
+            </div>
+          }
+        </div>
+      }
+      <div class="planes">
+        @for (plan of planes(); track plan.id) {
+          <article class="plan" [class.plan--actual]="plan.codigo === s.plan.codigo">
+            <h3 class="plan__nombre">{{ plan.nombre }}</h3>
+            <p class="plan__precio">{{ precio(plan.precio_mensual) }} <span class="secundario">/ mes</span></p>
+            <p class="secundario">{{ plan.descripcion }}</p>
+            <ul class="plan__funciones">
+              <li>Caja, reservas, inventario y devoluciones</li>
+              <li>Personal: {{ tope(plan.max_empleados) }} · cajas: {{ tope(plan.max_cajas) }}</li>
+              <li [class.plan__no]="!plan.perfiles_clientes">Perfil de clientas</li>
+              <li [class.plan__no]="!plan.traspasos">Traspasos y sugerencias por demanda</li>
+              <li [class.plan__no]="!plan.ia_reportes">Reportes con IA</li>
+            </ul>
+            @if (puedePagar) {
+              <div class="acciones">
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="pagar(plan)">
+                  {{ plan.codigo === s.plan.codigo ? 'Renovar' : 'Cambiar a ' + plan.nombre }} · {{ precio(+plan.precio_mensual * meses) }}
+                </button>
+                @if (esAdmin) {
+                  <button type="button" class="boton boton--secundario" [disabled]="ocupado()" (click)="registrarManual(plan)">
+                    Registrar pago manual
+                  </button>
+                }
+              </div>
+            }
+          </article>
+        }
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel__titulo">Pagos</h2>
+      @if (pagos().length === 0) {
+        <p class="estado">Todavía no hay pagos registrados.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Plan</th>
+                <th class="tabla__numero">Meses</th>
+                <th class="tabla__numero">Monto</th>
+                <th>Medio</th>
+                <th>Estado</th>
+                <th>Período</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of pagos(); track p.id) {
+                <tr>
+                  <td>{{ fecha(p.creado_en) }}</td>
+                  <td>{{ p.plan }}</td>
+                  <td class="tabla__numero">{{ p.meses }}</td>
+                  <td class="tabla__numero">{{ precio(p.monto) }}</td>
+                  <td>{{ p.metodo }}</td>
+                  <td>
+                    <span class="badge" [class.badge--ok]="p.estado === 'APROBADO'"
+                      [class.badge--alerta]="p.estado === 'PENDIENTE'" [class.badge--baja]="p.estado === 'RECHAZADO'">
+                      {{ p.estado }}
+                    </span>
+                  </td>
+                  <td class="secundario">{{ fecha(p.periodo_desde) }} → {{ fecha(p.periodo_hasta) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+</app-panel-shell>

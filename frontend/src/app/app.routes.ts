@@ -209,6 +209,20 @@ export const routes: Routes = [
         canActivate: [permisoGuard('reportes.leer')],
       },
       {
+        // Segundo parcial (PENDIENTES 5.7): cartera y perfil de clientas por tenant
+        path: 'clientes',
+        loadComponent: () =>
+          import('./pages/panel-clientes/panel-clientes.page').then((m) => m.PanelClientesPage),
+        canActivate: [permisoGuard('clientes.leer', 'clientes.actualizar')],
+      },
+      {
+        // Segundo parcial (PENDIENTES 5.4-5.6): plan y pago de la suscripcion del tenant
+        path: 'suscripcion',
+        loadComponent: () =>
+          import('./pages/panel-suscripcion/panel-suscripcion.page').then((m) => m.PanelSuscripcionPage),
+        canActivate: [permisoGuard('suscripciones.leer', 'suscripciones.actualizar')],
+      },
+      {
         path: 'auditoria',
         loadComponent: () =>
           import('./pages/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),

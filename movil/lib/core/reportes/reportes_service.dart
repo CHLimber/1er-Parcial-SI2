@@ -92,6 +92,20 @@ class ReportesService {
     return comoLista(respuesta).map(ProductoRankingOut.desdeJson).toList();
   }
 
+  /// Mermas, devoluciones por defecto, faltantes de traspaso y de caja (PENDIENTES 5.13).
+  Future<List<PerdidaSucursalOut>> listarPerdidas({
+    DateTime? desde,
+    DateTime? hasta,
+    String? sucursalId,
+  }) async {
+    final respuesta = await api.get('/reportes/perdidas', query: {
+      'desde': desde == null ? null : _soloFecha(desde),
+      'hasta': hasta == null ? null : _soloFecha(hasta),
+      'sucursal_id': sucursalId,
+    });
+    return comoLista(respuesta).map(PerdidaSucursalOut.desdeJson).toList();
+  }
+
   // --- Estaticos: foto del estado actual, sin filtro de fecha ---------------------------
 
   Future<List<StockSucursalOut>> listarStockPorSucursal({String? sucursalId}) async {

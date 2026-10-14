@@ -1,7 +1,7 @@
 -- =====================================================================
 --  FashionStore - Datos iniciales para desarrollo local
---  Modelo de negocio: cadena de MODA FEMENINA (mujer de 18 a 40 anios) con tres
---  sucursales en tres climas distintos de Bolivia. Todo el catalogo es genero
+--  Modelo de negocio: cadena de MODA FEMENINA (mujer de 18 a 40 anios) con seis
+--  sucursales en climas distintos de Bolivia. Todo el catalogo es genero
 --  MUJER; el surtido de cada sucursal se reparte segun el clima de su ciudad y
 --  la temporada de la prenda, no en partes iguales (ver INVENTARIO, mas abajo).
 --  Cubre login, catalogo (con filtros por categoria/busqueda), inventario
@@ -79,7 +79,12 @@ INSERT INTO permiso (codigo, modulo, descripcion) VALUES
     ('traspasos.leer',        'traspasos',   'Consultar los traspasos que salen o llegan a la sucursal'),
     ('traspasos.crear',       'traspasos',   'Solicitar un traspaso desde la propia sucursal a otra'),
     ('traspasos.actualizar',  'traspasos',   'Despachar un traspaso (sale el stock) o recibirlo (entra en destino)'),
-    ('traspasos.eliminar',    'traspasos',   'Anular un traspaso solicitado o en transito');
+    ('traspasos.eliminar',    'traspasos',   'Anular un traspaso solicitado o en transito'),
+    -- Segundo parcial (PENDIENTES 5.4-5.7): SaaS por tenant (sucursal)
+    ('suscripciones.leer',    'suscripciones','Consultar el plan y la suscripcion de la sucursal'),
+    ('suscripciones.actualizar','suscripciones','Cambiar de plan y pagar la suscripcion de la sucursal'),
+    ('clientes.leer',         'clientes',    'Consultar la cartera de clientas de la sucursal'),
+    ('clientes.actualizar',   'clientes',    'Editar el perfil de una clienta en la sucursal');
 
 -- ADMIN: todo
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -100,7 +105,9 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
                     'reportes.leer',
                     'envios.leer','envios.actualizar',
                     'devoluciones.leer','devoluciones.crear','devoluciones.actualizar',
-                    'traspasos.leer','traspasos.crear','traspasos.actualizar','traspasos.eliminar');
+                    'traspasos.leer','traspasos.crear','traspasos.actualizar','traspasos.eliminar',
+                    'suscripciones.leer','suscripciones.actualizar',
+                    'clientes.leer','clientes.actualizar');
 
 -- CAJERO: caja, punto de venta y verificacion de pagos online QR/efectivo (todo cuelga de
 -- caja.crear, ver get_cajero_actual en app/core/deps.py)
@@ -120,7 +127,8 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ALMACEN'), p.id
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
   FROM permiso p
- WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar');
+ WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar',
+                    'clientes.leer');
 
 -- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
 -- fn_cotizar_envio no tiene distancia que cobrar. Son las de cada barrio real.
@@ -131,12 +139,23 @@ INSERT INTO sucursal (codigo, nombre, ciudad, direccion, latitud, longitud,
     ('LP-01', 'FashionStore Sopocachi',  'LA_PAZ',     'Av. 6 de Agosto #2050',
      -16.5090000, -68.1290000, '09:30', '19:30', 2),
     ('CB-01', 'FashionStore Cala Cala',  'COCHABAMBA', 'Av. America Este #480',
-     -17.3660000, -66.1540000, '09:00', '20:00', 2);
+     -17.3660000, -66.1540000, '09:00', '20:00', 2),
+    -- Segundo parcial (PENDIENTES 5.11): la cadena crece a 6 sucursales; cada una es un tenant
+    -- con su propia suscripcion (bloque SAAS, mas abajo).
+    ('SU-01', 'FashionStore Sucre Centro', 'SUCRE',  'Calle Arenales #45',
+     -19.0476000, -65.2600000, '09:00', '19:30', 1),
+    ('TJ-01', 'FashionStore Tarija Las Panosas', 'TARIJA', 'Av. Las Americas #310',
+     -21.5355000, -64.7296000, '09:00', '20:00', 2),
+    ('OR-01', 'FashionStore Oruro Bolivar', 'ORURO',  'Calle Bolivar #620',
+     -17.9667000, -67.1060000, '09:30', '19:00', 1);
 
 INSERT INTO caja (sucursal_id, codigo, nombre) VALUES
     ((SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'CAJA-01', 'Caja principal Equipetrol'),
     ((SELECT id FROM sucursal WHERE codigo = 'LP-01'), 'CAJA-01', 'Caja principal Sopocachi'),
-    ((SELECT id FROM sucursal WHERE codigo = 'CB-01'), 'CAJA-01', 'Caja principal Cala Cala');
+    ((SELECT id FROM sucursal WHERE codigo = 'CB-01'), 'CAJA-01', 'Caja principal Cala Cala'),
+    ((SELECT id FROM sucursal WHERE codigo = 'SU-01'), 'CAJA-01', 'Caja principal Sucre'),
+    ((SELECT id FROM sucursal WHERE codigo = 'TJ-01'), 'CAJA-01', 'Caja principal Tarija'),
+    ((SELECT id FROM sucursal WHERE codigo = 'OR-01'), 'CAJA-01', 'Caja principal Oruro');
 
 -- ---------------------------------------------------------------------
 -- USUARIOS
@@ -167,7 +186,19 @@ INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email
     ('vendedor.scz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Daniela', 'Vargas',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'VENDEDOR'),  TRUE),
     ('almacen.scz@fashionstore.bo',     crypt('demo1234', gen_salt('bf')), 'Marco',   'Gutierrez',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE);
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE),
+    ('encargada.sucre@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Paola',   'Arancibia',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
+    ('cajero.sucre@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Diego',   'Salazar',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
+    ('encargada.tarija@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Natalia', 'Arce',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
+    ('cajera.tarija@fashionstore.bo',   crypt('demo1234', gen_salt('bf')), 'Gabriela', 'Paz',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
+    ('encargado.oruro@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Hugo',    'Choque',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
+    ('cajera.oruro@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Rosa',    'Mamani',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE);
 
 INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado) VALUES
     ('cliente@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Cliente', 'Demo',   'CLIENTE', TRUE),
@@ -189,7 +220,19 @@ INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
     ((SELECT id FROM usuario WHERE email = 'vendedor.scz@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'VENDEDOR', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'almacen.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE);
+     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'encargada.sucre@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'SU-01'), 'ENCARGADO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'cajero.sucre@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'SU-01'), 'CAJERO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'encargada.tarija@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'TJ-01'), 'ENCARGADO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'cajera.tarija@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'TJ-01'), 'CAJERO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'encargado.oruro@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'OR-01'), 'ENCARGADO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'cajera.oruro@fashionstore.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'OR-01'), 'CAJERO', CURRENT_DATE);
 
 INSERT INTO perfil_cliente (usuario_id, talla_superior_id, talla_inferior_id, talla_calzado_id,
                              color_favorito_id, fecha_nacimiento, puntos_fidelidad, acepta_marketing)
@@ -286,7 +329,7 @@ INSERT INTO categoria (categoria_padre_id, nombre, slug) VALUES
     ((SELECT id FROM categoria WHERE slug = 'calzado'), 'Sandalias',  'sandalias'),
     ((SELECT id FROM categoria WHERE slug = 'calzado'), 'Zapatos',    'zapatos');
 
--- Ver CATALOGO_DEMO.txt punto 3: Faldas/Sandalias/Zapatos se agregan para que
+-- Ver docs/CATALOGO_DEMO.txt punto 3: Faldas/Sandalias/Zapatos se agregan para que
 -- Botas (todo OI) contra Sandalias (todo PV) muestre el contraste de clima
 -- entre sucursales de forma mas clara que con una sola subcategoria "Botas".
 INSERT INTO marca (nombre) VALUES
@@ -448,13 +491,13 @@ WHERE t.tipo = 'LETRA' AND t.codigo = 'UNICA'
   AND c.nombre IN ('Gris', 'Beige', 'Vino');
 
 -- ---------------------------------------------------------------------
--- CATALOGO DE DEMOSTRACION: 34 productos nuevos (ver CATALOGO_DEMO.txt).
+-- CATALOGO DE DEMOSTRACION: 34 productos nuevos (ver docs/CATALOGO_DEMO.txt).
 -- Mismo patron que los 6 de arriba: PV/OI llevan coleccion_id + temporada_id,
 -- los atemporales (AT) no llevan ninguno de los dos. Genero siempre MUJER.
 -- ---------------------------------------------------------------------
 
 -- Recalibrar destacados: con 40 productos "casi todo destacado" deja de tener
--- sentido (CATALOGO_DEMO.txt punto 4.6). Los nuevos destacados se marcan en su
+-- sentido (docs/CATALOGO_DEMO.txt punto 4.6). Los nuevos destacados se marcan en su
 -- propio INSERT mas abajo, hasta sumar 9 repartidos entre las 9 categorias y
 -- las dos temporadas (mas atemporales).
 UPDATE producto SET destacado = FALSE WHERE codigo IN ('BLU-001', 'PAN-001');
@@ -631,7 +674,7 @@ FROM talla t CROSS JOIN color c
 WHERE t.tipo = 'LETRA' AND t.codigo IN ('XS', 'S', 'M', 'L')
   AND c.nombre = 'Negro';
 
--- Vestido Largo Estampado: estampado, un solo color nominal (ver CATALOGO_DEMO.txt
+-- Vestido Largo Estampado: estampado, un solo color nominal (ver docs/CATALOGO_DEMO.txt
 -- punto 1 -- no se le generan variantes de color por IA, se deforma el estampado).
 INSERT INTO producto_variante (producto_id, talla_id, color_id, sku)
 SELECT (SELECT id FROM producto WHERE slug = 'vestido-largo-estampado'), t.id, c.id,
@@ -906,7 +949,7 @@ VALUES (
     'Cuero sintetico', 'MUJER', 349.90, FALSE
 );
 
--- Bota Cania Alta de Gamuza: textura marcada, la IA la aplana (CATALOGO_DEMO.txt
+-- Bota Cania Alta de Gamuza: textura marcada, la IA la aplana (docs/CATALOGO_DEMO.txt
 -- punto 1). Colores reales de todos modos para el stock.
 INSERT INTO producto_variante (producto_id, talla_id, color_id, sku)
 SELECT (SELECT id FROM producto WHERE slug = 'bota-cania-alta-de-gamuza'), t.id, c.id,
@@ -1390,7 +1433,7 @@ INSERT INTO producto_imagen (producto_id, color_id, uso, url, formato, es_princi
 ;
 
 -- ---------------------------------------------------------------------
--- VARIANTES DE COLOR ADICIONALES (backend/3x4/variantes, ver PENDIENTES.txt):
+-- VARIANTES DE COLOR ADICIONALES (recursos/fotos-catalogo/variantes, ver PENDIENTES.txt):
 -- fotos por color generadas para (casi) todos los productos, con nombres de
 -- color mas especificos que los 10 fijos originales (p.ej. 'Azul Marino',
 -- 'Borgona Profundo'). Se agregan como colores nuevos en `color` salvo que el
@@ -2139,7 +2182,7 @@ INSERT INTO producto_variante (producto_id, talla_id, color_id, sku) VALUES
 -- clima para TODA variante que exista a esa altura -- asi las prendas nuevas
 -- entran solas en ese reparto.
 --
--- Plan completo del caso de uso en IMAGENES_AR.txt.
+-- Plan completo del caso de uso en docs/IMAGENES_AR.txt.
 -- ---------------------------------------------------------------------
 
 INSERT INTO color (nombre, codigo_hex) VALUES ('Turquesa', '#009688');
@@ -2219,7 +2262,7 @@ LEFT JOIN color c ON c.nombre = m.color_nombre;
 -- NIVEL 1 (AR_OVERLAY, PNG con transparencia real, recortados con deteccion de
 -- fondo conectado al borde para no comerse zonas internas del mismo color que
 -- el fondo). Los anclajes son coordenadas normalizadas 0-1 sobre el PNG
--- (formato en IMAGENES_AR.txt punto 4); escala_base es el ancho hombro a
+-- (formato en docs/IMAGENES_AR.txt punto 4); escala_base es el ancho hombro a
 -- hombro en cm a talla M, medido a ojo sobre la imagen igual que sugiere ese
 -- mismo documento. El visor movil hoy usa solo los dos hombros: con esos dos
 -- puntos la prenda ya escala sola segun que tan lejos este la clienta.
@@ -2229,7 +2272,7 @@ LEFT JOIN color c ON c.nombre = m.color_nombre;
 --   - "Cowboy boots" de Poly by Google -- https://poly.pizza/m/9Qf1MHGePvS
 --   - "Sandal" de jeremy               -- https://poly.pizza/m/4_4lQugjiRa
 -- Los dos GLB se REESCALARON a metros y se apoyaron en el piso (Y=0) como pide
--- IMAGENES_AR.txt punto 3: venian en unidades arbitrarias (la bota media 2.58
+-- docs/IMAGENES_AR.txt punto 3: venian en unidades arbitrarias (la bota media 2.58
 -- "metros" y la sandalia 9.65 de largo), y Scene Viewer los planta en RA con
 -- ese tamano. Ahora: bota 31x36x35 cm, sandalia 13x8x26 cm.
 -- Sin USDZ (la conversion pide Reality Converter, solo Mac): en movil el boton
@@ -2267,17 +2310,18 @@ VALUES
 -- ---------------------------------------------------------------------
 -- INVENTARIO: cada variante en cada sucursal, repartido SEGUN EL CLIMA
 --
--- Las tres sucursales estan en tres climas distintos, asi que la misma
--- coleccion no se distribuye en partes iguales. Es la razon por la que el
--- stock vive por sucursal (tabla inventario) y no en un unico saldo global:
+-- Las sucursales estan en climas distintos, asi que la misma coleccion no se
+-- distribuye en partes iguales. Es la razon por la que el stock vive por
+-- sucursal (tabla inventario) y no en un unico saldo global:
 --
---   SANTA_CRUZ  llanura, calido todo el anio -> pesa Primavera-Verano
---   LA_PAZ      altura, frio todo el anio    -> pesa Otonio-Invierno
---   COCHABAMBA  valle templado               -> surtido equilibrado
+--   CALIDO   (SANTA_CRUZ, TRINIDAD, COBIJA)       -> pesa Primavera-Verano
+--   FRIO     (LA_PAZ, EL_ALTO, ORURO, POTOSI)     -> pesa Otonio-Invierno
+--   TEMPLADO (COCHABAMBA, SUCRE, TARIJA)          -> surtido equilibrado
 --
 -- Las prendas atemporales (sin temporada_id, como el jean) rotan parejo en
--- las tres. El stock_minimo acompania: lo que casi no rota en una ciudad se
--- repone recien cuando baja a 1, no a 5.
+-- todas. El stock_minimo acompania: lo que casi no rota en una ciudad se
+-- repone recien cuando baja a 1, no a 5. Mismo CASE en
+-- db/reparaciones/sucursales_segundo_parcial.sql.
 -- ---------------------------------------------------------------------
 
 INSERT INTO inventario (sucursal_id, variante_id, cantidad_fisica, stock_minimo)
@@ -2285,21 +2329,25 @@ SELECT
     s.id,
     pv.id,
     (CASE
-        WHEN s.ciudad = 'SANTA_CRUZ' AND t.tipo = 'PRIMAVERA_VERANO' THEN 18 + random() * 10
-        WHEN s.ciudad = 'SANTA_CRUZ' AND t.tipo = 'OTONO_INVIERNO'   THEN  1 + random() * 3
-        WHEN s.ciudad = 'LA_PAZ'     AND t.tipo = 'OTONO_INVIERNO'   THEN 16 + random() * 10
-        WHEN s.ciudad = 'LA_PAZ'     AND t.tipo = 'PRIMAVERA_VERANO' THEN  2 + random() * 3
-        WHEN s.ciudad = 'COCHABAMBA' AND t.tipo IS NOT NULL          THEN  8 + random() * 7
+        WHEN c.clima = 'CALIDO'   AND t.tipo = 'PRIMAVERA_VERANO' THEN 18 + random() * 10
+        WHEN c.clima = 'CALIDO'   AND t.tipo = 'OTONO_INVIERNO'   THEN  1 + random() * 3
+        WHEN c.clima = 'FRIO'     AND t.tipo = 'OTONO_INVIERNO'   THEN 16 + random() * 10
+        WHEN c.clima = 'FRIO'     AND t.tipo = 'PRIMAVERA_VERANO' THEN  2 + random() * 3
+        WHEN c.clima = 'TEMPLADO' AND t.tipo IS NOT NULL          THEN  8 + random() * 7
         ELSE 10 + random() * 8   -- prendas atemporales, en cualquier sucursal
      END)::int,
     CASE
-        WHEN s.ciudad = 'SANTA_CRUZ' AND t.tipo = 'OTONO_INVIERNO'   THEN 1
-        WHEN s.ciudad = 'LA_PAZ'     AND t.tipo = 'PRIMAVERA_VERANO' THEN 1
+        WHEN c.clima = 'CALIDO' AND t.tipo = 'OTONO_INVIERNO'   THEN 1
+        WHEN c.clima = 'FRIO'   AND t.tipo = 'PRIMAVERA_VERANO' THEN 1
         ELSE 5
     END
 FROM producto_variante pv
 JOIN producto p       ON p.id = pv.producto_id
 CROSS JOIN sucursal s
+CROSS JOIN LATERAL (SELECT CASE
+        WHEN s.ciudad IN ('SANTA_CRUZ','TRINIDAD','COBIJA')    THEN 'CALIDO'
+        WHEN s.ciudad IN ('LA_PAZ','EL_ALTO','ORURO','POTOSI') THEN 'FRIO'
+        ELSE 'TEMPLADO' END AS clima) c
 LEFT JOIN temporada t ON t.id = p.temporada_id
 ON CONFLICT (sucursal_id, variante_id) DO NOTHING;
 
@@ -2350,3 +2398,54 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     -- incorrectas consecutivas (usuario.intentos_fallidos / bloqueado_hasta).
     ('login_max_intentos',     '5',   'Intentos fallidos de login permitidos antes de bloquear la cuenta'),
     ('login_bloqueo_minutos',  '15',  'Minutos que la cuenta queda bloqueada tras superar login_max_intentos');
+
+-- Segundo parcial (PENDIENTES 5.8): el cambio por talla/color tiene su propio plazo, mas corto
+-- que la devolucion con reintegro. Lo lee devoluciones/router.py.
+INSERT INTO configuracion (clave, valor, descripcion) VALUES
+    ('cambio_plazo_dias', '15', 'Dias desde la venta para aceptar un cambio de prenda por talla o color');
+
+-- ---------------------------------------------------------------------
+-- SAAS (PENDIENTES 5.4-5.7): tres planes y una suscripcion por tenant (sucursal)
+-- Mismos datos en db/reparaciones/segundo_parcial.sql.
+-- ---------------------------------------------------------------------
+
+INSERT INTO plan (codigo, nombre, descripcion, precio_mensual, max_empleados, max_cajas,
+                  perfiles_clientes, traspasos, ia_reportes, orden) VALUES
+    ('BASICO',      'Basico',      'Caja, reservas, inventario y devoluciones de una tienda chica',
+     350,  3,    1,    FALSE, FALSE, FALSE, 1),
+    ('PROFESIONAL', 'Profesional', 'Suma perfil de clientas, traspasos entre sucursales y mas personal',
+     750,  8,    2,    TRUE,  TRUE,  FALSE, 2),
+    ('PREMIUM',     'Premium',     'Todo lo anterior mas reportes con IA y sin limites de personal ni cajas',
+     1400, NULL, NULL, TRUE,  TRUE,  TRUE,  3);
+
+-- Equipetrol (casa matriz) en Premium; La Paz y Cochabamba en Profesional; Sucre y Tarija en
+-- Basico (Tarija todavia en prueba); Oruro con la suscripcion vencida, para ver el bloqueo.
+INSERT INTO suscripcion (sucursal_id, plan_id, estado, inicio, vence_en)
+SELECT s.id, p.id, x.estado::estado_suscripcion, now() - x.desde, now() + x.vence
+  FROM (VALUES
+        ('SC-01', 'PREMIUM',     'ACTIVA',  interval '90 days', interval '30 days'),
+        ('LP-01', 'PROFESIONAL', 'ACTIVA',  interval '60 days', interval '25 days'),
+        ('CB-01', 'PROFESIONAL', 'ACTIVA',  interval '60 days', interval '12 days'),
+        ('SU-01', 'BASICO',      'ACTIVA',  interval '30 days', interval '20 days'),
+        ('TJ-01', 'BASICO',      'PRUEBA',  interval '5 days',  interval '9 days'),
+        ('OR-01', 'BASICO',      'VENCIDA', interval '45 days', interval '-3 days')
+       ) AS x(codigo, plan, estado, desde, vence)
+  JOIN sucursal s ON s.codigo = x.codigo
+  JOIN plan p     ON p.codigo = x.plan;
+
+INSERT INTO pago_suscripcion (suscripcion_id, plan_id, meses, monto, metodo, estado,
+                              periodo_desde, periodo_hasta, creado_en, confirmado_en)
+SELECT su.id, su.plan_id, 1, p.precio_mensual, 'TRANSFERENCIA', 'APROBADO',
+       su.vence_en - interval '1 month', su.vence_en,
+       su.vence_en - interval '1 month', su.vence_en - interval '1 month'
+  FROM suscripcion su
+  JOIN plan p ON p.id = su.plan_id
+ WHERE su.estado IN ('ACTIVA','VENCIDA');
+
+-- Perfil de la clienta demo en la cartera de Equipetrol
+INSERT INTO cliente_perfil_tenant (sucursal_id, usuario_id, segmento, talla_habitual,
+                                   estilo_preferido, acepta_whatsapp, notas)
+VALUES ((SELECT id FROM sucursal WHERE codigo = 'SC-01'),
+        (SELECT id FROM usuario WHERE email = 'cliente@fashionstore.bo'),
+        'FRECUENTE', 'M', 'Casual / oficina', TRUE,
+        'Prefiere colores claros; avisarle cuando entren vestidos de la coleccion Llanura.');

@@ -1,0 +1,234 @@
+@startuml 08_clases_dominio
+' Modelo de dominio simplificado (inventario, reservas, ventas/pagos) derivado de
+' fashionstore/db/01_schema.sql. Solo atributos relevantes; PK uuid omitidas salvo excepciones.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+hide empty methods
+title FashionStore — Modelo de dominio (inventario, reservas, ventas y pagos)
+
+package "Organización" {
+  class Sucursal {
+    codigo : String
+    nombre : String
+    ciudad : ciudad_bo
+    cantidad_vestidores : int
+    activa : boolean
+  }
+  class Usuario {
+    email : String
+    tipo : tipo_usuario
+  }
+  class Empleado {
+    cargo : cargo_empleado
+    activo : boolean
+  }
+}
+
+package "Catálogo" {
+  class Producto {
+    codigo : String
+    nombre : String
+    precio_base : Decimal
+    activo : boolean
+  }
+  class ProductoVariante {
+    sku : String
+    precio : Decimal
+    precio_oferta : Decimal
+    activa : boolean
+  }
+  class Talla {
+    codigo : String
+  }
+  class Color {
+    nombre : String
+  }
+}
+
+package "Inventario" {
+  class Inventario {
+    cantidad_fisica : int
+    cantidad_reservada : int
+    /disponible : int = fisica - reservada
+    stock_minimo : int
+    --
+    {cantidad_fisica >= cantidad_reservada >= 0}
+  }
+  class MovimientoInventario <<append-only>> {
+    id : bigserial
+    tipo : tipo_movimiento
+    cantidad : int
+    saldo_anterior : int
+    saldo_nuevo : int
+    documento_tipo : String
+    documento_id : uuid
+    fecha : timestamptz
+  }
+  class Recepcion {
+    estado : estado_recepcion
+  }
+  class RecepcionDetalle {
+    cantidad : int
+  }
+}
+
+package "Reservas" {
+  class Reserva {
+    codigo : String
+    fecha_visita : date
+    hora_visita : time
+    expira_en : timestamptz
+    estado : estado_reserva
+    vestidor_asignado : String
+  }
+  class ReservaDetalle {
+    cantidad : int
+    estado_item : estado_item_res
+  }
+  class ReservaHistorial <<append-only>> {
+    estado_anterior : String
+    estado_nuevo : String
+    fecha : timestamptz
+  }
+}
+
+package "Ventas y pagos" {
+  class Carrito {
+    estado : estado_carrito
+  }
+  class CarritoItem {
+    cantidad : int
+    precio_unitario : Decimal
+  }
+  class Venta {
+    numero : String
+    canal : canal_venta
+    entrega : modo_entrega
+    subtotal : Decimal
+    descuento : Decimal
+    costo_envio : Decimal
+    iva : Decimal
+    total : Decimal
+    estado : estado_venta
+  }
+  class VentaDetalle {
+    cantidad : int
+    precio_unitario : Decimal
+    subtotal : Decimal
+  }
+  class Pago {
+    metodo : metodo_pago
+    pasarela : pasarela_pago
+    monto : Decimal
+    estado : estado_pago
+    id_transaccion : String
+    informado_en : timestamptz
+    referencia_cliente : String
+  }
+  class EventoPasarela {
+    evento_externo_id : String <<PK>>
+  }
+  class Comprobante {
+    numero : String
+    tipo : tipo_comprobante
+  }
+  class Envio {
+    estado : estado_envio
+    distancia_km : Decimal
+    costo : Decimal
+    proveedor_ruteo : String
+  }
+  class Notificacion {
+    tipo : tipo_notificacion
+    titulo : String
+    leida : boolean
+  }
+}
+
+enum estado_reserva {
+  PENDIENTE
+  CONFIRMADA
+  PREPARADA
+  CLIENTE_PRESENTE
+  ATENDIDA
+  CONVERTIDA
+  CANCELADA
+  EXPIRADA
+}
+enum estado_item_res {
+  RESERVADO
+  PREPARADO
+  PROBADO
+  COMPRADO
+  DESCARTADO
+}
+enum estado_venta {
+  PENDIENTE
+  PAGADA
+  ENTREGADA
+  ANULADA
+}
+enum estado_pago {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  REEMBOLSADO
+}
+enum tipo_movimiento {
+  ENTRADA
+  SALIDA
+  RESERVA
+  LIBERACION
+  AJUSTE
+  DEVOLUCION
+  TRASPASO_ENT
+  TRASPASO_SAL
+}
+
+Usuario "1" -- "0..1" Empleado
+Empleado "*" --> "1" Sucursal : trabaja en
+
+Producto "1" *-- "1..*" ProductoVariante
+ProductoVariante "*" --> "1" Talla
+ProductoVariante "*" --> "1" Color
+
+Sucursal "1" -- "*" Inventario
+ProductoVariante "1" -- "*" Inventario
+note on link : UNIQUE(sucursal, variante)
+Inventario ..> MovimientoInventario : fn_mover_inventario()\nescribe
+MovimientoInventario "*" --> "1" ProductoVariante
+MovimientoInventario "*" --> "1" Sucursal
+Recepcion "1" *-- "*" RecepcionDetalle
+Recepcion "*" --> "1" Sucursal
+RecepcionDetalle "*" --> "1" ProductoVariante
+
+Usuario "1" -- "*" Reserva : cliente
+Reserva "*" --> "1" Sucursal
+Reserva "1" *-- "1..*" ReservaDetalle
+ReservaDetalle "*" --> "1" ProductoVariante
+Reserva "1" *-- "*" ReservaHistorial
+
+Usuario "1" -- "*" Carrito
+Carrito "1" *-- "*" CarritoItem
+CarritoItem "*" --> "1" ProductoVariante
+Carrito "*" --> "0..1" Reserva : nace de
+
+Venta "*" --> "1" Sucursal
+Venta "*" --> "0..1" Usuario : cliente
+Venta "0..1" --> "0..1" Reserva : reserva_id
+Venta "*" --> "0..1" Carrito
+Venta "1" *-- "*" VentaDetalle
+VentaDetalle "*" --> "1" ProductoVariante
+Venta "1" *-- "1..*" Pago
+Pago "1" -- "*" EventoPasarela : idempotencia
+Venta "1" *-- "0..1" Comprobante
+Venta "1" *-- "0..1" Envio : entrega = DOMICILIO
+Usuario "1" -- "*" Notificacion
+
+Reserva ..> estado_reserva
+ReservaDetalle ..> estado_item_res
+Venta ..> estado_venta
+Pago ..> estado_pago
+MovimientoInventario ..> tipo_movimiento
+@enduml

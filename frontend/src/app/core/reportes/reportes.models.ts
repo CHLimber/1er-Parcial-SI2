@@ -180,3 +180,19 @@ export interface ExistenciasPaginadoOut {
   resumen: ResumenExistenciasOut;
   items: ExistenciaOut[];
 }
+
+/** Perdidas del periodo por sucursal (Segundo parcial, tema "perdida", PENDIENTES 5.13).
+ * Mercaderia valorizada a precio de lista. */
+export interface PerdidaSucursalOut {
+  sucursal_id: string;
+  sucursal: string;
+  mermas_unidades: number;
+  mermas_valor: number;
+  defectos_casos: number;
+  defectos_unidades: number;
+  defectos_monto: number;
+  traspaso_faltante_unidades: number;
+  traspaso_faltante_valor: number;
+  faltante_caja: number;
+  total_perdida: number;
+}

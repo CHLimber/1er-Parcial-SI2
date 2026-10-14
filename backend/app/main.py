@@ -17,6 +17,7 @@ from app.modules.caja.router import router as caja_router
 from app.modules.carrito.router import router as carrito_router
 from app.modules.catalogo.admin_router import router as catalogo_admin_router
 from app.modules.catalogo.router import router as catalogo_router
+from app.modules.clientes.router import router as clientes_router
 from app.modules.devoluciones.router import router as devoluciones_router
 from app.modules.direcciones.router import router as direcciones_router
 from app.modules.envios.admin_router import router as envios_admin_router
@@ -29,6 +30,7 @@ from app.modules.recepciones.router import router as recepciones_router
 from app.modules.recomendaciones.router import router as recomendaciones_router
 from app.modules.reportes.router import router as reportes_router
 from app.modules.reservas.router import router as reservas_router
+from app.modules.saas.router import router as saas_router
 from app.modules.sucursales.admin_router import router as sucursales_admin_router
 from app.modules.sucursales.router import router as sucursales_router
 from app.modules.traspasos.router import router as traspasos_router
@@ -120,6 +122,8 @@ app.include_router(envios_admin_router)
 app.include_router(notificaciones_router)
 app.include_router(devoluciones_router)
 app.include_router(traspasos_router)
+app.include_router(saas_router)
+app.include_router(clientes_router)
 
 
 @app.get("/health")

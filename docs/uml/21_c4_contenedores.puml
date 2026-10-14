@@ -1,0 +1,37 @@
+@startuml 21_c4_contenedores
+' Arquitectura C4 - Nivel 2: Contenedores.
+!include <C4/C4_Container>
+LAYOUT_WITH_LEGEND()
+title FashionStore — C4 Nivel 2: Contenedores
+
+Person(clienta, "Clienta")
+Person(personal, "Personal / Admin")
+
+System_Boundary(fs, "FashionStore SaaS") {
+  Container(pwa, "PWA web", "Angular 20 + Service Worker", "Tienda y panel de gestión. Instalable; abre sin red.")
+  ContainerDb(idb, "Base temporal web", "IndexedDB", "Últimas respuestas de la API y cola de operaciones sin red.")
+  Container(app, "App móvil", "Flutter (Android/iOS)", "Mismos CU + vestidor virtual con RA.")
+  ContainerDb(sqlite, "Base local móvil", "SQLite (sqflite)", "Caché de respuestas y cola de pendientes.")
+  Container(nginx, "Servidor web", "Nginx", "Sirve el build de la PWA; no-cache para ngsw.")
+  Container(api, "API", "FastAPI + asyncpg (Python 3.12)", "Módulos por dominio; autoriza por permiso y por plan del tenant.")
+  ContainerDb(pg, "Base de datos", "PostgreSQL 16", "Esquema + lógica de negocio: triggers de stock, kardex, vistas, planes y suscripciones.")
+}
+
+System_Ext(stripe, "Stripe")
+System_Ext(claude, "Claude API")
+System_Ext(ors, "openrouteservice")
+
+Rel(clienta, pwa, "Usa", "HTTPS")
+Rel(clienta, app, "Usa")
+Rel(personal, pwa, "Gestiona", "HTTPS")
+Rel(nginx, pwa, "Entrega los archivos")
+Rel(pwa, idb, "Lee/escribe")
+Rel(app, sqlite, "Lee/escribe")
+Rel(pwa, api, "JSON/REST + JWT", "HTTPS")
+Rel(app, api, "JSON/REST + JWT", "HTTPS")
+Rel(api, pg, "SQL", "asyncpg")
+Rel(api, stripe, "Checkout / Refund", "HTTPS")
+Rel(stripe, api, "Webhook firmado", "HTTPS")
+Rel(api, claude, "tool use", "HTTPS")
+Rel(api, ors, "Distancias", "HTTPS")
+@enduml

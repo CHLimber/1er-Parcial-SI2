@@ -32,10 +32,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.plan import requiere_funcion_plan
 from app.modules.traspasos.schemas import (
     DetalleTraspasoOut,
     MovimientoTraspasoOut,
     RecibirIn,
+    SugerenciaTraspasoOut,
     TraspasoDetalleOut,
     TraspasoIn,
     TraspasoOut,
@@ -47,7 +49,11 @@ router = APIRouter(prefix="/traspasos", tags=["traspasos"])
 puede_ver = requiere_permiso(
     "traspasos.leer", "traspasos.crear", "traspasos.actualizar", "traspasos.eliminar"
 )
-puede_crear = requiere_permiso("traspasos.crear")
+# SaaS (PENDIENTES 5.6): crear traspasos y ver sugerencias depende del plan de la sucursal
+puede_crear = requiere_funcion_plan("traspasos", "traspasos.crear")
+puede_ver_sugerencias = requiere_funcion_plan(
+    "traspasos", "traspasos.leer", "traspasos.crear", "traspasos.actualizar"
+)
 puede_actualizar = requiere_permiso("traspasos.actualizar")
 puede_anular = requiere_permiso("traspasos.eliminar")
 
@@ -290,6 +296,105 @@ async def buscar_variantes(
         destino_id,
     )
     return [VarianteTraspasoOut(**dict(fila)) for fila in filas]
+
+
+SQL_SUGERENCIAS = """
+WITH ventas AS (
+    SELECT v.sucursal_id, vd.variante_id,
+           COALESCE(SUM(vd.cantidad) FILTER (
+               WHERE v.fecha >= now() - make_interval(days => $1)), 0) AS recientes,
+           COALESCE(SUM(vd.cantidad) FILTER (
+               WHERE v.fecha <  now() - make_interval(days => $1)), 0) AS anteriores
+    FROM venta v
+    JOIN venta_detalle vd ON vd.venta_id = v.id
+    WHERE v.estado IN ('PAGADA','ENTREGADA')
+      AND v.fecha >= now() - make_interval(days => 2 * $1)
+    GROUP BY v.sucursal_id, vd.variante_id
+),
+demanda AS (
+    SELECT i.sucursal_id, i.variante_id, i.disponible, i.stock_minimo,
+           COALESCE(ve.recientes, 0)::int AS recientes,
+           COALESCE(ve.anteriores, 0)::int AS anteriores,
+           COALESCE(ve.recientes, 0)::numeric / $1 AS ritmo
+    FROM inventario i
+    JOIN sucursal s ON s.id = i.sucursal_id AND s.activa
+    LEFT JOIN ventas ve ON ve.sucursal_id = i.sucursal_id AND ve.variante_id = i.variante_id
+),
+necesidad AS (
+    SELECT d.*, CEIL(d.ritmo * $2)::int - d.disponible AS falta
+    FROM demanda d
+    WHERE d.recientes >= 2
+      AND d.recientes > d.anteriores
+      AND CEIL(d.ritmo * $2) > d.disponible
+      AND NOT EXISTS (
+          SELECT 1 FROM traspaso t JOIN traspaso_detalle td ON td.traspaso_id = t.id
+           WHERE t.sucursal_destino_id = d.sucursal_id AND td.variante_id = d.variante_id
+             AND t.estado IN ('SOLICITADO','EN_TRANSITO'))
+),
+excedente AS (
+    SELECT d.sucursal_id, d.variante_id, d.disponible,
+           d.disponible - GREATEST(d.stock_minimo, CEIL(d.ritmo * $2)::int) AS sobra
+    FROM demanda d
+),
+mejor AS (
+    SELECT DISTINCT ON (n.sucursal_id, n.variante_id)
+           n.sucursal_id AS destino_id, n.variante_id, n.recientes, n.anteriores,
+           n.disponible AS disponible_destino, n.ritmo, n.falta,
+           e.sucursal_id AS origen_id, e.disponible AS disponible_origen, e.sobra
+    FROM necesidad n
+    JOIN excedente e ON e.variante_id = n.variante_id
+                    AND e.sucursal_id <> n.sucursal_id
+                    AND e.sobra > 0
+    ORDER BY n.sucursal_id, n.variante_id, e.sobra DESC
+)
+SELECT m.variante_id, pv.sku, pr.nombre AS producto, ta.codigo AS talla,
+       c.nombre AS color, c.codigo_hex,
+       m.destino_id AS sucursal_destino_id, sd.nombre AS destino,
+       m.origen_id AS sucursal_origen_id, so.nombre AS origen,
+       m.recientes AS vendidas_recientes, m.anteriores AS vendidas_anteriores,
+       CASE WHEN m.anteriores > 0
+            THEN round((m.recientes - m.anteriores) * 100.0 / m.anteriores, 1)::float END
+           AS crecimiento_pct,
+       m.disponible_destino,
+       CASE WHEN m.ritmo > 0 THEN round(m.disponible_destino / m.ritmo, 1)::float END
+           AS cobertura_destino_dias,
+       m.disponible_origen,
+       m.sobra AS excedente_origen,
+       LEAST(m.falta, m.sobra) AS cantidad_sugerida
+FROM mejor m
+JOIN producto_variante pv ON pv.id = m.variante_id AND pv.activa
+JOIN producto pr          ON pr.id = pv.producto_id AND pr.activo
+JOIN talla ta             ON ta.id = pv.talla_id
+JOIN color c              ON c.id = pv.color_id
+JOIN sucursal sd          ON sd.id = m.destino_id
+JOIN sucursal so          ON so.id = m.origen_id
+WHERE ($3::uuid IS NULL OR m.destino_id = $3 OR m.origen_id = $3)
+ORDER BY (m.recientes - m.anteriores) DESC, m.falta DESC, pr.nombre, ta.orden
+LIMIT $4
+"""
+
+
+@router.get("/sugerencias", response_model=list[SugerenciaTraspasoOut])
+async def sugerir_traspasos(
+    dias: int = Query(default=14, ge=7, le=60, description="Ventana de demanda reciente"),
+    horizonte: int = Query(
+        default=21, ge=7, le=90, description="Dias de venta que el destino deberia poder cubrir"
+    ),
+    limite: int = Query(default=50, ge=1, le=200),
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver_sugerencias),
+) -> list[SugerenciaTraspasoOut]:
+    """Traspasos hacia donde la demanda crece (PENDIENTES 5.12).
+
+    Para cada prenda y sucursal compara lo vendido en los ultimos `dias` contra los `dias`
+    anteriores. Si crece (y se vendieron al menos 2) y el disponible no alcanza para `horizonte`
+    dias al ritmo actual, busca la sucursal a la que mas le sobra -- lo que tiene por encima de
+    su stock minimo y de su propia demanda para el mismo horizonte -- y sugiere mover lo que
+    falta (sin pasarse de lo que sobra). No sugiere lo que ya viaja en un traspaso abierto hacia
+    ese destino. Un ENCARGADO ve las sugerencias donde su sucursal es origen o destino.
+    """
+    filas = await conn.fetch(SQL_SUGERENCIAS, dias, horizonte, _mi_sucursal(staff), limite)
+    return [SugerenciaTraspasoOut(**dict(fila)) for fila in filas]
 
 
 @router.get("/{traspaso_id}", response_model=TraspasoDetalleOut)

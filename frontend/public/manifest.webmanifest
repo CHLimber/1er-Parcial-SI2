@@ -1,0 +1,23 @@
+{
+  "name": "FashionStore — moda femenina",
+  "short_name": "FashionStore",
+  "description": "Comprá, reservá vestidor y seguí tus pedidos en las sucursales de FashionStore en Bolivia.",
+  "lang": "es-BO",
+  "start_url": "/tienda",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#faf1ec",
+  "theme_color": "#2e2530",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Tienda", "url": "/tienda" },
+    { "name": "Mis reservas", "url": "/mis-reservas" },
+    { "name": "Mis compras", "url": "/mis-compras" }
+  ]
+}

@@ -1,0 +1,56 @@
+@startuml 10_casos_de_uso_segundo_parcial
+' ICONIX - Modelo de casos de uso del Segundo parcial (UML 2.5.1).
+left to right direction
+skinparam defaultFontName Arial
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #FCEFF2
+  BorderColor #C1516B
+}
+title FashionStore — Casos de uso del Segundo parcial
+
+actor "Clienta" as Clienta
+actor "Encargado\n(administración del tenant)" as Encargado
+actor "Cajero" as Cajero
+actor "Administrador\nde la plataforma" as Admin
+actor "Stripe" as Stripe <<sistema>>
+actor "Claude API" as Claude <<sistema>>
+
+Admin --|> Encargado
+
+rectangle "FashionStore SaaS" {
+  usecase "CU21 Consultar plan\ny suscripción del tenant" as CU21
+  usecase "CU22 Pagar o cambiar\nel plan de la suscripción" as CU22
+  usecase "CU23 Registrar pago manual\nde una suscripción" as CU23
+  usecase "CU24 Gestionar el perfil\nde las clientas del tenant" as CU24
+  usecase "CU25 Registrar cambio\nde prenda por talla" as CU25
+  usecase "CU26 Imprimir nota\nde devolución" as CU26
+  usecase "CU27 Consultar prendas con\ncambio solicitado en el mes" as CU27
+  usecase "CU28 Traspasar inventario\nhacia donde crece la demanda" as CU28
+  usecase "CU29 Consultar pérdidas\npor sucursal" as CU29
+  usecase "CU30 Consultar reportes con IA\nde varias sucursales" as CU30
+  usecase "CU31 Usar la tienda\nsin conexión (PWA / app)" as CU31
+  usecase "Verificar plan vigente\ndel tenant" as Verificar
+}
+
+Encargado --> CU21
+Encargado --> CU22
+Admin --> CU23
+Encargado --> CU24
+Encargado --> CU25
+Cajero --> CU25
+Encargado --> CU26
+Encargado --> CU27
+Encargado --> CU28
+Encargado --> CU29
+Encargado --> CU30
+Clienta --> CU31
+
+CU22 --> Stripe
+CU30 --> Claude
+
+CU26 .> CU25 : <<extend>>
+CU24 ..> Verificar : <<include>>
+CU28 ..> Verificar : <<include>>
+CU30 ..> Verificar : <<include>>
+@enduml

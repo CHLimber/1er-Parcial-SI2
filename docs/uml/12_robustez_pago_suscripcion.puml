@@ -1,0 +1,40 @@
+@startuml 12_robustez_pago_suscripcion
+' ICONIX - Robustez / comunicación de CU22 "Pagar o cambiar el plan de la suscripción".
+left to right direction
+skinparam defaultFontName Arial
+title CU22 Pagar o cambiar el plan — Robustez / Comunicación
+
+actor "Encargado" as A
+actor "Stripe" as S
+boundary "Pantalla Suscripción\n(panel-suscripcion)" as B1
+boundary "Checkout de Stripe" as B2
+boundary "Webhook\n/pagos/webhook/stripe" as B3
+control "Iniciar pago\n(crear Checkout)" as C1
+control "Verificar sesión\nal volver" as C2
+control "Aplicar pago\n(extender período)" as C3
+control "Idempotencia\npor evento" as C4
+entity "Plan" as E1
+entity "Suscripcion" as E2
+entity "PagoSuscripcion" as E3
+entity "EventoPasarela" as E4
+
+A --> B1 : 1: elige plan y meses
+B1 --> C1 : 2: iniciarPago(plan, meses)
+C1 --> E1 : 3: precio_mensual
+C1 --> E3 : 4: INSERT PENDIENTE
+C1 --> S : 5: Checkout Session (bob, tipo=SUSCRIPCION)
+C1 --> B1 : 6: url_pago
+B1 --> B2 : 7: redirige
+A --> B2 : 8: paga con tarjeta
+S --> B3 : 9: checkout.session.completed
+B3 --> C4 : 10: evento
+C4 --> E4 : 11: INSERT ON CONFLICT DO NOTHING
+C4 --> C3 : 12: [evento nuevo]
+B2 --> B1 : 13: vuelve con ?sesion=cs_…
+B1 --> C2 : 14: verificarPago(sesion)
+C2 --> S : 15: retrieve(session)
+C2 --> C3 : 16: [payment_status = paid]
+C3 --> E3 : 17: APROBADO + período
+C3 --> E2 : 18: plan pagado, ACTIVA,\nvence_en = max(vence, hoy) + meses
+C3 --> B1 : 19: plan vigente hasta …
+@enduml

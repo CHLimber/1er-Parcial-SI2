@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'compartido/aviso_conexion.dart';
 import 'core/auth/auth_service.dart';
 import 'core/carrito/carrito_service.dart';
 import 'core/notificaciones/notificaciones_service.dart';
+import 'core/offline/conexion_service.dart';
 import 'core/reservas/reserva_carrito_service.dart';
 import 'core/tema.dart';
 import 'rutas.dart';
@@ -17,6 +19,8 @@ Future<void> main() async {
   await reservaCarrito.inicializar();
 
   final carrito = CarritoService();
+  // PENDIENTES 5.3: cache SQLite + cola sin red; al sincronizar, el carrito cambia
+  final conexion = ConexionService()..despuesDeSincronizar(() => unawaited(carrito.refrescar()));
   // PENDIENTES 2.19.3: escucha a auth y hace polling del contador solo mientras hay sesion.
   final notificaciones = NotificacionesService(auth);
   if (auth.estaAutenticado) {
@@ -31,6 +35,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: reservaCarrito),
         ChangeNotifierProvider.value(value: carrito),
         ChangeNotifierProvider.value(value: notificaciones),
+        ChangeNotifierProvider.value(value: conexion),
       ],
       child: AppFashionStore(auth: auth),
     ),
@@ -59,5 +64,6 @@ class _AppFashionStoreState extends State<AppFashionStore> {
         debugShowCheckedModeBanner: false,
         theme: construirTema(),
         routerConfig: router,
+        builder: (context, child) => AvisoConexion(child: child ?? const SizedBox.shrink()),
       );
 }

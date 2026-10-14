@@ -14,6 +14,7 @@ from app.modules.pagos.servicio import (
     notificar_cajeros,
     reembolsar_pago_tardio,
 )
+from app.modules.saas.servicio import procesar_evento_stripe as procesar_evento_suscripcion
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -68,6 +69,17 @@ async def webhook_stripe(
         aprobado = False
     else:
         return WebhookOut(procesado=False, mensaje=f"Evento ignorado: {tipo}")
+
+    metadata = objeto.get("metadata") or {}
+    if metadata.get("tipo") == "SUSCRIPCION":
+        # SaaS (PENDIENTES 5.5): el pago de la suscripcion de un tenant, no una venta
+        procesado = await procesar_evento_suscripcion(
+            conn, UUID(metadata["pago_suscripcion_id"]), objeto["id"], event["id"], aprobado
+        )
+        return WebhookOut(
+            procesado=procesado,
+            mensaje="Suscripcion " + ("aprobada" if aprobado else "rechazada"),
+        )
 
     return await _procesar_evento(
         conn,

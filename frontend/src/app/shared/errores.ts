@@ -11,6 +11,10 @@ interface DetalleValidacion {
  */
 export function interpretarError(error: HttpErrorResponse, porDefecto = 'Ocurrió un error inesperado. Intentá de nuevo.'): string {
   if (error.status === 0) return 'No se pudo conectar con el servidor. Verificá tu conexión.';
+  // con la PWA instalada, sin red el service worker responde 504 "Gateway Timeout" (no status 0)
+  if (error.status === 504 && error.statusText === 'Gateway Timeout') {
+    return 'Sin conexión: esta acción necesita internet. Probá de nuevo cuando vuelva la red.';
+  }
   if (error.status === 401) return 'Tu sesión expiró. Iniciá sesión de nuevo.';
 
   const detalle = error.error?.detail;

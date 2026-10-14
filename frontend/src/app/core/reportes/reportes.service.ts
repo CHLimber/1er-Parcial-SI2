@@ -20,6 +20,7 @@ import {
   StockSucursalOut,
   VendedorOut,
   VentaDiariaOut,
+  PerdidaSucursalOut,
   VentaPorSucursalOut,
 } from './reportes.models';
 
@@ -55,6 +56,11 @@ export class ReportesService {
     return this.http.get<VentaPorSucursalOut[]>(`${this.base}/ventas-por-sucursal`, {
       params: paramsDesdeFiltro(filtro),
     });
+  }
+
+  /** Mermas, devoluciones por defecto, faltantes de traspaso y de caja (PENDIENTES 5.13). */
+  perdidas(filtro: FiltroReportes): Observable<PerdidaSucursalOut[]> {
+    return this.http.get<PerdidaSucursalOut[]>(`${this.base}/perdidas`, { params: paramsDesdeFiltro(filtro) });
   }
 
   topProductos(filtro: FiltroReportes, limite = 10): Observable<ProductoRankingOut[]> {

@@ -78,7 +78,19 @@ class _PanelTraspasosPaginaState extends State<PanelTraspasosPagina> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Traspasos'),
-        actions: [IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh))],
+        actions: [
+          IconButton(
+            tooltip: 'Sugerencias por demanda',
+            icon: const Icon(Icons.trending_up),
+            onPressed: () async {
+              final creado = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(builder: (_) => const SugerenciasTraspasoPagina()),
+              );
+              if (creado == true) _cargar();
+            },
+          ),
+          IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh)),
+        ],
       ),
       floatingActionButton: puedeCrear
           ? FloatingActionButton.extended(
@@ -852,6 +864,136 @@ class _DetalleTraspasoPaginaState extends State<DetalleTraspasoPagina> {
                   ],
                 ],
               ),
+      ),
+    );
+  }
+}
+
+
+/// Sugerencias de traspaso por demanda creciente (Segundo parcial, PENDIENTES 5.12), espejo de
+/// "Sugerencias por demanda" de la web: agrupadas por origen -> destino, y cada grupo se
+/// convierte en un traspaso SOLICITADO.
+class SugerenciasTraspasoPagina extends StatefulWidget {
+  const SugerenciasTraspasoPagina({super.key});
+
+  @override
+  State<SugerenciasTraspasoPagina> createState() => _SugerenciasTraspasoPaginaState();
+}
+
+class _SugerenciasTraspasoPaginaState extends State<SugerenciasTraspasoPagina> {
+  List<SugerenciaTraspasoOut>? _sugerencias;
+  String? _error;
+  bool _creando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    setState(() {
+      _sugerencias = null;
+      _error = null;
+    });
+    try {
+      final sugerencias = await traspasosService.sugerencias();
+      if (mounted) setState(() => _sugerencias = sugerencias);
+    } catch (error) {
+      if (mounted) setState(() => _error = interpretarError(error));
+    }
+  }
+
+  Future<void> _crear(List<SugerenciaTraspasoOut> grupo) async {
+    setState(() => _creando = true);
+    try {
+      final traspaso = await traspasosService.crear(
+        sucursalOrigenId: grupo.first.sucursalOrigenId,
+        sucursalDestinoId: grupo.first.sucursalDestinoId,
+        lineas: grupo.map((s) => MapEntry(s.varianteId, s.cantidadSugerida)).toList(),
+      );
+      if (!mounted) return;
+      mostrarAviso(context, 'Traspaso ${traspaso.numero} solicitado hacia ${grupo.first.destino}.');
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _creando = false);
+    }
+  }
+
+  String _crecimiento(SugerenciaTraspasoOut s) =>
+      s.crecimientoPct == null ? 'demanda nueva' : '+${s.crecimientoPct}%';
+
+  @override
+  Widget build(BuildContext context) {
+    final sugerencias = _sugerencias;
+    final grupos = <String, List<SugerenciaTraspasoOut>>{};
+    for (final s in sugerencias ?? const <SugerenciaTraspasoOut>[]) {
+      grupos.putIfAbsent('${s.sucursalOrigenId}>${s.sucursalDestinoId}', () => []).add(s);
+    }
+    final puedeCrear = context.watch<AuthService>().tienePermiso(['traspasos.crear']);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sugerencias por demanda')),
+      body: RefreshIndicator(
+        onRefresh: _cargar,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            const Text(
+              'Prendas que se vendieron mas en los ultimos 14 dias que en los 14 anteriores y '
+              'cuyo stock no alcanza para 21 dias. El origen es la sucursal a la que mas le sobra.',
+              style: TextStyle(fontSize: 12.5, color: Paleta.inkSuave),
+            ),
+            const SizedBox(height: 12),
+            if (_error != null) MensajeError(_error!),
+            if (sugerencias == null && _error == null)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            if (sugerencias != null && sugerencias.isEmpty)
+              const Text('No hay prendas con demanda creciente que falten en alguna sucursal.'),
+            ...grupos.values.map(
+              (grupo) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: TarjetaPanel(
+                  padding: const EdgeInsets.all(12),
+                  hijo: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${grupo.first.origen}  →  ${grupo.first.destino}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 6),
+                      ...grupo.map(
+                        (s) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Text(
+                            '${s.producto} · ${s.talla} · ${s.color}\n'
+                            'Vendidas ${s.vendidasAnteriores} → ${s.vendidasRecientes} (${_crecimiento(s)}) · '
+                            'stock destino ${s.disponibleDestino} · mover ${s.cantidadSugerida}',
+                            style: const TextStyle(fontSize: 12.5),
+                          ),
+                        ),
+                      ),
+                      if (puedeCrear)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: ElevatedButton(
+                            onPressed: _creando ? null : () => _crear(grupo),
+                            child: const Text('CREAR TRASPASO'),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

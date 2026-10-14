@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api.dart';
 import 'auth_models.dart';
+import '../offline/base_local.dart';
 
 /// CU07 y CU08 se autorizan por permiso (PENDIENTES 3.1), los mismos codigos que exigen
 /// `get_cajero_actual` / `get_encargado_actual` en el backend.
@@ -93,6 +94,8 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_claveSesion);
+    // la base local SQLite (PENDIENTES 5.3) guarda datos de este usuario: se vacia
+    await baseLocal.limpiar().catchError((_) {});
   }
 
   Future<UsuarioOut> _guardar(Map<String, dynamic> respuesta) async {

@@ -1,0 +1,34 @@
+@startuml 13_robustez_traspaso_demanda
+' ICONIX - Robustez / comunicación de CU28 "Traspasar inventario hacia donde crece la demanda".
+left to right direction
+skinparam defaultFontName Arial
+title CU28 Traspaso hacia donde crece la demanda — Robustez / Comunicación
+
+actor "Encargado\n(o Admin)" as A
+boundary "Pantalla Traspasos\n«Sugerencias por demanda»" as B1
+control "Verificar plan\n(traspasos)" as C0
+control "Medir demanda\nreciente vs anterior" as C1
+control "Calcular cobertura\ny necesidad" as C2
+control "Elegir origen con\nmás excedente" as C3
+control "Crear traspaso" as C4
+entity "Suscripcion + Plan" as E0
+entity "Venta / VentaDetalle" as E1
+entity "Inventario" as E2
+entity "Traspaso /\nTraspasoDetalle" as E3
+
+A --> B1 : 1: ver sugerencias (ventana, horizonte)
+B1 --> C0 : 2: sugerencias(dias, horizonte)
+C0 --> E0 : 3: plan incluye traspasos y vigente
+C0 --> C1 : 4: [habilitado]
+C1 --> E1 : 5: unidades por sucursal y prenda\n(últimos N días vs N anteriores)
+C1 --> C2 : 6: prendas con demanda creciente
+C2 --> E2 : 7: disponible del destino
+C2 --> C3 : 8: falta = ritmo × horizonte − disponible
+C3 --> E2 : 9: sobra = disponible − max(mínimo, demanda propia)
+C3 --> E3 : 10: excluir lo que ya viaja al destino
+C3 --> B1 : 11: sugerencias agrupadas origen → destino
+A --> B1 : 12: «Crear traspaso» de un grupo
+B1 --> C4 : 13: crear(origen, destino, líneas)
+C4 --> E3 : 14: INSERT SOLICITADO
+C4 --> B1 : 15: traspaso Nº … (falta despacharlo)
+@enduml

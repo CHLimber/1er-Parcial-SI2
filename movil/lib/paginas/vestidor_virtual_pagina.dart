@@ -15,7 +15,7 @@ import '../core/tema.dart';
 /// CU16 nivel 1: camara en vivo con la prenda (PNG con transparencia real)
 /// siguiendo el cuerpo de la clienta, con los hombros detectados por ML Kit
 /// Pose Detection. El mismo esquema de anclajes (`hombro_izq`/`hombro_der`/
-/// `cintura`, IMAGENES_AR.txt punto 4) sirve para cualquier prenda de torso,
+/// `cintura`, docs/IMAGENES_AR.txt punto 4) sirve para cualquier prenda de torso,
 /// asi que este visor no sabe nada de la prenda puntual: recibe el PNG y sus
 /// anclajes.
 ///
@@ -38,7 +38,7 @@ import '../core/tema.dart';
 ///    Por eso el anclaje `cintura` del PNG, que antes no se usaba, ahora si.
 ///
 /// Lo que NO hace, y no hay que prometer: oclusion, caida de tela y ajuste al
-/// volumen del cuerpo. Es un overlay plano anclado al torso (IMAGENES_AR.txt
+/// volumen del cuerpo. Es un overlay plano anclado al torso (docs/IMAGENES_AR.txt
 /// punto 6).
 class VestidorVirtualPagina extends StatefulWidget {
   const VestidorVirtualPagina({super.key, required this.nombrePrenda, required this.overlay});

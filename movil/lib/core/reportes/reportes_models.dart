@@ -442,3 +442,40 @@ class ConsultaIaOut {
         tabla: comoLista(j['tabla']),
       );
 }
+
+/// Perdidas del periodo por sucursal (Segundo parcial, tema "perdida", PENDIENTES 5.13).
+class PerdidaSucursalOut {
+  PerdidaSucursalOut({
+    required this.sucursal,
+    required this.mermasUnidades,
+    required this.mermasValor,
+    required this.defectosUnidades,
+    required this.defectosMonto,
+    required this.traspasoFaltanteUnidades,
+    required this.traspasoFaltanteValor,
+    required this.faltanteCaja,
+    required this.totalPerdida,
+  });
+
+  final String sucursal;
+  final int mermasUnidades;
+  final double mermasValor;
+  final int defectosUnidades;
+  final double defectosMonto;
+  final int traspasoFaltanteUnidades;
+  final double traspasoFaltanteValor;
+  final double faltanteCaja;
+  final double totalPerdida;
+
+  factory PerdidaSucursalOut.desdeJson(Map<String, dynamic> j) => PerdidaSucursalOut(
+        sucursal: j['sucursal'] as String,
+        mermasUnidades: aEntero(j['mermas_unidades']),
+        mermasValor: aDouble(j['mermas_valor']),
+        defectosUnidades: aEntero(j['defectos_unidades']),
+        defectosMonto: aDouble(j['defectos_monto']),
+        traspasoFaltanteUnidades: aEntero(j['traspaso_faltante_unidades']),
+        traspasoFaltanteValor: aDouble(j['traspaso_faltante_valor']),
+        faltanteCaja: aDouble(j['faltante_caja']),
+        totalPerdida: aDouble(j['total_perdida']),
+      );
+}

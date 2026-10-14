@@ -556,6 +556,7 @@
           <option value="ventasDiarias">Ventas diarias</option>
           <option value="ventasPorSucursal">Ventas por sucursal</option>
           <option value="topProductos">Top 10 productos más vendidos</option>
+          <option value="perdidas">Pérdidas por sucursal (mermas, defectos, faltantes)</option>
         </select>
       </div>
       <div class="campo">
@@ -753,6 +754,37 @@
                 </table>
               </div>
             }
+          }
+          @case ('perdidas') {
+            <p class="estado secundario">
+              Mermas = ajustes de inventario a la baja (robo, rotura, manchas). Mercadería valorizada a precio de lista.
+            </p>
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Sucursal</th>
+                    <th class="tabla__numero">Mermas</th>
+                    <th class="tabla__numero">Por defecto</th>
+                    <th class="tabla__numero">Faltante traspaso</th>
+                    <th class="tabla__numero">Faltante de caja</th>
+                    <th class="tabla__numero">Pérdida total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (fila of dinPerdidas(); track fila.sucursal_id) {
+                    <tr>
+                      <td>{{ fila.sucursal }}</td>
+                      <td class="tabla__numero">{{ fila.mermas_unidades }} u · Bs {{ fila.mermas_valor | number: '1.0-2' }}</td>
+                      <td class="tabla__numero">{{ fila.defectos_unidades }} u · Bs {{ fila.defectos_monto | number: '1.0-2' }}</td>
+                      <td class="tabla__numero">{{ fila.traspaso_faltante_unidades }} u · Bs {{ fila.traspaso_faltante_valor | number: '1.0-2' }}</td>
+                      <td class="tabla__numero">Bs {{ fila.faltante_caja | number: '1.0-2' }}</td>
+                      <td class="tabla__numero"><strong>Bs {{ fila.total_perdida | number: '1.0-2' }}</strong></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
           }
           @case ('topProductos') {
             @if (dinSinResultados()) {

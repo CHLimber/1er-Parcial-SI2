@@ -1,0 +1,71 @@
+@startuml 04_estados_venta_pago
+' Estados de la venta (ENUM estado_venta) y del pago (ENUM estado_pago) por método.
+' Fuente: ventas/router.py (checkout, pos), pagos/router.py (webhook Stripe, informar QR),
+'         pagos/servicio.py (confirmar_aprobado, _anular_por_conflicto, confirmar_rechazado),
+'         caja/router.py (aprobar/rechazar pago), app/core/jobs.py, envios/admin_router.py.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #FFFDF7
+  BorderColor #444444
+  ArrowColor #333333
+}
+title Venta y pago — estado_venta / estado_pago por método
+
+state "Venta (estado_venta)" as VENTA {
+  state "PENDIENTE" as V_PEND
+  state "PAGADA" as V_PAG #E8F5E9
+  state "ENTREGADA" as V_ENT #E8F5E9
+  state "ANULADA" as V_ANU #FDECEA
+
+  [*] --> V_PEND : «Cliente» POST /ventas/checkout\n(canal WEB/MOVIL)
+  [*] --> V_PAG : «Cajero» POST /ventas/pos, o «Encargado»\nresolver reserva (canal POS: nace pagada)
+  V_PEND --> V_PAG : pago APROBADO\n/ venta_detalle -> SALIDA, comprobante,\nnotificación "Pago aprobado", envío si DOMICILIO
+  V_PEND --> V_ANU : pago RECHAZADO o REEMBOLSADO
+  V_PAG --> V_ENT : «Servicio de delivery» (registrado por staff)\nenvío -> ENTREGADO [entrega = DOMICILIO]
+}
+
+state "Pago online (estado_pago)" as PAGO {
+  state "PENDIENTE" as P_PEND {
+    state "Stripe:\nesperando webhook" as P_STR
+    state "QR:\nsin informar" as P_QR
+    state "QR:\ninformado\n(informado_en)" as P_QRI
+    state "EFECTIVO:\npor cobrar" as P_EFE
+    P_QR --> P_QRI : «Cliente» POST /pagos/qr/{venta_id}/informar\n(referencia opcional) / notifica a Cajeros
+  }
+  state "APROBADO" as P_APR #E8F5E9
+  state "RECHAZADO" as P_REC #FDECEA
+  state "REEMBOLSADO" as P_REE #FFF3E0
+  state c_conf <<choice>>
+
+  [*] --> P_STR : checkout [metodo = STRIPE]\n(PaymentSheet / Checkout embebido)
+  [*] --> P_QR : checkout [metodo = QR]
+  [*] --> P_EFE : checkout [metodo = EFECTIVO]\n/ notifica a Cajeros
+
+  P_STR --> c_conf : «Sistema de pagos» webhook firmado\npayment_intent.succeeded /\ncheckout.session.completed [paid]
+  P_QRI --> c_conf : «Cajero» POST /caja/pagos/{id}/aprobar\n[carrito sin cambios]
+  P_EFE --> c_conf : «Cajero» aprobar\n[carrito sin cambios y sesión de caja abierta]
+
+  c_conf --> P_APR : [stock alcanza y carrito = subtotal]\nconfirmar_aprobado
+  c_conf --> P_REE : [conflicto de stock/carrito\ny ya se cobró: STRIPE o QR]
+  c_conf --> P_REC : [conflicto y era EFECTIVO\n(no se cobró nada)]
+
+  P_STR --> P_REC : «Sistema de pagos» payment_intent.canceled /\nasync_payment_failed / session.expired
+  P_QRI --> P_REC : «Cajero» rechazar(motivo)\n(depósito no encontrado)
+  P_EFE --> P_REC : «Cajero» rechazar(motivo)
+  P_QR --> P_REC : «Sistema (job)» 48 h sin informar\n(pago_pendiente_horas_vigencia)
+  P_EFE --> P_REC : «Sistema (job)» 48 h sin cobrar
+  P_PEND --> P_REC : «Cliente» nuevo checkout con otro\nmétodo/monto (pedido abandonado)
+}
+
+note bottom of PAGO
+  Idempotencia: evento_pasarela (PK = id del evento de Stripe) y
+  FOR UPDATE de pago + venta; si el pago ya no está PENDIENTE,
+  el webhook o el cajero no hacen nada (409 / "ya resuelto").
+  El job no toca un QR ya informado: queda para el Cajero.
+  En RECHAZADO/REEMBOLSADO la venta pasa a ANULADA, se devuelve
+  el uso del cupón y se notifica a la clienta. Mientras el pago
+  está PENDIENTE no se aparta stock (venta_detalle se inserta
+  recién al aprobar).
+end note
+@enduml

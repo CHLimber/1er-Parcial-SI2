@@ -84,3 +84,28 @@ export interface MovimientoTraspasoOut {
   saldo_nuevo: number;
   fecha: string;
 }
+
+/** Prenda cuya demanda crece en el destino y que sobra en el origen (PENDIENTES 5.12). */
+export interface SugerenciaTraspasoOut {
+  variante_id: string;
+  sku: string;
+  producto: string;
+  talla: string;
+  color: string;
+  codigo_hex: string;
+  sucursal_destino_id: string;
+  destino: string;
+  sucursal_origen_id: string;
+  origen: string;
+  /** vendidas en el destino en la ventana reciente y en la anterior */
+  vendidas_recientes: number;
+  vendidas_anteriores: number;
+  /** null: antes no se vendia (demanda nueva) */
+  crecimiento_pct: number | null;
+  disponible_destino: number;
+  /** cuantos dias alcanza el stock del destino al ritmo actual */
+  cobertura_destino_dias: number | null;
+  disponible_origen: number;
+  excedente_origen: number;
+  cantidad_sugerida: number;
+}

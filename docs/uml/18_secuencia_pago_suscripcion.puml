@@ -1,0 +1,44 @@
+@startuml 18_secuencia_pago_suscripcion
+' ICONIX - Diagrama de secuencia de CU22 (derivado del diagrama de robustez 12).
+skinparam defaultFontName Arial
+autonumber
+title CU22 Pagar o cambiar el plan — Secuencia
+
+actor Encargado
+boundary "PanelSuscripcionPage" as UI
+participant "saas/router.py" as R
+participant "saas/servicio.py" as SRV
+participant "pagos/router.py\n(webhook)" as WH
+participant "Stripe" as ST
+database "PostgreSQL" as DB
+
+Encargado -> UI : elige plan y meses
+UI -> R : POST /saas/suscripcion/checkout
+R -> DB : plan por código; INSERT pago_suscripcion PENDIENTE
+R -> ST : checkout.Session.create(bob, metadata tipo=SUSCRIPCION)
+ST --> R : session (id, url)
+R -> DB : pago.id_transaccion = session.id
+R --> UI : url_pago
+UI -> ST : redirige al Checkout
+Encargado -> ST : paga
+par webhook
+  ST -> WH : checkout.session.completed
+  WH -> SRV : procesar_evento_stripe(pago, evento)
+  SRV -> DB : INSERT evento_pasarela ON CONFLICT DO NOTHING
+  SRV -> SRV : aplicar_pago()
+else retorno del navegador
+  ST -> UI : /panel/suscripcion?sesion=cs_…
+  UI -> R : POST /saas/pagos/verificar?sesion=
+  R -> ST : Session.retrieve
+  R -> SRV : aplicar_pago() [paid]
+end
+SRV -> DB : SELECT … FOR UPDATE (pago, suscripcion)
+alt pago ya no está PENDIENTE
+  SRV --> SRV : no hace nada (idempotente)
+else
+  SRV -> SRV : nuevo_periodo(vence_en, meses)
+  SRV -> DB : pago APROBADO; suscripcion ACTIVA, plan pagado, vence_en
+  SRV -> DB : notificación a encargados
+end
+R --> UI : SuscripcionOut (vigente hasta …)
+@enduml

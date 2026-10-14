@@ -38,7 +38,7 @@ class ImagenIn(BaseModel):
     es_principal: bool = False
     orden: int = 0
     # CU16 (AR_OVERLAY): anclajes normalizados 0-1 (hombro_izq/hombro_der/cintura) + ancho de
-    # hombros real en cm a talla M. NULL para CATALOGO/AR_MODELO -- ver IMAGENES_AR.txt punto 4.
+    # hombros real en cm a talla M. NULL para CATALOGO/AR_MODELO -- ver docs/IMAGENES_AR.txt punto 4.
     anclajes: dict | None = None
     escala_base: Decimal | None = Field(default=None, ge=0, max_digits=6, decimal_places=3)
 

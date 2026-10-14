@@ -9,7 +9,7 @@
 #
 # Uso:
 #   ./aplicar_en_railway.sh "postgresql://user:pass@host:puerto/db"          # con datos demo
-#   ./aplicar_en_railway.sh "postgresql://user:pass@host:puerto/db" --sin-seed  # sin 03_datos_iniciales.sql
+#   ./aplicar_en_railway.sh "postgresql://user:pass@host:puerto/db" --sin-seed  # sin 03 ni 04 (datos demo)
 #
 # La URL debe ser la PUBLICA del plugin Postgres de Railway (variable DATABASE_PUBLIC_URL en
 # el tab "Variables" del servicio Postgres) -- la variable DATABASE_URL interna
@@ -24,7 +24,8 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../db" && pwd)"
 
 ARCHIVOS=(01_schema.sql 02_logica.sql)
 if [ "$SIN_SEED" != "--sin-seed" ]; then
-  ARCHIVOS+=(03_datos_iniciales.sql)
+  # 04 es el historial demo de ventas y mermas (Segundo parcial): solo tiene sentido con el seed
+  ARCHIVOS+=(03_datos_iniciales.sql 04_historial_demo.sql)
 fi
 
 # postgres:18 y no :16 -- el plugin de Railway ya corre Postgres 18, y aunque psql 16

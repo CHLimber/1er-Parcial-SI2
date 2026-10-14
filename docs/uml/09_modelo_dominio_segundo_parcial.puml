@@ -1,0 +1,166 @@
+@startuml 09_modelo_dominio_segundo_parcial
+' ICONIX - Modelo de dominio (UML 2.5.1, diagrama de clases sin operaciones).
+' Derivado de fashionstore/db/01_schema.sql al 14/10/2026: lo que suma el Segundo parcial
+' (SaaS multi-tenant, cambio de prenda por talla, traspasos por demanda, perdidas) sobre las
+' clases del primer parcial que toca. En gris lo que ya existia.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor<<nuevo>> #FCEFF2
+  BorderColor<<nuevo>> #C1516B
+  BackgroundColor<<existente>> #F4F4F4
+}
+hide empty methods
+title FashionStore — Modelo de dominio (Segundo parcial)
+
+package "SaaS (tenant = sucursal)" {
+  class Plan <<nuevo>> {
+    codigo : BASICO | PROFESIONAL | PREMIUM
+    precio_mensual : Decimal
+    max_empleados : int [0..1]
+    max_cajas : int [0..1]
+    perfiles_clientes : boolean
+    traspasos : boolean
+    ia_reportes : boolean
+  }
+  class Suscripcion <<nuevo>> {
+    estado : PRUEBA | ACTIVA | VENCIDA | CANCELADA
+    inicio : DateTime
+    vence_en : DateTime
+    /vigente : boolean
+  }
+  class PagoSuscripcion <<nuevo>> {
+    meses : int {1..12}
+    monto : Decimal
+    metodo : STRIPE | EFECTIVO | TRANSFERENCIA
+    estado : estado_pago
+    periodo_desde : DateTime
+    periodo_hasta : DateTime
+  }
+  class ClientePerfilTenant <<nuevo>> {
+    segmento : NUEVA | FRECUENTE | VIP | INACTIVA
+    talla_habitual : String
+    estilo_preferido : String
+    telefono_contacto : String
+    acepta_whatsapp : boolean
+    notas : String
+  }
+}
+
+package "Organización" {
+  class Sucursal <<existente>> {
+    codigo : String
+    ciudad : ciudad_bo
+  }
+  class Usuario <<existente>> {
+    email : String
+    tipo : CLIENTE | STAFF
+  }
+  class Empleado <<existente>> {
+    cargo : cargo_empleado
+  }
+  class Caja <<existente>>
+}
+
+package "Catálogo e inventario" {
+  class ProductoVariante <<existente>> {
+    sku : String
+    talla
+    color
+  }
+  class Inventario <<existente>> {
+    cantidad_fisica : int
+    cantidad_reservada : int
+    stock_minimo : int
+  }
+  class MovimientoInventario <<existente>> {
+    tipo : ENTRADA | SALIDA | AJUSTE | DEVOLUCION | TRASPASO_ENT | TRASPASO_SAL ...
+    saldo_anterior : int
+    saldo_nuevo : int
+  }
+  class Traspaso <<existente>> {
+    numero : String
+    estado : SOLICITADO | EN_TRANSITO | RECIBIDO | ANULADO
+  }
+  class SugerenciaTraspaso <<nuevo>> {
+    vendidas_recientes : int
+    vendidas_anteriores : int
+    cobertura_destino_dias : float
+    excedente_origen : int
+    cantidad_sugerida : int
+    --
+    calculada, no persistida
+  }
+}
+
+package "Ventas y devoluciones" {
+  class Venta <<existente>> {
+    numero : String
+    fecha : DateTime
+    total : Decimal
+  }
+  class VentaDetalle <<existente>> {
+    cantidad : int
+    precio_unitario : Decimal
+  }
+  class Devolucion {
+    numero : NDV-000001 <<nuevo>>
+    motivo_tipo : TALLA | COLOR | DEFECTO | NO_GUSTO | OTRO <<nuevo>>
+    con_etiqueta : boolean <<nuevo>>
+    sin_uso : boolean <<nuevo>>
+    con_comprobante : boolean <<nuevo>>
+    estado : SOLICITADA | APROBADA | RECHAZADA
+    monto_devuelto : Decimal
+  }
+  class DevolucionDetalle {
+    cantidad : int
+  }
+  class Configuracion <<existente>> {
+    devolucion_plazo_dias = 30
+    cambio_plazo_dias = 15 <<nuevo>>
+  }
+}
+
+Sucursal "1" -- "1" Suscripcion : es tenant con >
+Suscripcion "*" --> "1" Plan : plan vigente
+Suscripcion "1" *-- "*" PagoSuscripcion
+PagoSuscripcion "*" --> "1" Plan : plan pagado
+Sucursal "1" *-- "*" ClientePerfilTenant : cartera
+ClientePerfilTenant "*" --> "1" Usuario : clienta
+Sucursal "1" -- "*" Empleado
+Empleado "1" -- "1" Usuario
+Sucursal "1" -- "*" Caja
+
+Sucursal "1" -- "*" Inventario
+Inventario "*" --> "1" ProductoVariante
+Inventario "1" -- "*" MovimientoInventario : kardex >
+Traspaso "*" --> "1" Sucursal : origen
+Traspaso "*" --> "1" Sucursal : destino
+SugerenciaTraspaso ..> Traspaso : se convierte en
+SugerenciaTraspaso ..> Inventario : lee disponible
+
+Venta "*" --> "1" Sucursal
+Venta "1" *-- "*" VentaDetalle
+VentaDetalle "*" --> "1" ProductoVariante
+Devolucion "*" --> "1" Venta : devuelve
+Devolucion "0..1" --> "0..1" Venta : venta del cambio
+Devolucion "1" *-- "*" DevolucionDetalle
+DevolucionDetalle "*" --> "1" VentaDetalle
+DevolucionDetalle "*" --> "0..1" ProductoVariante : variante_solicitada\n(talla/color a cambio)
+Devolucion ..> Configuracion : plazo segun motivo
+
+note bottom of Suscripcion
+  Regla: una funcion de gestion (perfiles, traspasos, IA)
+  se usa solo si el plan la incluye Y la suscripcion
+  esta vigente; si vencio -> 402, si el plan no la
+  incluye -> 403. El ADMIN de la plataforma no
+  depende de ningun plan.
+end note
+note bottom of Devolucion
+  Cambio por talla: misma prenda, otra talla, con stock
+  en la sucursal, dentro de cambio_plazo_dias y con
+  etiqueta + sin uso + comprobante. Por DEFECTO solo
+  se exige el comprobante.
+end note
+@enduml

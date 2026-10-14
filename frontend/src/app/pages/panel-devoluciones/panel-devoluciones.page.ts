@@ -4,10 +4,15 @@ import { FormsModule } from '@angular/forms';
 
 import { AuthService } from '../../core/auth/auth.service';
 import {
+  CambiosMesOut,
   DevolucionDetalleOut,
   DevolucionOut,
   EstadoDevolucion,
+  MOTIVOS_DEVOLUCION,
   MetodoReintegro,
+  MotivoDevolucion,
+  NotaDevolucionOut,
+  VarianteCambioOut,
   VentaDevolvibleOut,
 } from '../../core/devoluciones/devoluciones.models';
 import { DevolucionesService } from '../../core/devoluciones/devoluciones.service';
@@ -21,6 +26,9 @@ import { PanelShell } from '../../shared/panel/panel-shell';
  * PENDIENTES 4.11: plazo desde la venta (configuracion.devolucion_plazo_dias), reintegro segun
  * como se pago (Stripe por la API, efectivo desde la caja abierta, el resto manual) y cambio de
  * prenda = devolucion aprobada + venta nueva en caja vinculada aca.
+ * Segundo parcial (PENDIENTES 5.8-5.10): motivo estructurado (TALLA/COLOR son cambios, con su
+ * propio plazo y la variante que se lleva la clienta), condiciones de la prenda, nota de
+ * devolucion imprimible y la consulta "que prendas solicitaron cambio en el mes".
  */
 @Component({
   selector: 'app-panel-devoluciones-page',
@@ -48,6 +56,18 @@ export class PanelDevolucionesPage implements OnInit {
   protected readonly error = signal<string | null>(null);
   protected filtroEstado: '' | EstadoDevolucion = '';
   protected filtroVenta = '';
+  protected filtroMotivo: '' | MotivoDevolucion = '';
+  protected filtroDesde = '';
+  protected filtroHasta = '';
+  protected readonly motivos = MOTIVOS_DEVOLUCION;
+
+  /** 'lista' = devoluciones; 'cambios' = consulta de cambios del mes */
+  protected readonly vista = signal<'lista' | 'cambios'>('lista');
+  protected mesConsulta = new Date().toISOString().slice(0, 7); // YYYY-MM
+  protected incluirOtrosMotivos = false;
+  protected readonly cambiosMes = signal<CambiosMesOut | null>(null);
+  protected readonly cargandoCambios = signal(false);
+  protected readonly errorCambios = signal<string | null>(null);
 
   protected readonly seleccionada = signal<DevolucionDetalleOut | null>(null);
   protected readonly errorDetalle = signal<string | null>(null);
@@ -66,6 +86,16 @@ export class PanelDevolucionesPage implements OnInit {
   /** cantidad a devolver por venta_detalle_id */
   protected readonly cantidades = signal<Partial<Record<string, number>>>({});
   protected motivo = '';
+  protected readonly motivoTipo = signal<MotivoDevolucion>('TALLA');
+  protected conEtiqueta = true;
+  protected sinUso = true;
+  protected conComprobante = true;
+  /** variante elegida a cambio, por venta_detalle_id (solo TALLA/COLOR) */
+  protected readonly solicitadas = signal<Partial<Record<string, string>>>({});
+  /** opciones de cambio por variante vendida: otras tallas/colores de la misma prenda */
+  protected readonly opcionesCambio = signal<Partial<Record<string, VarianteCambioOut[]>>>({});
+
+  protected readonly esCambio = computed(() => ['TALLA', 'COLOR'].includes(this.motivoTipo()));
 
   protected readonly estimado = computed(() => {
     const venta = this.venta();
@@ -88,14 +118,46 @@ export class PanelDevolucionesPage implements OnInit {
   protected cargar(): void {
     this.cargando.set(true);
     this.error.set(null);
-    this.servicio.listar(this.filtroEstado || null, this.filtroVenta.trim() || null).subscribe({
-      next: (devoluciones) => {
-        this.devoluciones.set(devoluciones);
-        this.cargando.set(false);
+    this.servicio
+      .listar({
+        estado: this.filtroEstado || null,
+        venta: this.filtroVenta.trim() || null,
+        motivo_tipo: this.filtroMotivo || null,
+        desde: this.filtroDesde || null,
+        hasta: this.filtroHasta || null,
+      })
+      .subscribe({
+        next: (devoluciones) => {
+          this.devoluciones.set(devoluciones);
+          this.cargando.set(false);
+        },
+        error: (e: HttpErrorResponse) => {
+          this.error.set(interpretarError(e, 'No se pudieron cargar las devoluciones.'));
+          this.cargando.set(false);
+        },
+      });
+  }
+
+  // ------------------------------------------------------------ cambios del mes
+
+  protected verCambios(): void {
+    this.vista.set('cambios');
+    this.cargarCambios();
+  }
+
+  protected cargarCambios(): void {
+    const [anio, mes] = this.mesConsulta.split('-').map(Number);
+    if (!anio || !mes) return;
+    this.cargandoCambios.set(true);
+    this.errorCambios.set(null);
+    this.servicio.cambiosDelMes(anio, mes, this.incluirOtrosMotivos).subscribe({
+      next: (datos) => {
+        this.cambiosMes.set(datos);
+        this.cargandoCambios.set(false);
       },
       error: (e: HttpErrorResponse) => {
-        this.error.set(interpretarError(e, 'No se pudieron cargar las devoluciones.'));
-        this.cargando.set(false);
+        this.errorCambios.set(interpretarError(e));
+        this.cargandoCambios.set(false);
       },
     });
   }
@@ -108,8 +170,43 @@ export class PanelDevolucionesPage implements OnInit {
     this.venta.set(null);
     this.numeroVenta = '';
     this.motivo = '';
+    this.motivoTipo.set('TALLA');
+    this.conEtiqueta = this.sinUso = this.conComprobante = true;
     this.cantidades.set({});
+    this.solicitadas.set({});
+    this.opcionesCambio.set({});
     this.errorNueva.set(null);
+  }
+
+  protected cambiarMotivo(motivo: MotivoDevolucion): void {
+    this.motivoTipo.set(motivo);
+    this.solicitadas.set({});
+    if (this.esCambio()) this.cargarOpcionesCambio();
+  }
+
+  /** Para cada prenda de la venta, las otras tallas/colores con su stock en la sucursal. */
+  private cargarOpcionesCambio(): void {
+    const venta = this.venta();
+    if (!venta) return;
+    for (const linea of venta.lineas) {
+      if (this.opcionesCambio()[linea.variante_id]) continue;
+      this.servicio.variantesCambio(linea.variante_id, venta.sucursal_id).subscribe({
+        next: (opciones) =>
+          this.opcionesCambio.update((actual) => ({ ...actual, [linea.variante_id]: opciones })),
+      });
+    }
+  }
+
+  /** Opciones validas segun el motivo: TALLA = mismo color, otra talla; COLOR = misma talla, otro color. */
+  protected opcionesPara(varianteId: string, talla: string, color: string): VarianteCambioOut[] {
+    const todas = this.opcionesCambio()[varianteId] ?? [];
+    return this.motivoTipo() === 'TALLA'
+      ? todas.filter((o) => o.talla !== talla && o.color === color)
+      : todas.filter((o) => o.color !== color && o.talla === talla);
+  }
+
+  protected elegirCambio(ventaDetalleId: string, varianteId: string): void {
+    this.solicitadas.update((actual) => ({ ...actual, [ventaDetalleId]: varianteId }));
   }
 
   protected buscarVenta(): void {
@@ -123,6 +220,7 @@ export class PanelDevolucionesPage implements OnInit {
       next: (venta) => {
         this.venta.set(venta);
         this.buscandoVenta.set(false);
+        if (this.esCambio()) this.cargarOpcionesCambio();
       },
       error: (e: HttpErrorResponse) => {
         this.buscandoVenta.set(false);
@@ -139,11 +237,20 @@ export class PanelDevolucionesPage implements OnInit {
   protected registrar(): void {
     const venta = this.venta();
     if (!venta) return;
+    const solicitadas = this.solicitadas();
     const lineas = Object.entries(this.cantidades())
-      .map(([venta_detalle_id, cantidad]) => ({ venta_detalle_id, cantidad: cantidad ?? 0 }))
+      .map(([venta_detalle_id, cantidad]) => ({
+        venta_detalle_id,
+        cantidad: cantidad ?? 0,
+        variante_solicitada_id: this.esCambio() ? (solicitadas[venta_detalle_id] ?? null) : null,
+      }))
       .filter((linea) => linea.cantidad > 0);
     if (lineas.length === 0) {
       this.errorNueva.set('Indicá al menos una prenda a devolver.');
+      return;
+    }
+    if (this.esCambio() && lineas.some((linea) => !linea.variante_solicitada_id)) {
+      this.errorNueva.set('Elegí qué talla o color se lleva la clienta por cada prenda.');
       return;
     }
     if (this.motivo.trim().length < 3) {
@@ -153,12 +260,23 @@ export class PanelDevolucionesPage implements OnInit {
 
     this.ocupado.set(true);
     this.errorNueva.set(null);
-    this.servicio.registrar({ venta_id: venta.venta_id, motivo: this.motivo.trim(), lineas }).subscribe({
+    const datos = {
+      venta_id: venta.venta_id,
+      motivo_tipo: this.motivoTipo(),
+      motivo: this.motivo.trim(),
+      con_etiqueta: this.conEtiqueta,
+      sin_uso: this.sinUso,
+      con_comprobante: this.conComprobante,
+      lineas,
+    };
+    this.servicio.registrar(datos).subscribe({
       next: (devolucion) => {
         this.ocupado.set(false);
         this.creando.set(false);
         this.seleccionada.set(devolucion);
-        this.aviso.set('Devolución registrada. Queda pendiente de aprobación: todavía no volvió al stock.');
+        this.aviso.set(
+          `Nota ${devolucion.numero} registrada. Queda pendiente de aprobación: todavía no volvió al stock.`,
+        );
         this.cargar();
       },
       error: (e: HttpErrorResponse) => {
@@ -250,7 +368,76 @@ export class PanelDevolucionesPage implements OnInit {
     });
   }
 
+  // ------------------------------------------------------------ nota de devolucion
+
+  /** Arma la nota en una ventana aparte y abre el dialogo de impresion (o "Guardar como PDF"). */
+  protected imprimirNota(): void {
+    const devolucion = this.seleccionada();
+    if (!devolucion) return;
+    this.servicio.nota(devolucion.id).subscribe({
+      next: (nota) => {
+        const ventana = window.open('', '_blank', 'width=720,height=900');
+        if (!ventana) {
+          this.errorDetalle.set('El navegador bloqueó la ventana de impresión: permití las ventanas emergentes.');
+          return;
+        }
+        ventana.document.write(this.htmlNota(nota));
+        ventana.document.close();
+        ventana.focus();
+        ventana.print();
+      },
+      error: (e: HttpErrorResponse) => this.errorDetalle.set(interpretarError(e)),
+    });
+  }
+
+  private htmlNota(nota: NotaDevolucionOut): string {
+    const d = nota.devolucion;
+    const reemplazos: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+    const esc = (texto: string | null | undefined) => (texto ?? '').replace(/[&<>"]/g, (c) => reemplazos[c] ?? c);
+    const si = (valor: boolean) => (valor ? 'Sí' : 'No');
+    const filas = d.detalle
+      .map(
+        (l) =>
+          `<tr><td>${esc(l.sku)}</td><td>${esc(l.producto)}<br><small>${esc(l.talla)} · ${esc(l.color)}</small></td>` +
+          `<td class="n">${l.cantidad}</td><td class="n">${this.precio(l.precio_unitario)}</td>` +
+          `<td>${l.talla_solicitada ? `${esc(l.talla_solicitada)} · ${esc(l.color_solicitado)}` : '—'}</td></tr>`,
+      )
+      .join('');
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Nota ${esc(d.numero)}</title>
+      <style>
+        body{font-family:Arial,sans-serif;color:#111;margin:32px;font-size:13px}
+        h1{font-size:20px;margin:0}
+        .cab{display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:8px}
+        table{width:100%;border-collapse:collapse;margin:16px 0}
+        th,td{border:1px solid #999;padding:6px;text-align:left;vertical-align:top}
+        th{background:#eee}.n{text-align:right}small{color:#555}
+        .firmas{display:flex;gap:48px;margin-top:64px}
+        .firmas div{flex:1;border-top:1px solid #111;text-align:center;padding-top:4px}
+      </style></head><body>
+      <div class="cab"><div><h1>${esc(nota.empresa_razon_social)}</h1>NIT ${esc(nota.empresa_nit)}<br>
+        ${esc(d.sucursal)} · ${esc(nota.sucursal_direccion)} · ${esc(nota.sucursal_ciudad)}</div>
+        <div style="text-align:right"><h1>NOTA DE DEVOLUCIÓN</h1><strong>${esc(d.numero)}</strong><br>
+        ${this.fecha(d.fecha)}</div></div>
+      <p><strong>Venta:</strong> ${esc(d.venta_numero)} del ${this.fecha(nota.venta_fecha)} ·
+        <strong>Clienta:</strong> ${esc(d.cliente) || 'sin identificar'}</p>
+      <p><strong>Motivo:</strong> ${esc(this.etiquetaMotivo(d.motivo_tipo))} — ${esc(d.motivo)}</p>
+      <p><strong>Condiciones verificadas:</strong> etiqueta ${si(d.con_etiqueta)} · sin uso ${si(d.sin_uso)} ·
+        comprobante ${si(d.con_comprobante)} · plazo aplicado: ${nota.plazo_dias} días desde la compra</p>
+      <table><thead><tr><th>SKU</th><th>Prenda devuelta</th><th class="n">Cant.</th><th class="n">Precio u.</th>
+        <th>Se lleva a cambio</th></tr></thead><tbody>${filas}</tbody></table>
+      <p><strong>Estado:</strong> ${esc(this.etiquetaEstado(d.estado))} ·
+        <strong>${d.estado === 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado'}:</strong> ${this.precio(d.monto_devuelto)}
+        ${d.reintegro_metodo ? ` (${esc(this.etiquetaReintegro(d.reintegro_metodo))})` : ''}
+        ${d.venta_cambio_numero ? ` · <strong>Venta del cambio:</strong> ${esc(d.venta_cambio_numero)}` : ''}</p>
+      <div class="firmas"><div>Firma de la clienta</div><div>Registró: ${esc(d.registrada_por)}</div></div>
+      </body></html>`;
+  }
+
   // ------------------------------------------------------------ formato
+
+  protected etiquetaMotivo(motivo: MotivoDevolucion): string {
+    return this.motivos.find((m) => m.valor === motivo)?.etiqueta ?? motivo;
+  }
 
   protected etiquetaReintegro(metodo: MetodoReintegro | null): string {
     switch (metodo) {

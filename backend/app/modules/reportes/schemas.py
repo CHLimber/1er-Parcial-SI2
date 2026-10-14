@@ -178,3 +178,20 @@ class ConsultaIaOut(BaseModel):
     # valores de plata ya vienen convertidos a float (ver _normalizar en router.py) para no caer
     # en el mismo problema que Decimal: Pydantic v2 lo serializa como string en el JSON.
     tabla: list[dict] = Field(default_factory=list)
+
+
+class PerdidaSucursalOut(BaseModel):
+    """Reporte de perdidas por sucursal (Segundo parcial, tema "perdida", PENDIENTES 5.13). Todo
+    valorizado a precio de lista (no hay costo de compra en el modelo)."""
+
+    sucursal_id: UUID
+    sucursal: str
+    mermas_unidades: int  # ajustes de inventario a la baja (robo, rotura, mancha)
+    mermas_valor: float
+    defectos_casos: int  # devoluciones APROBADAS por DEFECTO
+    defectos_unidades: int
+    defectos_monto: float  # lo reintegrado a la clienta
+    traspaso_faltante_unidades: int  # despachado y no recibido en destino
+    traspaso_faltante_valor: float
+    faltante_caja: float  # sesiones de caja cerradas con diferencia negativa
+    total_perdida: float

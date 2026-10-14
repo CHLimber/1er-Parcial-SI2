@@ -1,0 +1,27 @@
+@startuml 20_c4_contexto
+' Arquitectura C4 - Nivel 1: Contexto del sistema.
+!include <C4/C4_Context>
+LAYOUT_WITH_LEGEND()
+title FashionStore — C4 Nivel 1: Contexto
+
+Person(clienta, "Clienta", "Mujer de 18 a 40 años: compra en línea, reserva vestidor, usa la app sin conexión.")
+Person(personal, "Personal de la sucursal", "Encargado, cajero, vendedor, almacén: administración del tenant.")
+Person(admin, "Administrador de la plataforma", "Dueño del SaaS: gestiona sucursales/tenants y sus suscripciones.")
+
+System(fs, "FashionStore SaaS", "E-commerce e inteligencia de tienda multi-tenant (un tenant por sucursal), PWA web + app móvil.")
+
+System_Ext(stripe, "Stripe", "Cobro de ventas y de suscripciones; reembolsos.")
+System_Ext(claude, "Claude API (Anthropic)", "Asistente de compras y reportes con IA de varias sucursales.")
+System_Ext(ors, "openrouteservice / OSRM", "Distancias y geocodificación para el delivery.")
+System_Ext(delivery, "Servicio de delivery externo", "Reparte los pedidos a domicilio.")
+System_Ext(tiles, "CARTO / OpenStreetMap", "Teselas de mapas.")
+
+Rel(clienta, fs, "Compra, reserva, sigue pedidos", "HTTPS / PWA / app")
+Rel(personal, fs, "Caja, reservas, inventario, devoluciones, traspasos, clientas, reportes", "HTTPS")
+Rel(admin, fs, "Tenants, planes, pagos de suscripción", "HTTPS")
+Rel(fs, stripe, "Checkout, webhooks, refunds", "HTTPS")
+Rel(fs, claude, "Messages API con tool use", "HTTPS")
+Rel(fs, ors, "Matriz de distancias, geocoding", "HTTPS")
+Rel(fs, tiles, "Mapas en web y móvil", "HTTPS")
+Rel(personal, delivery, "Entrega el pedido despachado")
+@enduml

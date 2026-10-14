@@ -1,0 +1,32 @@
+@startuml 14_robustez_offline
+' ICONIX - Robustez / comunicación de CU31 "Usar la tienda sin conexión" (PWA web e app móvil).
+left to right direction
+skinparam defaultFontName Arial
+title CU31 Usar la tienda sin conexión — Robustez / Comunicación
+
+actor "Clienta" as A
+boundary "Tienda / detalle\nde prenda" as B1
+boundary "Aviso de conexión" as B2
+control "Service worker\n(shell de la app)" as C0
+control "Interceptor offline\n(web) / ApiClient (móvil)" as C1
+control "Sincronizar cola\n(ConexionService)" as C2
+entity "Base temporal\nIndexedDB (web) / SQLite (móvil)\n«respuestas»" as E1
+entity "Base temporal\n«cola de pendientes»" as E2
+entity "API FashionStore" as E3
+
+A --> B1 : 1: abre la app sin red
+B1 --> C0 : 2: pedir index y bundles
+C0 --> B1 : 3: app desde la caché del SW
+B1 --> C1 : 4: GET /catalogo/productos
+C1 --> E3 : 5: intentar red
+C1 --> E1 : 6: [sin red] leer última respuesta
+C1 --> B2 : 7: «Sin conexión · datos del …»
+A --> B1 : 8: «Comprar ahora»
+B1 --> C1 : 9: POST /carrito/items
+C1 --> E2 : 10: [sin red] encolar operación
+C1 --> B1 : 11: 503 «la agregamos cuando vuelva la red»
+C2 --> E2 : 12: [vuelve la red] leer pendientes en orden
+C2 --> E3 : 13: reenviar cada operación
+C2 --> E2 : 14: quitar enviadas / rechazadas
+C2 --> B2 : 15: «se sincronizaron N operaciones»
+@enduml

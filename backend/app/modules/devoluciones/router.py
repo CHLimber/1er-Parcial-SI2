@@ -34,14 +34,26 @@ Reglas de negocio:
                 devolucion queda atada a ella (fn_total_efectivo_sesion la resta del arqueo).
       TARJETA/QR/TRANSFERENCIA -> se devuelve fuera del sistema (el QR es simulado); queda
                 registrado el metodo, quien aprobo y cuando.
-  - Plazo: configuracion.devolucion_plazo_dias (30 por defecto) desde la fecha de la venta.
+  - Plazo: configuracion.devolucion_plazo_dias (30 por defecto) desde la fecha de la venta. El
+    cambio por talla/color (motivo_tipo TALLA/COLOR) corre su propio plazo, mas corto:
+    configuracion.cambio_plazo_dias (15 por defecto). PENDIENTES 5.8.
+  - Condiciones de la prenda (las verifica el personal al recibirla): para TALLA, COLOR,
+    NO_GUSTO y OTRO tiene que volver con etiqueta, sin uso y con el comprobante de compra; por
+    DEFECTO alcanza con el comprobante (la falla es de la tienda). Si falta alguna -> 409.
+  - Cambio por talla/color: cada linea dice que variante se lleva la clienta a cambio
+    (variante_solicitada_id): la misma prenda, otra talla (TALLA) u otro color (COLOR), con stock
+    disponible en la sucursal. En los otros motivos no se acepta una variante solicitada.
   - Cambio de prenda = devolucion + venta nueva cobrada en caja; POST /{id}/cambio vincula esa
     venta a la devolucion (venta_cambio_id) para que quede la trazabilidad.
+  - Nota de devolucion: cada devolucion tiene un numero correlativo NDV-xxxxxx (secuencia de la
+    base) y GET /{id}/nota devuelve los datos del comprobante imprimible (PENDIENTES 5.9).
+  - GET /cambios-mes responde "que prendas solicitaron cambio en el mes" (PENDIENTES 5.10).
   - Sucursal: la devolucion se registra y el stock reingresa en la sucursal de la venta.
   - La clienta recibe una notificacion (tipo VENTA, entidad VENTA) al aprobar o rechazar. Las
     ventas POS sin clienta identificada (venta.usuario_id NULL) no notifican a nadie.
 """
 
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
@@ -55,12 +67,16 @@ from app.core.deps import requiere_permiso
 from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.devoluciones.schemas import (
     CambioIn,
+    CambioMesOut,
+    CambiosMesOut,
     DetalleDevolucionOut,
     DevolucionDetalleOut,
     DevolucionIn,
     DevolucionOut,
     LineaVentaOut,
+    NotaDevolucionOut,
     RechazoIn,
+    VarianteCambioOut,
     VentaDevolvibleOut,
 )
 from app.modules.pagos.servicio import reembolsar_parcial_stripe
@@ -74,6 +90,8 @@ puede_resolver = requiere_permiso("devoluciones.actualizar")
 CENTAVO = Decimal("0.01")
 ESTADOS_VENTA_DEVOLVIBLE = ("PAGADA", "ENTREGADA")
 PLAZO_DIAS_POR_DEFECTO = 30  # si falta configuracion.devolucion_plazo_dias
+PLAZO_CAMBIO_POR_DEFECTO = 15  # si falta configuracion.cambio_plazo_dias
+MOTIVOS_CAMBIO = ("TALLA", "COLOR")
 
 # texto de la notificacion a la clienta segun como vuelve la plata
 _COMO_SE_REINTEGRA = {
@@ -82,10 +100,12 @@ _COMO_SE_REINTEGRA = {
 }
 
 SELECT_DEVOLUCION = """
-SELECT d.id, d.venta_id, v.numero AS venta_numero, v.total AS venta_total,
+SELECT d.id, d.numero, d.venta_id, v.numero AS venta_numero, v.total AS venta_total,
        d.sucursal_id, s.nombre AS sucursal,
        (cli.nombre || ' ' || cli.apellido) AS cliente,
-       d.motivo, d.monto_devuelto, d.estado, d.fecha,
+       d.motivo_tipo::text AS motivo_tipo, d.motivo,
+       d.con_etiqueta, d.sin_uso, d.con_comprobante,
+       d.monto_devuelto, d.estado, d.fecha,
        (reg.nombre || ' ' || reg.apellido) AS registrada_por,
        (res.nombre || ' ' || res.apellido) AS resuelta_por,
        d.resuelta_en, d.motivo_rechazo,
@@ -123,14 +143,48 @@ def _exigir_alcance(staff: dict, sucursal_id: UUID, que: str) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{que} es de otra sucursal")
 
 
-async def _plazo_dias(conn: asyncpg.Connection) -> int:
-    valor = await conn.fetchval(
-        "SELECT valor FROM configuracion WHERE clave = 'devolucion_plazo_dias'"
-    )
+async def _config_dias(conn: asyncpg.Connection, clave: str, por_defecto: int) -> int:
+    valor = await conn.fetchval("SELECT valor FROM configuracion WHERE clave = $1", clave)
     try:
-        return int(valor) if valor is not None else PLAZO_DIAS_POR_DEFECTO
+        return int(valor) if valor is not None else por_defecto
     except ValueError:
-        return PLAZO_DIAS_POR_DEFECTO
+        return por_defecto
+
+
+async def _plazo_dias(conn: asyncpg.Connection) -> int:
+    return await _config_dias(conn, "devolucion_plazo_dias", PLAZO_DIAS_POR_DEFECTO)
+
+
+async def _plazo_cambio_dias(conn: asyncpg.Connection) -> int:
+    return await _config_dias(conn, "cambio_plazo_dias", PLAZO_CAMBIO_POR_DEFECTO)
+
+
+def condiciones_faltantes(
+    motivo_tipo: str, con_etiqueta: bool, sin_uso: bool, con_comprobante: bool
+) -> list[str]:
+    """Condiciones que la prenda no cumple para el motivo dado (vacio = se acepta). Por DEFECTO
+    solo se exige el comprobante: la prenda pudo usarse hasta notar la falla."""
+    faltan = []
+    if not con_comprobante:
+        faltan.append("el comprobante de compra")
+    if motivo_tipo != "DEFECTO":
+        if not con_etiqueta:
+            faltan.append("la etiqueta original")
+        if not sin_uso:
+            faltan.append("la prenda sin uso")
+    return faltan
+
+
+def validar_variante_cambio(motivo_tipo: str, original, solicitada) -> str | None:
+    """Error de negocio si la variante pedida a cambio no sirve para el motivo, o None.
+    original/solicitada son filas (o dicts) con producto_id, talla_id y color_id."""
+    if solicitada["producto_id"] != original["producto_id"]:
+        return "el cambio tiene que ser por la misma prenda"
+    if motivo_tipo == "TALLA" and solicitada["talla_id"] == original["talla_id"]:
+        return "un cambio por talla tiene que pedir otra talla"
+    if motivo_tipo == "COLOR" and solicitada["color_id"] == original["color_id"]:
+        return "un cambio por color tiene que pedir otro color"
+    return None
 
 
 async def _pago_de_venta(conn: asyncpg.Connection, venta_id: UUID) -> asyncpg.Record | None:
@@ -252,13 +306,18 @@ async def _con_detalle(
         """
         SELECT dd.id, dd.venta_detalle_id, vd.variante_id, pv.sku, pr.nombre AS producto,
                t.codigo AS talla, c.nombre AS color, dd.cantidad,
-               vd.cantidad AS cantidad_vendida, vd.precio_unitario
+               vd.cantidad AS cantidad_vendida, vd.precio_unitario,
+               dd.variante_solicitada_id, ts.codigo AS talla_solicitada,
+               cs.nombre AS color_solicitado, ps.sku AS sku_solicitado
         FROM devolucion_detalle dd
         JOIN venta_detalle vd     ON vd.id = dd.venta_detalle_id
         JOIN producto_variante pv ON pv.id = vd.variante_id
         JOIN producto pr          ON pr.id = pv.producto_id
         JOIN talla t              ON t.id = pv.talla_id
         JOIN color c              ON c.id = pv.color_id
+        LEFT JOIN producto_variante ps ON ps.id = dd.variante_solicitada_id
+        LEFT JOIN talla ts             ON ts.id = ps.talla_id
+        LEFT JOIN color cs             ON cs.id = ps.color_id
         WHERE dd.devolucion_id = $1
         ORDER BY pr.nombre, t.orden, c.nombre
         """,
@@ -278,7 +337,12 @@ async def _con_detalle(
 @router.get("", response_model=list[DevolucionOut])
 async def listar_devoluciones(
     estado: str | None = Query(default=None, pattern="^(SOLICITADA|APROBADA|RECHAZADA)$"),
-    venta: str | None = Query(default=None, max_length=40, description="Numero de venta (parcial)"),
+    venta: str | None = Query(
+        default=None, max_length=40, description="Numero de venta o de nota (parcial)"
+    ),
+    motivo_tipo: str | None = Query(default=None, pattern="^(TALLA|COLOR|DEFECTO|NO_GUSTO|OTRO)$"),
+    desde: date | None = Query(default=None, description="Fecha de la devolucion, desde (inclusive)"),
+    hasta: date | None = Query(default=None, description="Fecha de la devolucion, hasta (inclusive)"),
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[DevolucionOut]:
@@ -288,13 +352,19 @@ async def listar_devoluciones(
         + """
         WHERE ($1::uuid IS NULL OR d.sucursal_id = $1)
           AND ($2::text IS NULL OR d.estado::text = $2)
-          AND ($3::text IS NULL OR v.numero ILIKE '%' || $3 || '%')
+          AND ($3::text IS NULL OR v.numero ILIKE '%' || $3 || '%' OR d.numero ILIKE '%' || $3 || '%')
+          AND ($4::text IS NULL OR d.motivo_tipo::text = $4)
+          AND ($5::date IS NULL OR d.fecha >= $5::date)
+          AND ($6::date IS NULL OR d.fecha < $6::date + 1)
         ORDER BY d.fecha DESC
         LIMIT 200
         """,
         limite,
         estado,
         venta.strip() if venta else None,
+        motivo_tipo,
+        desde,
+        hasta,
     )
     return [DevolucionOut(**dict(fila)) for fila in filas]
 
@@ -315,7 +385,9 @@ async def buscar_venta(
                (SELECT COALESCE(SUM(monto_devuelto), 0) FROM devolucion
                  WHERE venta_id = v.id AND estado = 'APROBADA') AS total_devuelto,
                v.fecha + make_interval(days => $2) AS plazo_vence_en,
-               now() > v.fecha + make_interval(days => $2) AS fuera_de_plazo
+               now() > v.fecha + make_interval(days => $2) AS fuera_de_plazo,
+               v.fecha + make_interval(days => $3) AS cambio_vence_en,
+               now() > v.fecha + make_interval(days => $3) AS fuera_de_plazo_cambio
         FROM venta v
         JOIN sucursal s       ON s.id = v.sucursal_id
         LEFT JOIN usuario cli ON cli.id = v.usuario_id
@@ -323,6 +395,7 @@ async def buscar_venta(
         """,
         numero.strip(),
         await _plazo_dias(conn),
+        await _plazo_cambio_dias(conn),
     )
     if venta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe una venta con ese numero")
@@ -349,6 +422,139 @@ async def buscar_venta(
     )
 
 
+def rango_del_mes(anio: int, mes: int) -> tuple[date, date]:
+    """[primer dia del mes, primer dia del mes siguiente)."""
+    siguiente = date(anio + 1, 1, 1) if mes == 12 else date(anio, mes + 1, 1)
+    return date(anio, mes, 1), siguiente
+
+
+@router.get("/variantes-cambio", response_model=list[VarianteCambioOut])
+async def variantes_para_cambio(
+    variante_id: UUID,
+    sucursal_id: UUID,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> list[VarianteCambioOut]:
+    """Las otras tallas/colores de la misma prenda con su disponible en la sucursal, para elegir
+    que se lleva la clienta en un cambio."""
+    _exigir_alcance(staff, sucursal_id, "Esa sucursal")
+    filas = await conn.fetch(
+        """
+        SELECT pv.id AS variante_id, pv.sku, t.codigo AS talla, c.nombre AS color,
+               COALESCE(i.disponible, 0) AS disponible
+        FROM producto_variante pv
+        JOIN producto_variante orig ON orig.id = $1 AND orig.producto_id = pv.producto_id
+        JOIN talla t ON t.id = pv.talla_id
+        JOIN color c ON c.id = pv.color_id
+        LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
+        WHERE pv.activa AND pv.id <> $1
+        ORDER BY t.orden, c.nombre
+        """,
+        variante_id,
+        sucursal_id,
+    )
+    return [VarianteCambioOut(**dict(f)) for f in filas]
+
+
+@router.get("/cambios-mes", response_model=CambiosMesOut)
+async def cambios_del_mes(
+    anio: int | None = Query(default=None, ge=2020, le=2100),
+    mes: int | None = Query(default=None, ge=1, le=12),
+    incluir_otros_motivos: bool = Query(
+        default=False, description="False: solo TALLA/COLOR (cambios). True: toda devolucion"
+    ),
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> CambiosMesOut:
+    """Que prendas solicitaron cambio en el mes (PENDIENTES 5.10). Agrupa por prenda, talla/
+    color original y lo que se pidio a cambio; por defecto el mes en curso. Un ENCARGADO ve su
+    sucursal, el ADMIN toda la cadena."""
+    hoy = date.today()
+    anio = anio or hoy.year
+    mes = mes or hoy.month
+    desde, hasta = rango_del_mes(anio, mes)
+    limite = _sucursal_visible(staff)
+    filas = await conn.fetch(
+        """
+        SELECT pr.id AS producto_id, pr.nombre AS producto, d.motivo_tipo::text AS motivo_tipo,
+               t.codigo AS talla_original, c.nombre AS color_original,
+               ts.codigo AS talla_solicitada, cs.nombre AS color_solicitado,
+               COUNT(DISTINCT d.id)::int AS solicitudes,
+               SUM(dd.cantidad)::int AS unidades,
+               COUNT(DISTINCT d.id) FILTER (WHERE d.estado = 'APROBADA')::int AS aprobadas,
+               COUNT(DISTINCT d.id) FILTER (WHERE d.estado = 'RECHAZADA')::int AS rechazadas,
+               COUNT(DISTINCT d.id) FILTER (WHERE d.estado = 'SOLICITADA')::int AS pendientes,
+               array_agg(DISTINCT s.nombre) AS sucursales
+        FROM devolucion d
+        JOIN devolucion_detalle dd ON dd.devolucion_id = d.id
+        JOIN venta_detalle vd      ON vd.id = dd.venta_detalle_id
+        JOIN producto_variante pv  ON pv.id = vd.variante_id
+        JOIN producto pr           ON pr.id = pv.producto_id
+        JOIN talla t               ON t.id = pv.talla_id
+        JOIN color c               ON c.id = pv.color_id
+        JOIN sucursal s            ON s.id = d.sucursal_id
+        LEFT JOIN producto_variante ps ON ps.id = dd.variante_solicitada_id
+        LEFT JOIN talla ts             ON ts.id = ps.talla_id
+        LEFT JOIN color cs             ON cs.id = ps.color_id
+        WHERE d.fecha >= $1 AND d.fecha < $2
+          AND ($3::uuid IS NULL OR d.sucursal_id = $3)
+          AND ($4 OR d.motivo_tipo IN ('TALLA','COLOR'))
+        GROUP BY pr.id, pr.nombre, d.motivo_tipo, t.codigo, t.orden, c.nombre, ts.codigo, cs.nombre
+        ORDER BY SUM(dd.cantidad) DESC, pr.nombre, t.orden
+        """,
+        desde,
+        hasta,
+        limite,
+        incluir_otros_motivos,
+    )
+    resultado = [CambioMesOut(**dict(f)) for f in filas]
+    return CambiosMesOut(
+        anio=anio,
+        mes=mes,
+        desde=desde,
+        hasta=hasta,
+        total_solicitudes=sum(f.solicitudes for f in resultado),
+        total_unidades=sum(f.unidades for f in resultado),
+        filas=resultado,
+    )
+
+
+@router.get("/{devolucion_id}/nota", response_model=NotaDevolucionOut)
+async def nota_de_devolucion(
+    devolucion_id: UUID,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> NotaDevolucionOut:
+    """Datos de la nota de devolucion imprimible (PENDIENTES 5.9): la devolucion con su detalle
+    mas los datos de la empresa y de la sucursal. El front la arma y la imprime."""
+    devolucion = await _con_detalle(conn, devolucion_id, staff)
+    extra = await conn.fetchrow(
+        """
+        SELECT s.direccion AS sucursal_direccion, s.ciudad::text AS sucursal_ciudad,
+               v.fecha AS venta_fecha,
+               (SELECT valor FROM configuracion WHERE clave = 'empresa_razon_social') AS razon,
+               (SELECT valor FROM configuracion WHERE clave = 'empresa_nit') AS nit
+        FROM devolucion d
+        JOIN sucursal s ON s.id = d.sucursal_id
+        JOIN venta v    ON v.id = d.venta_id
+        WHERE d.id = $1
+        """,
+        devolucion_id,
+    )
+    plazo = await (
+        _plazo_cambio_dias(conn) if devolucion.motivo_tipo in MOTIVOS_CAMBIO else _plazo_dias(conn)
+    )
+    return NotaDevolucionOut(
+        empresa_razon_social=extra["razon"] or "FashionStore",
+        empresa_nit=extra["nit"] or "-",
+        sucursal_direccion=extra["sucursal_direccion"],
+        sucursal_ciudad=extra["sucursal_ciudad"],
+        venta_fecha=extra["venta_fecha"],
+        plazo_dias=plazo,
+        devolucion=devolucion,
+    )
+
+
 @router.get("/{devolucion_id}", response_model=DevolucionDetalleOut)
 async def obtener_devolucion(
     devolucion_id: UUID,
@@ -363,16 +569,96 @@ async def obtener_devolucion(
 # ---------------------------------------------------------------------
 
 
+async def _validar_cambio_linea(
+    conn: asyncpg.Connection,
+    motivo_tipo: str,
+    sucursal_id: UUID,
+    linea: asyncpg.Record,
+    variante_solicitada_id: UUID,
+    cantidad: int,
+) -> None:
+    """La variante pedida a cambio: misma prenda, otra talla/color y con stock en la sucursal.
+    No compromete el stock (eso lo hace la venta del cambio en caja); solo evita aceptar un
+    cambio que la tienda no puede cumplir."""
+    variantes = {
+        f["id"]: f
+        for f in await conn.fetch(
+            """
+            SELECT pv.id, pv.producto_id, pv.talla_id, pv.color_id, pv.activa,
+                   t.codigo AS talla, c.nombre AS color,
+                   COALESCE((SELECT disponible FROM inventario
+                              WHERE sucursal_id = $3 AND variante_id = pv.id), 0) AS disponible
+            FROM producto_variante pv
+            JOIN talla t ON t.id = pv.talla_id
+            JOIN color c ON c.id = pv.color_id
+            WHERE pv.id IN ($1, $2)
+            """,
+            linea["variante_id"],
+            variante_solicitada_id,
+            sucursal_id,
+        )
+    }
+    solicitada = variantes.get(variante_solicitada_id)
+    if solicitada is None or not solicitada["activa"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La prenda pedida a cambio no existe o esta dada de baja",
+        )
+    error = validar_variante_cambio(motivo_tipo, variantes[linea["variante_id"]], solicitada)
+    if error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{linea['producto']}: {error}",
+        )
+    if solicitada["disponible"] < cantidad:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"No hay stock para el cambio: {linea['producto']} talla {solicitada['talla']} "
+                f"color {solicitada['color']} tiene {max(solicitada['disponible'], 0)} disponibles "
+                "en la sucursal (se puede pedir por traspaso)"
+            ),
+        )
+
+
 @router.post("", response_model=DevolucionDetalleOut, status_code=status.HTTP_201_CREATED)
 async def registrar_devolucion(
     body: DevolucionIn,
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> DevolucionDetalleOut:
+    es_cambio = body.motivo_tipo in MOTIVOS_CAMBIO
+    faltan = condiciones_faltantes(
+        body.motivo_tipo, body.con_etiqueta, body.sin_uso, body.con_comprobante
+    )
+    if faltan:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se acepta la devolucion: falta " + ", ".join(faltan),
+        )
+
     # la misma linea dos veces en el pedido se suma, como en recepciones
     pedidas: dict[UUID, int] = {}
+    solicitadas: dict[UUID, UUID | None] = {}
     for linea in body.lineas:
         pedidas[linea.venta_detalle_id] = pedidas.get(linea.venta_detalle_id, 0) + linea.cantidad
+        if es_cambio and linea.variante_solicitada_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="En un cambio por talla o color cada prenda tiene que decir que se lleva a cambio",
+            )
+        if not es_cambio and linea.variante_solicitada_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Solo un cambio por talla o color lleva una prenda a cambio",
+            )
+        anterior = solicitadas.get(linea.venta_detalle_id)
+        if anterior is not None and anterior != linea.variante_solicitada_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La misma prenda no puede pedir dos variantes distintas a cambio",
+            )
+        solicitadas[linea.venta_detalle_id] = linea.variante_solicitada_id
 
     async with conn.transaction():
         # Se bloquea la venta: dos registros simultaneos sobre la misma venta se serializan y
@@ -389,7 +675,7 @@ async def registrar_devolucion(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"La venta esta {venta['estado'].lower()}: solo se devuelve una venta pagada o entregada",
             )
-        dias = await _plazo_dias(conn)
+        dias = await (_plazo_cambio_dias(conn) if es_cambio else _plazo_dias(conn))
         vencida = await conn.fetchval(
             "SELECT now() > fecha + make_interval(days => $2) FROM venta WHERE id = $1",
             venta["id"],
@@ -400,7 +686,7 @@ async def registrar_devolucion(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
                     f"La venta {venta['numero']} tiene mas de {dias} dias: ya paso el plazo para "
-                    "devolverla"
+                    + ("cambiar la prenda" if es_cambio else "devolverla")
                 ),
             )
 
@@ -422,21 +708,39 @@ async def registrar_devolucion(
                         f"{linea['en_tramite']} en tramite; se pueden devolver {max(disponible, 0)}"
                     ),
                 )
+            if es_cambio:
+                await _validar_cambio_linea(
+                    conn,
+                    body.motivo_tipo,
+                    venta["sucursal_id"],
+                    linea,
+                    solicitadas[venta_detalle_id],
+                    cantidad,
+                )
 
         devolucion_id = await conn.fetchval(
             """
-            INSERT INTO devolucion (venta_id, sucursal_id, motivo, monto_devuelto, usuario_id)
-            VALUES ($1, $2, $3, 0, $4)
+            INSERT INTO devolucion (venta_id, sucursal_id, motivo, monto_devuelto, usuario_id,
+                                    motivo_tipo, con_etiqueta, sin_uso, con_comprobante)
+            VALUES ($1, $2, $3, 0, $4, $5::motivo_devolucion, $6, $7, $8)
             RETURNING id
             """,
             venta["id"],
             venta["sucursal_id"],
             body.motivo.strip(),
             staff["id"],
+            body.motivo_tipo,
+            body.con_etiqueta,
+            body.sin_uso,
+            body.con_comprobante,
         )
         await conn.executemany(
-            "INSERT INTO devolucion_detalle (devolucion_id, venta_detalle_id, cantidad) VALUES ($1, $2, $3)",
-            [(devolucion_id, vd_id, cantidad) for vd_id, cantidad in pedidas.items()],
+            """
+            INSERT INTO devolucion_detalle (devolucion_id, venta_detalle_id, cantidad,
+                                            variante_solicitada_id)
+            VALUES ($1, $2, $3, $4)
+            """,
+            [(devolucion_id, vd_id, cantidad, solicitadas[vd_id]) for vd_id, cantidad in pedidas.items()],
         )
         # estimado: el definitivo se recalcula al aprobar (puede cerrar la venta y absorber centavos)
         monto = await _monto_devolucion(conn, venta["id"], devolucion_id, cierra_la_venta=False)
@@ -450,6 +754,7 @@ async def registrar_devolucion(
             accion="CREAR",
             datos_despues={
                 "venta": venta["numero"],
+                "motivo_tipo": body.motivo_tipo,
                 "motivo": body.motivo.strip(),
                 "lineas": {str(k): v for k, v in pedidas.items()},
                 "monto_estimado": monto,

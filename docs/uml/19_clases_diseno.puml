@@ -1,0 +1,150 @@
+@startuml 19_clases_diseno
+' ICONIX - Diagrama de clases de diseño del Segundo parcial: las clases/módulos reales con sus
+' operaciones, en las tres capas (backend FastAPI, web Angular, móvil Flutter). Los módulos de
+' Python sin clase se modelan como <<module>> con sus funciones como operaciones.
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+!pragma layout smetana
+title FashionStore — Clases de diseño (Segundo parcial)
+
+package "backend (FastAPI)" {
+  class "app.core.plan" as Plan <<module>> {
+    +es_admin_plataforma(staff) : bool
+    +esta_vigente(plan, ahora) : bool
+    +evaluar_acceso(plan, funcion, minimo) : (int, str) | None
+    +exigir_funcion(conn, staff, funcion)
+    +requiere_funcion_plan(funcion, *permisos) : Depends
+    +exigir_limite(conn, sucursal, recurso)
+  }
+  class "saas.router" as SaasRouter <<APIRouter /saas>> {
+    +GET planes() : PlanOut[]
+    +GET suscripcion(sucursal_id) : SuscripcionOut
+    +GET suscripciones() : SuscripcionOut[]
+    +GET pagos(sucursal_id) : PagoSuscripcionOut[]
+    +POST suscripcion/checkout(CheckoutSuscripcionIn) : CheckoutSuscripcionOut
+    +POST pagos/verificar(sesion) : SuscripcionOut
+    +POST suscripciones/{id}/pago-manual(PagoManualIn) : SuscripcionOut
+  }
+  class "saas.servicio" as SaasServicio <<module>> {
+    +sumar_meses(desde, meses) : datetime
+    +nuevo_periodo(vence, meses) : (datetime, datetime)
+    +aplicar_pago(conn, pago_id) : bool
+    +rechazar_pago(conn, pago_id)
+    +procesar_evento_stripe(conn, pago, tx, evento, aprobado) : bool
+  }
+  class "clientes.router" as ClientesRouter <<APIRouter /clientes>> {
+    +GET listar_cartera(sucursal_id, q, segmento)
+    +GET obtener_cliente(usuario_id)
+    +PUT editar_perfil(usuario_id, PerfilClienteIn)
+    +POST agregar_a_cartera(AltaClienteIn)
+    +segmento_sugerido(compras, total, ultima) : str
+  }
+  class "devoluciones.router" as DevRouter <<APIRouter /devoluciones>> {
+    +GET listar(estado, venta, motivo_tipo, desde, hasta)
+    +GET variantes_para_cambio(variante_id, sucursal_id)
+    +GET cambios_del_mes(anio, mes) : CambiosMesOut
+    +GET nota_de_devolucion(id) : NotaDevolucionOut
+    +POST registrar(DevolucionIn)
+    +condiciones_faltantes(motivo, etiqueta, uso, comprobante) : str[]
+    +validar_variante_cambio(motivo, original, solicitada) : str?
+  }
+  class "traspasos.router" as TrasRouter <<APIRouter /traspasos>> {
+    +GET sugerir_traspasos(dias, horizonte, limite) : SugerenciaTraspasoOut[]
+    +POST crear_traspaso(TraspasoIn)
+  }
+  class "reportes.router" as RepRouter <<APIRouter /reportes>> {
+    +GET listar_perdidas(desde, hasta, sucursal_id)
+    +POST consulta_ia(ConsultaIaIn)
+    -_consultar_perdidas(conn, desde, hasta, sucursal)
+  }
+  class "pagos.router" as PagosRouter <<APIRouter /pagos>> {
+    +POST webhook_stripe(request)
+  }
+}
+
+package "frontend (Angular 20)" {
+  class SaasService <<@Injectable>> {
+    +planes() / miSuscripcion() / suscripciones()
+    +iniciarPago(datos) / verificarPago(sesion)
+    +pagoManual(sucursal, datos) / pagos(sucursal)
+  }
+  class ClientesService <<@Injectable>>
+  class DevolucionesService <<@Injectable>> {
+    +variantesCambio(variante, sucursal)
+    +cambiosDelMes(anio, mes)
+    +nota(id)
+  }
+  class TraspasosService <<@Injectable>> {
+    +sugerencias(dias, horizonte)
+  }
+  class ConexionService <<@Injectable>> {
+    +enLinea : Signal<bool>
+    +pendientes : Signal<int>
+    +datosDe : Signal<string?>
+    +sincronizar()
+  }
+  class offlineInterceptor <<HttpInterceptorFn>> {
+    -CACHEABLES : RegExp[]
+    -ENCOLABLES
+  }
+  class offlineDb <<IndexedDB>> {
+    +guardarRespuesta(url, cuerpo)
+    +leerRespuesta(url)
+    +encolar(op) / pendientes() / quitar(id)
+    +limpiar()
+  }
+  class PanelSuscripcionPage <<@Component>>
+  class PanelClientesPage <<@Component>>
+  class PanelDevolucionesPage <<@Component>> {
+    +imprimirNota()
+    +cargarCambios()
+  }
+  class PanelTraspasosPage <<@Component>> {
+    +crearDesdeSugerencia(grupo)
+  }
+}
+
+package "movil (Flutter)" {
+  class ApiClient {
+    +conexion : ConexionService?
+    +get(ruta) : cache SQLite si no hay red
+    +post(ruta) : encola si no hay red
+    +enviarSinCola(metodo, ruta, cuerpo)
+  }
+  class "ConexionService " as ConexionMovil <<ChangeNotifier>> {
+    +enLinea : bool
+    +pendientes : int
+    +sincronizar()
+  }
+  class BaseLocal <<SQLite>> {
+    +guardarRespuesta(ruta, cuerpo)
+    +leerRespuesta(ruta)
+    +encolar(...) / pendientes() / quitar(id)
+    +limpiar()
+  }
+}
+
+SaasRouter ..> SaasServicio
+SaasRouter ..> Plan
+PagosRouter ..> SaasServicio : metadata tipo=SUSCRIPCION
+ClientesRouter ..> Plan : requiere_funcion_plan("perfiles_clientes")
+TrasRouter ..> Plan : requiere_funcion_plan("traspasos")
+RepRouter ..> Plan : requiere_funcion_plan("ia_reportes")
+
+PanelSuscripcionPage --> SaasService
+PanelClientesPage --> ClientesService
+PanelDevolucionesPage --> DevolucionesService
+PanelTraspasosPage --> TraspasosService
+SaasService ..> SaasRouter : HTTP
+ClientesService ..> ClientesRouter : HTTP
+DevolucionesService ..> DevRouter : HTTP
+TraspasosService ..> TrasRouter : HTTP
+offlineInterceptor --> offlineDb
+offlineInterceptor --> ConexionService
+ConexionService --> offlineDb
+
+ApiClient --> BaseLocal
+ApiClient --> ConexionMovil
+ConexionMovil --> BaseLocal
+@enduml

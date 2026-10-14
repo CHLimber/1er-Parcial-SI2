@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 ///
 /// 1. `--dart-define=API_URL=...` si se paso al compilar (gana siempre; sirve para probar
 ///    contra un telefono fisico apuntando a la IP de la maquina, o contra otro deploy).
-/// 2. En **release**, el backend desplegado en Railway (ver `fashionstore/RAILWAY.md`), que
+/// 2. En **release**, el backend desplegado en Railway (ver `fashionstore/docs/RAILWAY.md`), que
 ///    es el que tiene que usar un APK instalado en un telefono real.
 /// 3. En **debug**, el backend local de `docker compose up`. Desde el emulador de Android
 ///    `localhost` es el propio emulador, no la maquina, por eso 10.0.2.2.

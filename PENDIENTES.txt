@@ -627,7 +627,7 @@
       solo una de las cuatro, que sea esta.
 
 [2.8] [HECHO 2026-09-18] CU16 "Usar Vestidor Virtual (RA)": movil, los dos
-      niveles de IMAGENES_AR.txt. Web queda afuera (CU16 se pidio solo para
+      niveles de docs/IMAGENES_AR.txt. Web queda afuera (CU16 se pidio solo para
       movil).
 
       NIVEL 2 (AR_MODELO, GLB, <<mejor cambio por hora de trabajo>>):
@@ -665,7 +665,7 @@
           reescalaron y se apoyaron en el piso (Y=0) envolviendo las raices de
           la escena en un nodo con matriz de escala, sin tocar la geometria:
           ahora la bota mide 31x36x35 cm y la sandalia 13x8x26 cm, como pide
-          IMAGENES_AR.txt punto 3.
+          docs/IMAGENES_AR.txt punto 3.
         - MIME TYPE (otro bug que rompia la demo): StaticFiles servia los .glb
           como `text/plain` porque Python no conoce el formato, y Scene Viewer
           rechaza el modelo. app/main.py ahora registra `model/gltf-binary`
@@ -694,7 +694,7 @@
           historial de esta sesion si hace falta regenerarlos, el script no
           quedo en el repo por ser una herramienta de una sola vez).
         - anclajes (JSONB) y escala_base (NUMERIC) medidos a ojo sobre cada
-          PNG con una grilla de referencia, como sugiere IMAGENES_AR.txt
+          PNG con una grilla de referencia, como sugiere docs/IMAGENES_AR.txt
           punto 4.1. Cargados en el seed (db/03_datos_iniciales.sql, bloque
           "CU16 Usar Vestidor Virtual (RA)").
         - [5.1 CERRADO] admin_router.py `_crear_fila_imagen` ahora si guarda
@@ -923,7 +923,7 @@
       --build` contra Postgres real: 40 productos, 40 producto_imagen, 1290
       filas de inventario (40 variantes-set x 3 sucursales), sin huecos.
       Detalle completo (por que este reparto, checklist de verificacion) en
-      CATALOGO_DEMO.txt.
+      docs/CATALOGO_DEMO.txt.
       [2026-09-13, mas tarde] Las 40 fotos reales (packshot 3:4) se subieron
       con el panel/endpoint de CU10 (POST .../imagenes/subir, ver
       app/core/media.py) y reemplazaron tanto los placeholders de picsum como
@@ -932,7 +932,7 @@
       /media/productos/<id>/..., ninguna con mas o menos de 1 imagen.
       OJO: estas imagenes viven en el volumen Docker `backend_media`, no en
       el repo -- en Railway hace falta el Volume que ya quedo documentado en
-      RAILWAY.md paso 5, si no se pierden en el proximo deploy.
+      docs/RAILWAY.md paso 5, si no se pierden en el proximo deploy.
       [2026-09-13, mas tarde aun] Bug reportado: al desplazarse entre colores
       en la ficha de producto, el color de catalogo no aparecia primero (el
       selector ordenaba por nombre, no por cual es el color "real" de la foto
@@ -961,7 +961,7 @@
           del chat, no en un archivo del repo).
       [2026-09-14] Variantes de color generadas con IA cargadas para 12 de los
       productos de la lista de abajo (recortadas a mano de collages 2x2 en
-      backend/3x4/variantes/ y subidas con POST .../imagenes/subir, mismo
+      recursos/fotos-catalogo/variantes/ y subidas con POST .../imagenes/subir, mismo
       mecanismo que el punto anterior):
         - Completos (foto real por cada color del producto): blazer-entallado
           (Azul/Beige/Negro), falda-lapiz-de-panio (Gris/Vino, Negro ya tenia
@@ -985,7 +985,7 @@
           estampado, sigue sin corresponder ninguna reinterpretacion de color,
           ver nota de abajo).
         Los 17 collages originales (los 16 recortados + un duplicado) quedaron
-        guardados sin borrar en backend/3x4/variantes/_collages_originales/
+        guardados sin borrar en recursos/fotos-catalogo/variantes/_collages_originales/
         por si hace falta revisarlos o recortar el color que falto en cada
         parcial.
       [2026-09-14, mas tarde] Estas 20 imagenes se volvieron OFICIALES y ya
@@ -1022,7 +1022,7 @@
           no quedo en ningun archivo del repo).
       [2026-09-14, mas tarde aun] Recuperadas y hechas OFICIALES las 40 fotos
       de catalogo (es_principal) que se rompieron en el punto anterior:
-        - Los 40 archivos originales seguian en backend/3x4/<nombre>.jpg (la
+        - Los 40 archivos originales seguian en recursos/fotos-catalogo/<nombre>.jpg (la
           fuente de la que se habian subido por CU10 la primera vez) y se
           copiaron a backend/app/media_semilla/catalogo/<slug>.jpg.
         - db/03_datos_iniciales.sql reemplazo el bloque entero de 40 INSERT
@@ -1092,7 +1092,7 @@
       se decidio como Beige arriba pese a la ambiguedad Beige/Camel;
       vestido-camisero-de-lino sigue sin asignar porque la ambiguedad
       Beige/Blanco no se pudo resolver a simple vista):
-        Variantes de color generadas con IA (CATALOGO_DEMO.txt punto 1 y 4.5)
+        Variantes de color generadas con IA (docs/CATALOGO_DEMO.txt punto 1 y 4.5)
         siguen pendientes para los productos de esta lista que son destacados
         y no son estampados (BOT-001, FAL-001, BLU-002 -- PAN-002, ABR-001,
         SAN-001, ZAP-003 y ACC-002 ya quedaron resueltos arriba).
@@ -1580,7 +1580,7 @@
       DESPACHADO, reasigna cualquier empleado/usuario REPARTIDOR (cargo -> ALMACEN, cuenta
       desactivada para que un ADMIN le ponga un cargo real desde CU13) y recrea los ENUMs
       estado_envio/cargo_empleado sin los valores viejos (Postgres no soporta DROP VALUE).
-      Ver RAILWAY.md "5 ter" para el paso a paso.
+      Ver docs/RAILWAY.md "5 ter" para el paso a paso.
 
       BACKEND: envios/admin_router.py y admin_schemas.py sin RepartidorOut/AsignarRepartidorIn
       ni el scoping por cargo REPARTIDOR; TRANSICIONES colapsadas a
@@ -1823,7 +1823,7 @@
          - CLAUDE.md esta desactualizado: menciona LIBELULA (hoy pasarela 'QR') y el cargo
            REPARTIDOR (eliminado en 2.16). [HECHO 2026-09-24: CLAUDE.md actualizado]
          - Devoluciones y traspasos [HECHO 2026-09-24, ver 2.19.7]. Diagramas UML de estados
-           [HECHO 2026-09-24: ..\ducumentacion\uml\, 8 diagramas PlantUML + PNG].
+           [HECHO 2026-09-24: docs/uml/ (antes ..\ducumentacion\uml\), 8 diagramas PlantUML + PNG].
 
       ---------------------------------------------------------------------------------
       RESOLUCION 2026-09-24 (hecha con agentes en paralelo, integrada y probada en vivo)
@@ -1942,7 +1942,7 @@
       docker-compose monta ./db entero en docker-entrypoint-initdb.d, y Postgres
       ejecutaba ahi tanto los .sql como los .sh: el script de Railway se corria
       solo en el init y fallaba. Arreglado moviendolo a scripts/aplicar_en_railway.sh
-      (RAILWAY.md actualizado con la ruta nueva); DIR dentro del script ahora
+      (docs/RAILWAY.md actualizado con la ruta nueva); DIR dentro del script ahora
       apunta a ../db para seguir encontrando los .sql. Probado con
       `docker compose down -v && up --build`: el contenedor db ya llega a
       "Healthy" y el backend arranca sin esperar.
@@ -1961,7 +1961,7 @@
 
 [3.4] [RESUELTO, verificado 2026-09-24] STRIPE_WEBHOOK_SECRET depende del entorno y no esta documentado en el .env.
       Ya esta documentado: backend/.env.example explica el de local (`stripe listen`) y
-      RAILWAY.md el de produccion (signing secret del endpoint, configurado en 4.7).
+      docs/RAILWAY.md el de produccion (signing secret del endpoint, configurado en 4.7).
       En local sale de `stripe listen --forward-to localhost:8081/pagos/webhook/stripe`;
       en Railway es el signing secret del endpoint creado en el dashboard de
       Stripe. Son distintos y sin el correcto el webhook rechaza la firma.
@@ -2043,7 +2043,7 @@
                 STRIPE_SECRET_KEY de backend/.env (test mode) y la cuenta NO
                 TIENE NINGUN webhook endpoint registrado en el Dashboard -- no
                 es que falten 2 eventos en uno existente, es que nunca se creo
-                el endpoint que dice RAILWAY.md (Stripe Dashboard -> Developers
+                el endpoint que dice docs/RAILWAY.md (Stripe Dashboard -> Developers
                 -> Webhooks -> Add endpoint -> https://<backend-railway>/pagos/
                 webhook/stripe, eventos checkout.session.completed,
                 checkout.session.async_payment_succeeded/failed/expired,
@@ -2128,6 +2128,138 @@
 [4.5] El APK de release no esta firmado con una clave propia.
       Usa la debug key (viene asi de `flutter create`). Sirve para instalar por
       USB, pero no para publicar en Play Store.
+
+-------------------------------------------------------------------------------
+ 5. SEGUNDO PARCIAL (consigna recibida 2026-10-14, tema "perdida")
+-------------------------------------------------------------------------------
+ Relevado contra el codigo el 2026-10-14. Fechas: 25/10, 1/11 y 8/11 (entregas),
+ 10/11 defensa -- se presenta con URL y codigo QR.
+
+ Decision de diseño tomada para avanzar (revisable con el docente): "un tenant para
+ cada sucursal" se toma LITERAL -- cada sucursal es un tenant con su propia
+ suscripcion (plan) y su propia cartera/perfil de clientes; el catalogo sigue siendo
+ de la cadena (la casa matriz lo provee a todas), asi traspasos y reportes de cadena
+ siguen funcionando.
+
+[5.1] [HECHO 2026-10-14] PWA: @angular/service-worker (provideServiceWorker en app.config.ts,
+      solo en build de produccion), ngsw-config.json (shell prefetch, assets lazy, fuentes, y
+      las imagenes /media con estrategia performance), public/manifest.webmanifest (standalone,
+      start_url /tienda, atajos) e iconos en public/icons (192, 512 y maskable). nginx
+      (default.conf.template) sirve ngsw-worker.js / ngsw.json / index.html / manifest con
+      Cache-Control no-cache para que las versiones nuevas lleguen. Instalable: requiere HTTPS
+      (Railway lo da) o localhost.
+[5.2] [HECHO 2026-10-14] Offline/online con base de datos temporal (IndexedDB propio, sin
+      dependencias): core/offline/offline-db.ts (almacenes `respuestas` y `cola`),
+      offline.interceptor.ts (GET de catalogo, sucursales, recomendaciones, carrito, mis
+      reservas, mis compras, notificaciones, direcciones y planes: red primero, se guardan, y
+      sin red se sirven de IndexedDB; POST /carrito/items sin red se ENCOLA), conexion.service.ts
+      (estado online, sincroniza la cola al volver la red; un 4xx se descarta y se avisa) y
+      shared/offline/aviso-conexion.ts (franja "Sin conexion · datos del <fecha> · N pendientes"
+      y aviso de sincronizacion). Se vacia al cerrar sesion. Ojo: con el SW activo, sin red el
+      SW responde 504 "Gateway Timeout" en vez de status 0; el interceptor y interpretarError
+      tratan los dos como "sin red".
+      PROBADO en Chromium (Playwright) contra build de produccion + backend real, apagando el
+      backend en la fase sin red (set_offline no corta los fetch del SW): 14/14 -- SW activo y
+      controlando, la app abre sin red, catalogo desde IndexedDB con la fecha en el aviso,
+      "Comprar ahora" sin red queda en la cola, al volver la red se sincroniza y la prenda
+      llega al carrito del backend, sin errores de JS.
+[5.3] [HECHO 2026-10-14] Movil con base local SQLite (cubre tambien la consigna 6, "SQLite"):
+      sqflite + path + connectivity_plus. lib/core/offline/base_local.dart (tablas `respuesta`
+      y `pendiente`, mismo diseño que IndexedDB en la web), conexion_service.dart
+      (ChangeNotifier: estado de red, cuenta pendientes, sincroniza la cola al volver la red)
+      y ApiClient (lib/core/api.dart) hace de interceptor: GET cacheables se guardan en SQLite
+      y sin red se sirven de ahi; POST /carrito/items sin red se encola (ApiException 503 con
+      el aviso). compartido/aviso_conexion.dart va en MaterialApp.builder. Se vacia al
+      cerrar sesion. PROBADO: flutter analyze limpio; flutter test 7/7 (4 nuevos de
+      test/base_local_test.dart contra SQLite real en memoria con sqflite_common_ffi).
+      NO PROBADO en emulador/telefono (la parte de red y connectivity_plus).
+[5.4] [HECHO 2026-10-14 backend + web] SaaS: bloque 8 del esquema (plan, suscripcion,
+      pago_suscripcion, cliente_perfil_tenant). Tres planes: BASICO (Bs 350, 3 personas,
+      1 caja), PROFESIONAL (Bs 750, 8/2, + perfil de clientas y traspasos), PREMIUM
+      (Bs 1400, sin limites, + reportes con IA). Modulo backend/app/modules/saas/, permisos
+      suscripciones.leer/actualizar (ADMIN y ENCARGADO). Topes: alta de personal y de cajas
+      responden 409 si el plan de la sucursal esta lleno (app/core/plan.py::exigir_limite).
+      Web: /panel/suscripcion (plan actual, uso vs topes, planes, pagar, historial; el ADMIN
+      ve la tabla de todos los tenants).
+[5.5] [HECHO 2026-10-14 backend + web] Pago de la suscripcion: POST
+      /saas/suscripcion/checkout crea pago_suscripcion PENDIENTE + Checkout hospedado de
+      Stripe (bob, metadata tipo=SUSCRIPCION). Lo aprueba el webhook de siempre
+      (pagos/router.py deriva por metadata) o POST /saas/pagos/verificar al volver del
+      Checkout (sirve sin `stripe listen`). El ADMIN registra pagos manuales (transferencia /
+      efectivo). Renovar suma al final del periodo vigente; si vencio, arranca hoy.
+      NO PROBADO contra Stripe real (no hay STRIPE_SECRET_KEY en el entorno de prueba: el
+      checkout responde 503 como corresponde); el pago manual si se probo en vivo.
+[5.6] [HECHO 2026-10-14 backend + web] Multi-tenant (tenant = sucursal): cada sucursal tiene
+      su suscripcion; requiere_funcion_plan() en app/core/plan.py combina el permiso de CU13
+      con el plan: plan sin la funcion -> 403 ("incluido desde el plan X"), suscripcion
+      vencida -> 402. Aplicado a traspasos (crear + sugerencias), clientes y consulta-ia. El
+      ADMIN de la plataforma no depende de ningun plan. Alta de sucursal (CU12) crea 14 dias
+      de prueba del plan Basico. Seed: SC-01 Premium, LP/CB Profesional, SU Basico, TJ en
+      prueba, OR vencida (para mostrar el bloqueo).
+[5.7] [HECHO 2026-10-14 backend + web] Cartera/perfil de clientas por tenant: modulo
+      backend/app/modules/clientes/ (GET/POST /clientes, PUT /clientes/{id}/perfil), tabla
+      cliente_perfil_tenant. La cartera = compraron o reservaron en la sucursal + altas a mano
+      por email; segmento sugerido (NUEVA/FRECUENTE/VIP/INACTIVA) del historial en la
+      sucursal, editable. Web: /panel/clientes. Probado: la ficha de La Paz no aparece en
+      Equipetrol.
+[5.8] [HECHO 2026-10-14 backend + web] Cambio por talla: ENUM motivo_devolucion
+      (TALLA/COLOR/DEFECTO/NO_GUSTO/OTRO), condiciones con_etiqueta/sin_uso/con_comprobante
+      (DEFECTO solo exige comprobante), variante_solicitada_id por linea (misma prenda, otra
+      talla/color, con stock en la sucursal), plazo propio configuracion.cambio_plazo_dias=15
+      (devolucion con reintegro sigue en 30). Web: motivo, checklist de condiciones y selector
+      "se lleva a cambio" con el disponible de cada talla.
+[5.9] [HECHO 2026-10-14 backend + web] Nota de devolucion: numero NDV-000001 (secuencia
+      seq_nota_devolucion), GET /devoluciones/{id}/nota y boton "Imprimir nota" (ventana
+      imprimible / Guardar como PDF con empresa, NIT, condiciones, plazo y firmas).
+[5.10] [HECHO 2026-10-14 backend + web] GET /devoluciones/cambios-mes?anio&mes: prenda,
+      talla/color devuelta vs pedida, solicitudes, unidades, estado y sucursales. Web: solapa
+      "Cambios del mes". GET /devoluciones ahora filtra por motivo y rango de fechas.
+[5.11] [HECHO 2026-10-14] 6 sucursales: + Sucre (SU-01), Tarija (TJ-01), Oruro (OR-01) con
+      caja, ENCARGADO + CAJERO e inventario por clima (CALIDO/FRIO/TEMPLADO). Nuevo
+      db/04_historial_demo.sql: 60 dias de ventas POS en todas (cerca de 800 ventas) y mermas,
+      asi los reportes y la IA tienen datos de las 6. El prompt de la IA nombra las 6 ciudades
+      y sabe comparar sucursales; nueva herramienta consultar_perdidas.
+[5.12] [HECHO 2026-10-14 backend + web] GET /traspasos/sugerencias: demanda de los ultimos N
+      dias vs los N anteriores por prenda y sucursal; si crece y el stock no cubre el
+      horizonte, propone traerla de la sucursal con mas excedente. Web: "Sugerencias por
+      demanda" agrupadas por origen -> destino, cada grupo se convierte en traspaso con un
+      click. Con el seed salen sugerencias hacia Tarija y Equipetrol (calor).
+[5.13] [HECHO 2026-10-14 backend + web] Reporte de perdidas (tema del parcial): GET
+      /reportes/perdidas por sucursal = mermas (AJUSTE a la baja) + devoluciones aprobadas por
+      DEFECTO + faltantes de traspaso + faltantes de caja, valorizado. En la web es un tipo
+      mas de "Reportes dinamicos" (con export PDF/Excel) y la IA lo consulta.
+      MIGRACION para bases existentes (Railway / Docker con volumen), en este orden:
+        db/reparaciones/segundo_parcial.sql   (idempotente, probada 2 veces sobre HEAD)
+        db/04_historial_demo.sql               (opcional, datos demo; re-ejecutable)
+      PROBADO: 147 tests backend; init limpio 01-04 sobre Postgres 16; e2e en vivo contra
+      backend real con 30 chequeos (planes, 402/403 por plan, pago manual, cartera aislada
+      por tenant, perdidas, cambio por talla con nota, cambios del mes); ng build.
+[5.14] [HECHO 2026-10-14] ICONIX + C4 en docs/uml/: ICONIX_SEGUNDO_PARCIAL.md
+      (etapas ICONIX, narrativas de CU21-CU31 con cursos alternos, robustez, diseño, C4) y los
+      .puml con su png/ (renderizado con plantuml en Docker): 09 modelo de dominio,
+      10 casos de uso, 11-16 robustez = comunicacion (mensajes numerados), 17-18 secuencia,
+      19 clases de diseño, 20-22 C4 contexto/contenedores/componentes. docs/uml/README.md indexa.
+      [2026-10-14] Los diagramas (incluidos los 01-08 del primer parcial) se movieron de
+      ../ducumentacion/uml (fuera de git) a docs/uml, para versionarlos junto al codigo.
+[5.15] [PARCIAL -- ACCION DEL USUARIO] URL + QR. El frontend ya tiene Dockerfile/railway.toml
+      (docs/RAILWAY.md, paso del servicio frontend) pero el CLI de Railway pide `railway login` de
+      nuevo (token vencido), y eso es interactivo. Pasos:
+        1. `railway login`, desplegar backend (codigo nuevo) y frontend.
+        2. Correr en la base de Railway: db/reparaciones/segundo_parcial.sql y despues
+           db/04_historial_demo.sql (ver bloque MIGRACION de 5.13).
+        3. Backend: CORS_ORIGINS y FRONTEND_URL con la URL publica del frontend.
+        4. `python scripts/generar_qr.py https://<url-del-frontend> qr_defensa.png` (ya probado).
+      La PWA solo se instala desde HTTPS: Railway lo da.
+[5.16] [HECHO 2026-10-14] Paridad movil de lo nuevo: panel_devoluciones_pagina.dart (motivo,
+      condiciones, "se lleva a cambio" con el disponible, plazo de cambio, nota NDV en listado
+      y detalle, pantalla CambiosMesPagina desde el icono de calendario),
+      panel_traspasos_pagina.dart (SugerenciasTraspasoPagina desde el icono de tendencia, crea
+      el traspaso por grupo), reportes dinamicos con "Perdidas por sucursal", y pantallas
+      nuevas panel_suscripcion_pagina.dart (plan, uso, planes; pagar abre el Checkout de
+      Stripe en el navegador y al volver recarga) y panel_clientes_pagina.dart (cartera +
+      ficha editable). Rutas y accesos del panel registrados (/panel/suscripcion,
+      /panel/clientes). PROBADO: flutter analyze limpio, flutter test 7/7, flutter build apk
+      --debug OK. NO PROBADO en emulador/telefono.
 
 ===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)

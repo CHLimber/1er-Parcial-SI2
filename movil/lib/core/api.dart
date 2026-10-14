@@ -4,14 +4,41 @@ import 'package:http/http.dart' as http;
 
 import 'config.dart';
 import 'errores.dart';
+import 'offline/base_local.dart';
+import 'offline/conexion_service.dart';
+
+/// GET que se pueden mostrar sin red (PENDIENTES 5.3): se guardan en SQLite y, si la red falla,
+/// se responde con lo guardado. Mismo criterio que CACHEABLES de offline.interceptor.ts (web).
+final _cacheables = [
+  RegExp(r'^/catalogo(/|$)'),
+  RegExp(r'^/sucursales(/|$)'),
+  RegExp(r'^/recomendaciones$'),
+  RegExp(r'^/carrito$'),
+  RegExp(r'^/reservas$'),
+  RegExp(r'^/ventas$'),
+  RegExp(r'^/notificaciones(/|$)'),
+  RegExp(r'^/direcciones$'),
+];
+
+/// Escrituras que se encolan sin red y se mandan solas al volver (ConexionService.sincronizar).
+const _encolables = {
+  'POST /carrito/items': (
+    'Agregar prenda al carrito',
+    'Sin conexion: guardamos la prenda y la agregamos a tu carrito apenas vuelva la red.',
+  ),
+};
 
 /// Cliente HTTP unico contra la API. Es el espejo del `authInterceptor` del frontend
 /// Angular: adjunta `Authorization: Bearer <token>` a todo lo que va a la API y traduce
-/// los errores de FastAPI a [ApiException].
+/// los errores de FastAPI a [ApiException]. Desde el Segundo parcial tambien es el espejo de
+/// `offlineInterceptor`: cache de GET en SQLite ([baseLocal]) y cola de escrituras sin red.
 class ApiClient {
   ApiClient();
 
   final http.Client _http = http.Client();
+
+  /// Lo setea [ConexionService] al crearse (null en tests: sin capa offline).
+  ConexionService? conexion;
 
   /// Lo setea AuthService al arrancar; devuelve el token de la sesion viva.
   String? Function() obtenerToken = () => null;
@@ -40,21 +67,59 @@ class ApiClient {
     return cabeceras;
   }
 
-  Future<dynamic> get(String ruta, {Map<String, dynamic>? query}) =>
-      _enviar(() => _http.get(_uri(ruta, query), headers: _cabeceras()));
+  Future<dynamic> get(String ruta, {Map<String, dynamic>? query}) async {
+    Future<http.Response> peticion() => _http.get(_uri(ruta, query), headers: _cabeceras());
+    if (conexion == null || !_cacheables.any((p) => p.hasMatch(ruta))) return _enviar(peticion);
+    final clave = _uri(ruta, query).toString();
+    try {
+      final cuerpo = await _enviar(peticion);
+      baseLocal.guardarRespuesta(clave, cuerpo).catchError((_) {});
+      return cuerpo;
+    } on ApiException catch (e) {
+      if (e.statusCode != null) rethrow; // el backend respondio: no es falta de red
+      conexion?.marcarSinRed();
+      final guardada = await baseLocal.leerRespuesta(clave).catchError((_) => null);
+      if (guardada == null) rethrow;
+      conexion?.marcarDatosGuardados(guardada.$2);
+      return guardada.$1;
+    }
+  }
 
   Future<dynamic> post(
     String ruta, {
     Object? cuerpo,
     Map<String, dynamic>? query,
     bool notificarSesionExpirada = true,
-  }) => _enviar(
-        () => _http.post(
+  }) async {
+    Future<http.Response> peticion() => _http.post(
           _uri(ruta, query),
           headers: _cabeceras(conCuerpo: true),
           body: jsonEncode(cuerpo ?? const <String, dynamic>{}),
-        ),
-        notificarSesionExpirada: notificarSesionExpirada,
+        );
+    final encolable = _encolables['POST $ruta'];
+    if (conexion == null || encolable == null) {
+      return _enviar(peticion, notificarSesionExpirada: notificarSesionExpirada);
+    }
+    if (conexion!.enLinea) {
+      try {
+        return await _enviar(peticion, notificarSesionExpirada: notificarSesionExpirada);
+      } on ApiException catch (e) {
+        if (e.statusCode != null) rethrow;
+        conexion?.marcarSinRed();
+      }
+    }
+    await baseLocal.encolar(metodo: 'POST', ruta: ruta, cuerpo: cuerpo, descripcion: encolable.$1);
+    await conexion?.contarPendientes();
+    throw ApiException(encolable.$2, statusCode: 503);
+  }
+
+  /// La usa la sincronizacion de la cola: manda tal cual, sin volver a encolar.
+  Future<dynamic> enviarSinCola(String metodo, String ruta, Object? cuerpo) => _enviar(
+        () => _http.send(
+          http.Request(metodo, _uri(ruta))
+            ..headers.addAll(_cabeceras(conCuerpo: true))
+            ..body = jsonEncode(cuerpo ?? const <String, dynamic>{}),
+        ).then(http.Response.fromStream),
       );
 
   Future<dynamic> put(String ruta, {Object? cuerpo}) => _enviar(

@@ -9,6 +9,11 @@
   <meta name="theme-color" content="#2e2530">
   <meta name="description" content="FashionStore — plataforma de venta y reserva de prendas con sucursales en Bolivia.">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- PWA (PENDIENTES 5.1): instalable en el telefono y la compu, abre sin red -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="FashionStore">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- tiles del mapa (CU20): adelanta DNS + TLS para que el primer tile no pague el handshake -->
@@ -17,5 +22,6 @@
 </head>
 <body>
   <app-root></app-root>
+  <noscript>FashionStore necesita JavaScript habilitado.</noscript>
 </body>
 </html>

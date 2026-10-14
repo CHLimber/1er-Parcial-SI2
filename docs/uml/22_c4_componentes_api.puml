@@ -1,0 +1,43 @@
+@startuml 22_c4_componentes_api
+' Arquitectura C4 - Nivel 3: Componentes de la API (FastAPI).
+!include <C4/C4_Component>
+LAYOUT_WITH_LEGEND()
+title FashionStore — C4 Nivel 3: Componentes de la API
+
+Container(pwa, "PWA web / App móvil", "Angular / Flutter")
+ContainerDb(pg, "PostgreSQL", "Esquema + triggers")
+System_Ext(stripe, "Stripe")
+System_Ext(claude, "Claude API")
+
+Container_Boundary(api, "API FastAPI") {
+  Component(deps, "Autorización", "app/core/deps.py", "JWT; requiere_permiso() por código de permiso (CU13).")
+  Component(plan, "Control de plan del tenant", "app/core/plan.py", "requiere_funcion_plan(): 402 si vencida, 403 si el plan no incluye la función; topes de personal y cajas.")
+  Component(saas, "SaaS", "modules/saas", "Planes, suscripción por sucursal, pago con Stripe Checkout, pago manual.")
+  Component(clientes, "Cartera de clientas", "modules/clientes", "Perfil de clientas por tenant y segmento sugerido.")
+  Component(dev, "Devoluciones y cambios", "modules/devoluciones", "Cambio por talla con condiciones y plazo, nota NDV, cambios del mes.")
+  Component(tras, "Traspasos", "modules/traspasos", "Traspasos y sugerencias por demanda creciente.")
+  Component(rep, "Reportes", "modules/reportes", "Tableros, pérdidas por sucursal, consulta con IA (tool use).")
+  Component(pagos, "Pagos", "modules/pagos", "Webhook de Stripe: ventas y suscripciones (por metadata).")
+  Component(ventas, "Ventas / caja / reservas / catálogo", "modules/*", "CU01-CU20 del primer parcial.")
+  Component(audit, "Auditoría", "app/core/auditoria.py", "Rastro de los CU de gestión.")
+}
+
+Rel(pwa, deps, "Bearer JWT")
+Rel(deps, plan, "staff con permisos")
+Rel(plan, saas, "lee suscripción y plan")
+Rel(clientes, plan, "usa")
+Rel(tras, plan, "usa")
+Rel(rep, plan, "usa (IA)")
+Rel(saas, stripe, "Checkout")
+Rel(stripe, pagos, "webhook")
+Rel(pagos, saas, "aplicar_pago()")
+Rel(rep, claude, "Messages + tools")
+Rel(dev, audit, "registra")
+Rel(clientes, audit, "registra")
+Rel(saas, pg, "SQL")
+Rel(clientes, pg, "SQL")
+Rel(dev, pg, "SQL (triggers mueven stock)")
+Rel(tras, pg, "SQL (triggers mueven stock)")
+Rel(rep, pg, "SQL de solo lectura")
+Rel(ventas, pg, "SQL")
+@enduml

@@ -37,6 +37,7 @@ import {
   StockSucursalOut,
   VendedorOut,
   VentaDiariaOut,
+  PerdidaSucursalOut,
   VentaPorSucursalOut,
 } from '../../core/reportes/reportes.models';
 import { ReportesService } from '../../core/reportes/reportes.service';
@@ -126,13 +127,14 @@ const ETIQUETAS_TIPO_ESTATICO: Record<TipoEstatico, string> = {
   recepciones: 'Recepciones pendientes por proveedor',
 };
 
-type TipoDinamico = 'indicadores' | 'ventasDiarias' | 'ventasPorSucursal' | 'topProductos';
+type TipoDinamico = 'indicadores' | 'ventasDiarias' | 'ventasPorSucursal' | 'topProductos' | 'perdidas';
 
 const ETIQUETAS_TIPO_DINAMICO: Record<TipoDinamico, string> = {
   indicadores: 'Indicadores del período',
   ventasDiarias: 'Ventas diarias',
   ventasPorSucursal: 'Ventas por sucursal',
   topProductos: 'Top 10 productos más vendidos',
+  perdidas: 'Pérdidas por sucursal',
 };
 
 // Columnas para exportar (PDF/Excel) cada tipo de "Reporte Estaticos"/"Reporte Dinamicos": mismas
@@ -200,6 +202,17 @@ const COLUMNAS_DINAMICO: Record<Exclude<TipoDinamico, 'indicadores'>, ColumnaExp
     { clave: 'producto', etiqueta: 'Producto' },
     { clave: 'unidades_vendidas', etiqueta: 'Unidades vendidas' },
     { clave: 'monto_vendido', etiqueta: 'Monto vendido (Bs)' },
+  ],
+  perdidas: [
+    { clave: 'sucursal', etiqueta: 'Sucursal' },
+    { clave: 'mermas_unidades', etiqueta: 'Mermas (u)' },
+    { clave: 'mermas_valor', etiqueta: 'Mermas (Bs)' },
+    { clave: 'defectos_unidades', etiqueta: 'Defectuosas (u)' },
+    { clave: 'defectos_monto', etiqueta: 'Reintegrado por defecto (Bs)' },
+    { clave: 'traspaso_faltante_unidades', etiqueta: 'Faltante traspaso (u)' },
+    { clave: 'traspaso_faltante_valor', etiqueta: 'Faltante traspaso (Bs)' },
+    { clave: 'faltante_caja', etiqueta: 'Faltante de caja (Bs)' },
+    { clave: 'total_perdida', etiqueta: 'Pérdida total (Bs)' },
   ],
 };
 
@@ -362,6 +375,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
   protected readonly dinVentasDiarias = signal<VentaDiariaOut[]>([]);
   protected readonly dinVentasPorSucursal = signal<VentaPorSucursalOut[]>([]);
   protected readonly dinTopProductos = signal<ProductoRankingOut[]>([]);
+  protected readonly dinPerdidas = signal<PerdidaSucursalOut[]>([]);
 
   // --- Existencias: consolidado por variante x sucursal, paginado (GET /reportes/existencias) ---
 
@@ -891,6 +905,15 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
           error: (e) => alFallar(e, 'No se pudo cargar el ranking de productos.'),
         });
         break;
+      case 'perdidas':
+        this.servicio.perdidas(filtro).subscribe({
+          next: (f) => {
+            this.dinPerdidas.set(f);
+            alTerminar(f.length);
+          },
+          error: (e) => alFallar(e, 'No se pudo cargar el reporte de pérdidas.'),
+        });
+        break;
     }
   }
 
@@ -1114,6 +1137,7 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
     if (tipo === 'ventasDiarias') return this.dinVentasDiarias() as unknown as Record<string, unknown>[];
     if (tipo === 'ventasPorSucursal') return this.dinVentasPorSucursal() as unknown as Record<string, unknown>[];
     if (tipo === 'topProductos') return this.dinTopProductos() as unknown as Record<string, unknown>[];
+    if (tipo === 'perdidas') return this.dinPerdidas() as unknown as Record<string, unknown>[];
     return [];
   }
 

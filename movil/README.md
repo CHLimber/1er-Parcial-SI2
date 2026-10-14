@@ -142,7 +142,7 @@ flutter run --dart-define=API_URL=http://192.168.0.10:8081
 
 Contra Railway nada de eso hace falta: la API va por HTTPS. Si se regenera el
 dominio del backend, hay que actualizar `Config.apiUrlProduccion` y recompilar
-el APK. El despliegue esta documentado en `../RAILWAY.md`.
+el APK. El despliegue esta documentado en `../docs/RAILWAY.md`.
 
 ### Si algo no anda
 

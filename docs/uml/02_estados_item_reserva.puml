@@ -1,0 +1,48 @@
+@startuml 02_estados_item_reserva
+' Máquina de estados de cada prenda de una reserva (reserva_detalle.estado_item,
+' ENUM estado_item_res). Fuente: reservas/router.py (preparar, resolver, cancelar,
+' rechazar, no-presentado, _liberar_compromiso), pagos/servicio.py::confirmar_aprobado,
+' db/02_logica.sql::fn_expirar_reservas.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #FFFDF7
+  BorderColor #444444
+  ArrowColor #333333
+}
+title Prenda de la reserva — estado_item_res
+
+state "Stock comprometido\n(cantidad_reservada)" as COMP {
+  state RESERVADO
+  state PREPARADO
+}
+state PROBADO #EEEEEE : definido en el ENUM,\nel código no lo asigna\n(ver nota)
+state COMPRADO #E8F5E9 : entry / LIBERACION + SALIDA\n(tg_venta_descuenta_stock)
+state DESCARTADO #FDECEA : entry / LIBERACION\n(fn_mover_inventario)
+
+[*] --> RESERVADO : «Cliente» INSERT reserva_detalle\n/ RESERVA (tg_reserva_compromete_stock)\n[FOR UPDATE: disponible >= cantidad]
+
+RESERVADO --> PREPARADO : «Encargado» preparar\n[la prenda está en tienda]
+RESERVADO --> DESCARTADO : «Encargado» preparar\n[prenda no disponible, E2]\n/ notifica a la clienta
+
+COMP --> DESCARTADO : reserva CANCELADA o EXPIRADA\n(cancelar «Cliente», rechazar / no-presentado «Encargado»,\nfn_expirar_reservas «Sistema»)
+PREPARADO --> COMPRADO : «Encargado» resolver\n[decisión = compra]
+PREPARADO --> DESCARTADO : «Encargado» resolver\n[decisión = no compra]
+COMP --> COMPRADO : «Sistema de pagos / Cajero»\nconfirmar_aprobado\n[variante incluida en el carrito\narmado desde la reserva]
+
+COMPRADO --> [*]
+DESCARTADO --> [*]
+
+note bottom of PROBADO
+  PROBADO existe en estado_item_res y carrito/router.py
+  y ventas/router.py lo aceptan como "vivo", pero ningún
+  endpoint lo escribe: /resolver pasa PREPARADO -> COMPRADO
+  o DESCARTADO directamente. Se muestra en gris.
+end note
+
+note right of DESCARTADO
+  Pasar a DESCARTADO en la misma transacción que la
+  LIBERACION impide una doble liberación: ni el job
+  ni otro endpoint vuelven a tocar un ítem DESCARTADO.
+end note
+@enduml

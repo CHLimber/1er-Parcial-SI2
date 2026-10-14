@@ -3,6 +3,7 @@ import { Injectable, computed, signal } from '@angular/core';
 import { Observable, map, tap } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
+import { offlineDb } from '../offline/offline-db';
 import {
   CambiarPasswordRequest,
   LoginRequest,
@@ -77,6 +78,8 @@ export class AuthService {
   cerrarSesion(): void {
     this.sesion.set(null);
     localStorage.removeItem(STORAGE_KEY);
+    // la base temporal offline (PENDIENTES 5.2) guarda datos de este usuario: se vacia
+    void offlineDb.limpiar().catch(() => null);
   }
 
   private guardar(respuesta: TokenResponse): void {

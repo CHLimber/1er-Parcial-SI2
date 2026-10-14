@@ -1,0 +1,40 @@
+@startuml 11_robustez_cambio_talla
+' ICONIX - Diagrama de robustez / comunicación de CU25 "Registrar cambio de prenda por talla".
+' Reglas: Actor solo habla con Boundary; Boundary <-> Control; Control <-> Entity/Control.
+' Los mensajes numerados son los del diagrama de comunicación UML equivalente.
+left to right direction
+skinparam defaultFontName Arial
+title CU25 Registrar cambio de prenda por talla — Robustez / Comunicación
+
+actor "Encargado" as A
+boundary "Pantalla Devoluciones\n(panel-devoluciones)" as B1
+boundary "Nota imprimible" as B2
+control "Buscar venta y\ncalcular plazos" as C1
+control "Listar tallas a cambio\ncon stock" as C2
+control "Validar condiciones\nde la prenda" as C3
+control "Validar variante\nsolicitada" as C4
+control "Registrar devolución\ny numerar nota" as C5
+control "Armar nota\nde devolución" as C6
+entity "Venta / VentaDetalle" as E1
+entity "Configuracion\n(cambio_plazo_dias)" as E2
+entity "ProductoVariante\n+ Inventario" as E3
+entity "Devolucion /\nDevolucionDetalle" as E4
+
+A --> B1 : 1: ingresa Nº de venta
+B1 --> C1 : 2: buscarVenta(numero)
+C1 --> E1 : 3: leer venta y líneas
+C1 --> E2 : 4: leer plazos
+B1 --> C2 : 5: motivo = TALLA
+C2 --> E3 : 6: otras tallas de la prenda\ny su disponible
+A --> B1 : 7: marca condiciones,\nunidades y talla a cambio
+B1 --> C3 : 8: registrar(motivo, condiciones, líneas)
+C3 --> C4 : 9: [etiqueta y sin uso y comprobante]
+C4 --> E3 : 10: misma prenda, otra talla,\ndisponible >= cantidad
+C4 --> C5 : 11: [variante válida]
+C5 --> E4 : 12: INSERT devolucion (numero NDV-…)\n+ detalle con variante_solicitada
+C5 --> B1 : 13: nota NDV-… SOLICITADA
+A --> B1 : 14: imprimir nota
+B1 --> C6 : 15: nota(id)
+C6 --> E4 : 16: leer devolución y detalle
+C6 --> B2 : 17: mostrar / imprimir
+@enduml

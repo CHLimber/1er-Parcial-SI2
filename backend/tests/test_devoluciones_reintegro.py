@@ -86,9 +86,11 @@ async def test_reembolso_parcial_pide_el_monto_en_centavos_con_clave_idempotente
 def _devolucion_out() -> dict:
     ahora = datetime.now(timezone.utc)
     return {
-        "id": DEVOLUCION, "venta_id": VENTA, "venta_numero": "V-TEST",
+        "id": DEVOLUCION, "numero": "NDV-000001", "venta_id": VENTA, "venta_numero": "V-TEST",
         "venta_total": Decimal("226.00"), "sucursal_id": SUCURSAL, "sucursal": "Equipetrol",
-        "cliente": "Ana Perez", "motivo": "No le quedo", "monto_devuelto": Decimal("113.00"),
+        "cliente": "Ana Perez", "motivo_tipo": "NO_GUSTO", "motivo": "No le quedo",
+        "con_etiqueta": True, "sin_uso": True, "con_comprobante": True,
+        "monto_devuelto": Decimal("113.00"),
         "estado": "APROBADA", "fecha": ahora, "registrada_por": "Admin", "resuelta_por": "Admin",
         "resuelta_en": ahora, "motivo_rechazo": None, "reintegro_metodo": "STRIPE",
         "reintegro_referencia": "re_123", "venta_cambio_id": None, "venta_cambio_numero": None,

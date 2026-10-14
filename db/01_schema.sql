@@ -52,7 +52,12 @@ CREATE TYPE pasarela_pago     AS ENUM ('STRIPE','QR');
 CREATE TYPE estado_pago       AS ENUM ('PENDIENTE','APROBADO','RECHAZADO','REEMBOLSADO');
 CREATE TYPE tipo_comprobante  AS ENUM ('RECIBO','FACTURA');
 CREATE TYPE estado_devolucion AS ENUM ('SOLICITADA','APROBADA','RECHAZADA');
-CREATE TYPE tipo_notificacion AS ENUM ('RESERVA','VENTA','STOCK','PROMO');
+-- Segundo parcial (PENDIENTES 5.8): por que vuelve la prenda. TALLA/COLOR son cambios (la clienta
+-- se lleva otra variante de la misma prenda); el resto son devoluciones con reintegro.
+CREATE TYPE motivo_devolucion AS ENUM ('TALLA','COLOR','DEFECTO','NO_GUSTO','OTRO');
+-- Bloque 8 (SaaS): estado de la suscripcion de un tenant (sucursal).
+CREATE TYPE estado_suscripcion AS ENUM ('PRUEBA','ACTIVA','VENCIDA','CANCELADA');
+CREATE TYPE tipo_notificacion AS ENUM ('RESERVA','VENTA','STOCK','PROMO','SUSCRIPCION');
 CREATE TYPE accion_auditoria  AS ENUM ('CREAR','ACTUALIZAR','ELIMINAR','LOGIN');
  
  
@@ -684,8 +689,13 @@ COMMENT ON TABLE envio_evento IS
     'reserva_historial): nunca se actualiza ni se borra. La escribe el trigger '
     'tg_envio_historial, que firma el evento con envio.actualizado_por_id.';
 
+-- Nota de devolucion (PENDIENTES 5.9): numero correlativo NDV-000001 de toda la cadena.
+CREATE SEQUENCE seq_nota_devolucion;
+
 CREATE TABLE devolucion (
     id             UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
+    numero         VARCHAR(20)       NOT NULL UNIQUE
+                       DEFAULT ('NDV-' || lpad(nextval('seq_nota_devolucion')::text, 6, '0')),
     venta_id       UUID              NOT NULL REFERENCES venta(id),
     sucursal_id    UUID              NOT NULL REFERENCES sucursal(id),
     motivo         VARCHAR(250)      NOT NULL,
@@ -708,8 +718,17 @@ CREATE TABLE devolucion (
     sesion_caja_id       UUID         REFERENCES sesion_caja(id),
     -- Cambio de prenda = devolucion + venta nueva cobrada en caja; esto las vincula.
     venta_cambio_id      UUID         REFERENCES venta(id),
+    -- Segundo parcial (PENDIENTES 5.8): motivo estructurado y condiciones de la prenda que el
+    -- personal verifica al recibirla. Las reglas (que condicion exige cada motivo y que plazo
+    -- corre) estan en devoluciones/router.py: TALLA/COLOR usan configuracion.cambio_plazo_dias,
+    -- el resto devolucion_plazo_dias; DEFECTO solo exige el comprobante.
+    motivo_tipo     motivo_devolucion NOT NULL DEFAULT 'OTRO',
+    con_etiqueta    BOOLEAN           NOT NULL DEFAULT TRUE,
+    sin_uso         BOOLEAN           NOT NULL DEFAULT TRUE,
+    con_comprobante BOOLEAN           NOT NULL DEFAULT TRUE,
     CONSTRAINT ck_devolucion_cambio CHECK (venta_cambio_id <> venta_id)
 );
+CREATE INDEX ix_devolucion_fecha ON devolucion(fecha DESC);
 CREATE INDEX ix_devolucion_venta ON devolucion(venta_id);
 COMMENT ON TABLE devolucion IS
     'Devolucion de prendas de una venta PAGADA/ENTREGADA. Nace SOLICITADA; al pasar a APROBADA '
@@ -719,7 +738,9 @@ CREATE TABLE devolucion_detalle (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     devolucion_id    UUID NOT NULL REFERENCES devolucion(id) ON DELETE CASCADE,
     venta_detalle_id UUID NOT NULL REFERENCES venta_detalle(id),
-    cantidad         INT  NOT NULL CHECK (cantidad > 0)
+    cantidad         INT  NOT NULL CHECK (cantidad > 0),
+    -- Cambio por talla/color: la variante (misma prenda) que la clienta pide a cambio.
+    variante_solicitada_id UUID REFERENCES producto_variante(id)
 );
  
  
@@ -762,3 +783,84 @@ CREATE TABLE auditoria (
     fecha          TIMESTAMPTZ      NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_auditoria_entidad ON auditoria(entidad, entidad_id, fecha DESC);
+
+
+-- =====================================================================
+--  BLOQUE 8 - SAAS: PLANES, SUSCRIPCIONES Y PERFIL DE CLIENTES POR TENANT
+--  (Segundo parcial, PENDIENTES 5.4 a 5.7)
+--
+--  Tenant = sucursal. Cada sucursal paga su propia suscripcion a uno de los tres planes; el plan
+--  decide que funciones de gestion puede usar (ver requiere_funcion_plan en
+--  backend/app/core/deps.py) y cuanto personal/cajas admite. El catalogo es de la cadena (lo
+--  provee la casa matriz) y lo comparten todos los tenants; los datos operativos (stock, ventas,
+--  reservas, cajas, personal, devoluciones) ya estaban particionados por sucursal_id, y la
+--  cartera de clientas de cada tenant vive en cliente_perfil_tenant.
+-- =====================================================================
+
+CREATE TABLE plan (
+    id                SERIAL        PRIMARY KEY,
+    codigo            VARCHAR(20)   NOT NULL UNIQUE,
+    nombre            VARCHAR(60)   NOT NULL,
+    descripcion       VARCHAR(300),
+    precio_mensual    NUMERIC(12,2) NOT NULL CHECK (precio_mensual >= 0),
+    max_empleados     INT,           -- NULL = sin limite
+    max_cajas         INT,           -- NULL = sin limite
+    -- Funciones habilitadas por plan (los codigos que pide requiere_funcion_plan)
+    perfiles_clientes BOOLEAN       NOT NULL DEFAULT FALSE,
+    traspasos         BOOLEAN       NOT NULL DEFAULT FALSE,
+    ia_reportes       BOOLEAN       NOT NULL DEFAULT FALSE,
+    orden             INT           NOT NULL DEFAULT 0,
+    activo            BOOLEAN       NOT NULL DEFAULT TRUE
+);
+
+-- Una suscripcion vigente por tenant: cambiar de plan o renovar actualiza esta fila; la historia
+-- queda en pago_suscripcion.
+CREATE TABLE suscripcion (
+    id             UUID               PRIMARY KEY DEFAULT gen_random_uuid(),
+    sucursal_id    UUID               NOT NULL UNIQUE REFERENCES sucursal(id) ON DELETE CASCADE,
+    plan_id        INT                NOT NULL REFERENCES plan(id),
+    estado         estado_suscripcion NOT NULL DEFAULT 'PRUEBA',
+    inicio         TIMESTAMPTZ        NOT NULL DEFAULT now(),
+    vence_en       TIMESTAMPTZ        NOT NULL,
+    actualizado_en TIMESTAMPTZ        NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE suscripcion IS
+    'Suscripcion del tenant (sucursal). Vigente = estado PRUEBA/ACTIVA y vence_en > now(); '
+    'el backend la trata como VENCIDA aunque el estado no se haya actualizado todavia.';
+
+CREATE TABLE pago_suscripcion (
+    id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    suscripcion_id  UUID          NOT NULL REFERENCES suscripcion(id) ON DELETE CASCADE,
+    plan_id         INT           NOT NULL REFERENCES plan(id),
+    meses           INT           NOT NULL CHECK (meses BETWEEN 1 AND 12),
+    monto           NUMERIC(12,2) NOT NULL CHECK (monto > 0),
+    -- STRIPE = Checkout Session (lo aprueba el webhook); EFECTIVO/TRANSFERENCIA = lo registra a
+    -- mano el administrador de la plataforma y nace APROBADO.
+    metodo          VARCHAR(20)   NOT NULL CHECK (metodo IN ('STRIPE','EFECTIVO','TRANSFERENCIA')),
+    estado          estado_pago   NOT NULL DEFAULT 'PENDIENTE',
+    id_transaccion  VARCHAR(120)  UNIQUE,
+    periodo_desde   TIMESTAMPTZ,
+    periodo_hasta   TIMESTAMPTZ,
+    pagado_por_id   UUID          REFERENCES usuario(id),
+    creado_en       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    confirmado_en   TIMESTAMPTZ
+);
+CREATE INDEX ix_pago_suscripcion ON pago_suscripcion(suscripcion_id, creado_en DESC);
+
+-- Perfil de la clienta segun cada tenant: la administracion de la sucursal arma su propia
+-- ficha (segmento, talla habitual, estilo, notas) sobre las clientas que compraron/reservaron
+-- ahi o que dio de alta a mano. Distinto de perfil_cliente, que es lo que declara la clienta.
+CREATE TABLE cliente_perfil_tenant (
+    sucursal_id        UUID         NOT NULL REFERENCES sucursal(id) ON DELETE CASCADE,
+    usuario_id         UUID         NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+    segmento           VARCHAR(20)  NOT NULL DEFAULT 'NUEVA'
+                           CHECK (segmento IN ('NUEVA','FRECUENTE','VIP','INACTIVA')),
+    talla_habitual     VARCHAR(10),
+    estilo_preferido   VARCHAR(60),
+    telefono_contacto  VARCHAR(30),
+    acepta_whatsapp    BOOLEAN      NOT NULL DEFAULT FALSE,
+    notas              VARCHAR(500),
+    actualizado_en     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    actualizado_por_id UUID         REFERENCES usuario(id),
+    PRIMARY KEY (sucursal_id, usuario_id)
+);

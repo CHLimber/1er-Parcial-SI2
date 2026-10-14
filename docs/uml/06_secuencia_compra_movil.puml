@@ -1,0 +1,81 @@
+@startuml 06_secuencia_compra_movil
+' Compra desde la app móvil (CU05 + CU06): Stripe PaymentSheet con webhook firmado, y la
+' variante QR donde la clienta informa el pago y el Cajero lo verifica.
+' Fuente: movil/lib/paginas/carrito_pagina.dart, pago_simulado_pagina.dart,
+'         core/notificaciones/notificaciones_service.dart; backend ventas/router.py::checkout,
+'         pagos/router.py (webhook_stripe, _procesar_evento, informar_pago_qr),
+'         pagos/servicio.py::confirmar_aprobado, caja/router.py (aprobar_pago).
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign left
+autonumber
+title Compra desde la app móvil — Stripe (PaymentSheet) y variante QR
+
+actor Cliente
+participant "App Flutter\n(carrito_pagina)" as APP
+participant "API FastAPI" as API
+database "PostgreSQL" as DB
+participant "Stripe\n(Sistema de pagos)" as STRIPE
+actor Cajero
+
+Cliente -> APP : Pagar (método, entrega, sucursal)
+APP -> API : POST /ventas/checkout {canal: MOVIL, metodo_pago}
+API -> DB : INSERT venta (PENDIENTE) + pago (PENDIENTE)\n(sin venta_detalle: no se aparta stock)
+
+alt metodo_pago = STRIPE
+  API -> STRIPE : PaymentIntent.create(monto en BOB)
+  STRIPE --> API : pi_... + client_secret
+  API -> DB : pago.pasarela = STRIPE, id_transaccion = pi_...
+  API --> APP : 201 {venta_id, client_secret}
+  APP -> STRIPE : initPaymentSheet(client_secret)\npresentPaymentSheet()
+  Cliente -> STRIPE : ingresa la tarjeta (formulario nativo, sin navegador)
+  STRIPE --> APP : pago confirmado en el SDK
+  APP -> APP : ir a /compra/{venta_id} (espera la confirmación)
+  STRIPE -> API : POST /pagos/webhook/stripe\nevento payment_intent.succeeded + Stripe-Signature
+  API -> API : Webhook.construct_event(firma, STRIPE_WEBHOOK_SECRET)\n(firma inválida -> 400)
+  API -> DB : BEGIN; INSERT evento_pasarela(evento.id)\n(duplicado -> se ignora: idempotencia)
+  API -> DB : SELECT pago FOR UPDATE [PENDIENTE]; SELECT venta FOR UPDATE
+  group confirmar_aprobado(pago, venta)
+    API -> DB : INSERT venta_detalle desde carrito_item\n-> tg_venta_descuenta_stock -> fn_mover_inventario(SALIDA)
+    alt stock y carrito sin cambios
+      API -> DB : pago APROBADO, venta PAGADA, carrito CONVERTIDO\n(reserva CONVERTIDA si venía de una reserva)
+      API -> DB : INSERT comprobante
+      API -> DB : INSERT notificacion (VENTA, "Pago aprobado")
+      opt entrega = DOMICILIO
+        API -> DB : crear_envio_de_venta + notificación "Tu pedido sale a reparto"
+      end
+    else stock insuficiente o carrito modificado
+      API -> DB : pago REEMBOLSADO, venta ANULADA,\nnotificación "Pedido no se pudo completar"
+    end
+  end
+  API -> DB : COMMIT
+  API --> STRIPE : 200 {procesado: true}
+  Cliente -> APP : "Reconsultar" en /compra/{id}
+  APP -> API : GET /ventas/{venta_id}
+  API --> APP : estado PAGADA + comprobante
+  loop cada 60 s (NotificacionesService)
+    APP -> API : GET /notificaciones/no-leidas/cantidad
+    API --> APP : n > 0 -> badge en la campana
+  end
+  Cliente -> APP : abre la campana
+  APP -> API : GET /notificaciones ; POST /notificaciones/{id}/leida
+else metodo_pago = QR (variante)
+  API --> APP : 201 {venta_id, url_pago: /pago-simulado/{venta_id}}
+  APP -> Cliente : muestra QR y monto
+  Cliente -> Cliente : paga desde su app bancaria
+  Cliente -> APP : "Ya pagué" (+ referencia opcional)
+  APP -> API : POST /pagos/qr/{venta_id}/informar
+  API -> DB : pago.informado_en = now() (sigue PENDIENTE)\n+ notificación a los Cajeros de la sucursal
+  API --> APP : {pago_estado: PENDIENTE, informado_en}
+  Cajero -> API : GET /caja/pagos-pendientes
+  Cajero -> Cajero : verifica el depósito en la cuenta
+  alt depósito encontrado
+    Cajero -> API : POST /caja/pagos/{pago_id}/aprobar
+    API -> DB : FOR UPDATE pago + venta;\n[carrito = subtotal, si no 409]\nconfirmar_aprobado (igual que arriba) + verificado_por_id
+  else depósito no aparece
+    Cajero -> API : POST /caja/pagos/{pago_id}/rechazar {motivo}
+    API -> DB : confirmar_rechazado: pago RECHAZADO, venta ANULADA,\nnotificación "Pago rechazado" con el motivo
+  end
+  API --> Cajero : ResolucionPagoOut
+  note over APP, API : La clienta ve el resultado en la campana (mismo polling de 60 s).\nSi nunca informa el pago, el job lo anula a las 48 h.
+end
+@enduml

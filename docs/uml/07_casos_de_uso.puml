@@ -1,0 +1,124 @@
+@startuml 07_casos_de_uso
+' Diagrama de casos de uso de FashionStore con los actores finales (PENDIENTES 2.19.1.d).
+' Nombres de CU: movil/README.md, PENDIENTES.txt y ducumentacion/09_pruebas.md.
+' Permisos: db/03_datos_iniciales.sql (rol_permiso) y app/core/deps.py.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #FFFDF7
+  BorderColor #444444
+}
+left to right direction
+title FashionStore — Diagrama de casos de uso
+
+actor "Cliente" as CLI
+actor "Cajero" as CAJ
+actor "Encargado de sucursal" as ENC
+actor "Administrador" as ADM
+ENC -|> CAJ : puede cubrir la caja\n(caja.crear, ventas.crear)
+
+actor "Sistema de pagos\n(Stripe / QR)" as PAG <<secundario>>
+actor "Servicio de IA\n(Claude API)" as IA <<secundario>>
+actor "Servicio de delivery\nexterno" as DEL <<secundario>>
+actor "Servicio de ruteo\n(openrouteservice)" as RUT <<secundario>>
+
+rectangle "FashionStore" {
+  usecase "CU01 Iniciar sesión" as CU01
+  usecase "CU02 Registrarse" as CU02
+  usecase "CU03 Consultar catálogo" as CU03
+  usecase "CU04 Reservar prendas" as CU04
+  usecase "Cancelar reserva" as CANC
+  usecase "CU05 Comprar por web/app" as CU05
+  usecase "CU06 Procesar y confirmar pago" as CU06
+  usecase "Informar pago QR" as INFQR
+  usecase "CU14 Consultar historial\n(compras y reservas)" as CU14
+  usecase "CU16 Usar vestidor virtual (RA)" as CU16
+  usecase "CU17 Recibir recomendaciones de IA" as CU17
+  usecase "CU18 Asistir al cliente vía chatbot" as CU18
+  usecase "CU20 Entrega a domicilio\n(libreta de direcciones + cotizar envío)" as CU20
+  usecase "Consultar notificaciones" as NOTIF
+
+  usecase "CU07 Registrar venta presencial" as CU07
+  usecase "Abrir / cerrar caja (arqueo)" as CAJA
+  usecase "Verificar pago en caja\n(QR / efectivo)" as VERIF
+
+  usecase "CU08 Atender reserva" as CU08
+  usecase "Confirmar / rechazar reserva" as CONF
+  usecase "CU09 Registrar recepción" as CU09
+  usecase "Ajustar stock" as AJUS
+  usecase "Gestionar envíos (despacho)" as ENV
+  usecase "CU15 Consultar reportes e indicadores" as CU15
+  usecase "Consolidado de existencias" as CONS
+  usecase "Reporte con IA" as REPIA
+
+  usecase "CU10 Gestionar catálogo\n(incluye promociones)" as CU10
+  usecase "CU11 Gestionar proveedores" as CU11
+  usecase "CU12 Gestionar sucursales" as CU12
+  usecase "CU13 Gestionar usuarios y roles" as CU13
+  usecase "CU19 Consultar bitácora de auditoría" as CU19
+}
+
+' --- Cliente
+CLI --> CU01
+CLI --> CU02
+CLI --> CU03
+CLI --> CU04
+CLI --> CANC
+CLI --> CU05
+CLI --> CU14
+CLI --> CU16
+CLI --> CU17
+CLI --> CU18
+CLI --> CU20
+CLI --> NOTIF
+CU05 ..> CU06 : <<include>>
+INFQR ..> CU06 : <<extend>>\n[método = QR]
+CLI --> INFQR
+CANC ..> CU04 : <<extend>>\n[PENDIENTE/CONFIRMADA/PREPARADA]
+CU03 <.. CU16 : <<extend>>
+CU05 <.. CU20 : <<extend>>\n[entrega = DOMICILIO]
+
+' --- Cajero
+CAJ --> CU01
+CAJ --> CU07
+CAJ --> CAJA
+CAJ --> VERIF
+CAJ --> NOTIF
+CU07 ..> CAJA : <<include>>\n(sesión abierta)
+VERIF ..> CU06 : <<extend>>\n[método = EFECTIVO o QR]
+
+' --- Encargado (hereda lo del Cajero)
+ENC --> CU08
+ENC --> CU09
+ENC --> AJUS
+ENC --> ENV
+ENC --> CU15
+CU08 ..> CONF : <<include>>
+CONS ..> CU15 : <<extend>>
+REPIA ..> CU15 : <<extend>>
+
+' --- Administrador
+ADM --> CU01
+ADM --> CU10
+ADM --> CU11
+ADM --> CU12
+ADM --> CU13
+ADM --> CU15
+ADM --> CU19
+ADM --> ENV
+ADM --> NOTIF
+
+' --- Actores secundarios
+CU06 --> PAG
+CU18 --> IA
+REPIA --> IA
+ENV --> DEL
+CU20 --> RUT
+
+note bottom of CONF
+  La expiración de reservas vencidas y la anulación de
+  pedidos EFECTIVO/QR sin informar a las 48 h las ejecuta
+  un temporizador interno (app/core/jobs.py), no un actor.
+end note
+@enduml

@@ -17,6 +17,7 @@ import 'paginas/notificaciones_pagina.dart';
 import 'paginas/pago_simulado_pagina.dart';
 import 'paginas/panel_auditoria_pagina.dart';
 import 'paginas/panel_catalogo_pagina.dart';
+import 'paginas/panel_clientes_pagina.dart';
 import 'paginas/panel_devoluciones_pagina.dart';
 import 'paginas/panel_inventario_pagina.dart';
 import 'paginas/panel_pagina.dart';
@@ -24,6 +25,7 @@ import 'paginas/panel_proveedores_pagina.dart';
 import 'paginas/panel_recepciones_pagina.dart';
 import 'paginas/panel_reportes_pagina.dart';
 import 'paginas/panel_sucursales_pagina.dart';
+import 'paginas/panel_suscripcion_pagina.dart';
 import 'paginas/panel_traspasos_pagina.dart';
 import 'paginas/panel_usuarios_pagina.dart';
 import 'paginas/producto_detalle_pagina.dart';
@@ -60,6 +62,9 @@ const Map<String, List<String>> _permisosPorRuta = {
     'devoluciones.crear',
     'devoluciones.actualizar',
   ],
+  // Segundo parcial (PENDIENTES 5.4-5.7)
+  '/panel/suscripcion': ['suscripciones.leer', 'suscripciones.actualizar'],
+  '/panel/clientes': ['clientes.leer', 'clientes.actualizar'],
   '/panel/traspasos': [
     'traspasos.leer',
     'traspasos.crear',
@@ -219,6 +224,14 @@ GoRouter construirRouter(AuthService auth) {
       GoRoute(
         path: '/panel/traspasos',
         builder: (contexto, estado) => const PanelTraspasosPagina(),
+      ),
+      GoRoute(
+        path: '/panel/suscripcion',
+        builder: (contexto, estado) => const PanelSuscripcionPagina(),
+      ),
+      GoRoute(
+        path: '/panel/clientes',
+        builder: (contexto, estado) => const PanelClientesPagina(),
       ),
     ],
   );

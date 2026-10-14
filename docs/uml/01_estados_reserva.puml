@@ -1,0 +1,58 @@
+@startuml 01_estados_reserva
+' Máquina de estados de la reserva de vestidor (ENUM estado_reserva, db/01_schema.sql).
+' Fuente: backend/app/modules/reservas/router.py, pagos/servicio.py::confirmar_aprobado,
+'         db/02_logica.sql::fn_expirar_reservas (job de app/core/jobs.py).
+' Notación de transición: evento [guarda] / efecto   — «Actor» indica quién la dispara.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #FFFDF7
+  BorderColor #444444
+  ArrowColor #333333
+}
+title Reserva de vestidor — estado_reserva
+
+state "Compromete stock" as VIVA {
+  state PENDIENTE : entry / RESERVA en kardex por ítem\n(tg_reserva_compromete_stock)\nnotifica a los Encargados
+  state CONFIRMADA
+  state PREPARADA
+}
+state CLIENTE_PRESENTE : vestidor_asignado, atendida_en
+state ATENDIDA : transitorio (dentro de la\nmisma transacción de /resolver)
+state CONVERTIDA #E8F5E9
+state CANCELADA #FDECEA
+state EXPIRADA #FFF3E0
+
+[*] --> PENDIENTE : «Cliente» POST /reservas\n[disponible >= cantidad en al menos una prenda]\n/ INSERT reserva + reserva_detalle
+
+PENDIENTE --> CONFIRMADA : «Encargado» POST /{id}/confirmar\n[vigente: expira_en >= ahora]\n/ notifica a la clienta
+PENDIENTE --> CANCELADA : «Encargado» POST /{id}/rechazar(motivo)\n[vigente y sin venta PENDIENTE ligada]\n/ LIBERACION de ítems + notifica
+CONFIRMADA --> PREPARADA : «Encargado» POST /{id}/preparar\n[queda al menos un ítem PREPARADO]
+CONFIRMADA --> CANCELADA : «Encargado» POST /{id}/preparar\n[todos los ítems no disponibles]\n/ LIBERACION + notifica
+PREPARADA --> CLIENTE_PRESENTE : «Encargado» POST /{id}/presente
+
+VIVA --> CANCELADA : «Cliente» POST /{id}/cancelar\n[dueña, vigente, sin venta PENDIENTE ligada]\n/ LIBERACION + notifica a Encargados
+VIVA --> EXPIRADA : «Sistema (job)» fn_expirar_reservas()\n[expira_en < now() y sin venta PENDIENTE ligada]\n/ LIBERACION, ítems -> DESCARTADO
+CONFIRMADA --> EXPIRADA : «Encargado» POST /{id}/no-presentado\n/ LIBERACION
+PREPARADA --> EXPIRADA : «Encargado» POST /{id}/no-presentado\n/ LIBERACION
+
+CLIENTE_PRESENTE --> ATENDIDA : «Encargado» POST /{id}/resolver(decisiones, método)
+ATENDIDA --> CONVERTIDA : [compró al menos una prenda]\n/ venta POS PAGADA + comprobante
+ATENDIDA --> CANCELADA : [no compró ninguna]\n/ LIBERACION de lo probado
+
+VIVA --> CONVERTIDA : «Sistema de pagos / Cajero» confirmar_aprobado\n(venta.reserva_id, carrito armado desde la reserva)\n[no quedan ítems RESERVADO]
+CLIENTE_PRESENTE --> CONVERTIDA : «Sistema de pagos / Cajero» confirmar_aprobado\n[no quedan ítems RESERVADO]
+
+CONVERTIDA --> [*]
+CANCELADA --> [*]
+EXPIRADA --> [*]
+
+note right of VIVA
+  Vigencia: expira_en = max(now, fecha_visita + hora_visita
+  en America/La_Paz) + configuracion.reserva_horas_vigencia.
+  Cada cambio de estado lo registra tg_reserva_historial
+  en reserva_historial (usuario = atendida_por_id).
+  El job usa FOR UPDATE SKIP LOCKED y se saltea
+  la reserva si otro la tiene bloqueada.
+end note
+@enduml

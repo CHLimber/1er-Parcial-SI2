@@ -1,0 +1,63 @@
+@startuml 03_estados_unidad_stock
+' Ciclo de vida de UNA unidad de stock de una variante (talla x color) en una sucursal.
+' Fuente: db/01_schema.sql (inventario, movimiento_inventario, ENUM tipo_movimiento),
+'         db/02_logica.sql (fn_mover_inventario, triggers, v_existencias_consolidadas).
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam state {
+  BackgroundColor #FFFDF7
+  BorderColor #444444
+  ArrowColor #333333
+}
+title Unidad de stock por sucursal — movimientos del kardex
+
+state "PRÓXIMA A INGRESAR" as ENTRANTE : en recepcion_detalle de una\nrecepción BORRADOR\n(aún no está en inventario)
+state "En inventario (cantidad_fisica)" as FISICO {
+  state DISPONIBLE : cuenta en disponible =\ncantidad_fisica - cantidad_reservada
+  state RESERVADA : cuenta en cantidad_reservada
+}
+state VENDIDA #E8F5E9 : salió de cantidad_fisica;\nse cuenta en "vendidas"\n(venta_detalle de ventas PAGADA/ENTREGADA)
+
+[*] --> ENTRANTE : «Encargado» CU09 carga recepción (BORRADOR)
+ENTRANTE --> DISPONIBLE : «Encargado» POST /recepciones/{id}/confirmar\n/ ENTRADA (tg_confirmar_recepcion)
+ENTRANTE --> [*] : recepción ANULADA\n(no toca el kardex)
+
+DISPONIBLE --> RESERVADA : RESERVA\n[FOR UPDATE; disponible >= cantidad]\n(tg_reserva_compromete_stock)
+RESERVADA --> DISPONIBLE : LIBERACION\n(cancelar, rechazar, expirar,\nprenda descartada al preparar/resolver)
+RESERVADA --> VENDIDA : LIBERACION + SALIDA\n(venta con reserva_id: tg_venta_descuenta_stock)
+DISPONIBLE --> VENDIDA : SALIDA [disponible >= cantidad]\n(venta POS CU07 o pago online aprobado)
+
+[*] --> DISPONIBLE : AJUSTE «Encargado»\n(recuento: fija cantidad_fisica al valor contado)
+DISPONIBLE --> [*] : AJUSTE «Encargado»\n(merma/faltante en el recuento)
+
+VENDIDA --> DISPONIBLE : DEVOLUCION\n(ENUM y tabla devolucion existen;\nflujo NO implementado)
+VENDIDA --> [*]
+
+note right of FISICO
+  Invariante (CHECK ck_inventario_saldos):
+    cantidad_reservada >= 0
+    cantidad_fisica >= cantidad_reservada
+  Por lo tanto disponible (columna generada) nunca es negativo.
+  Un AJUSTE por debajo de lo reservado viola el CHECK
+  y la transacción se revierte.
+end note
+
+note left of DISPONIBLE
+  El stock se lleva por CANTIDAD de variante
+  (producto x talla x color) por sucursal, no por
+  unidad con número de serie: "la prenda reservada"
+  es una unidad de cantidad_reservada.
+end note
+
+note bottom of VENDIDA
+  Toda transición pasa por fn_mover_inventario(): único punto
+  de escritura del stock. Bloquea la fila de inventario con
+  FOR UPDATE y deja un asiento append-only en
+  movimiento_inventario (saldo_anterior / saldo_nuevo).
+  TRASPASO_ENT / TRASPASO_SAL existen en el ENUM pero los
+  traspasos entre sucursales no están implementados.
+  Situación derivada (v_existencias_consolidadas):
+  DISPONIBLE si disponible > 0; si no RESERVADA si reservada > 0;
+  si no PROXIMA_A_INGRESAR si hay recepción BORRADOR; si no AGOTADA.
+end note
+@enduml

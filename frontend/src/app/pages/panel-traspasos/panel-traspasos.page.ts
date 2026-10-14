@@ -9,6 +9,7 @@ import {
   DireccionTraspaso,
   EstadoTraspaso,
   MovimientoTraspasoOut,
+  SugerenciaTraspasoOut,
   TraspasoDetalleOut,
   TraspasoOut,
   VarianteTraspasoOut,
@@ -26,6 +27,9 @@ interface LineaNueva {
  * Traspasos entre sucursales (PENDIENTES 2.7). El origen arma y despacha (sale su stock), el
  * destino recibe indicando lo que llego (entra eso). Las tres tiendas estan en climas distintos:
  * mover el surtido hacia donde rota es la operacion natural del negocio.
+ * Segundo parcial (PENDIENTES 5.12): "Sugerencias por demanda" lista las prendas cuya venta crece
+ * en una sucursal que se queda sin stock y propone de donde traerlas; cada par origen -> destino
+ * se convierte en un traspaso SOLICITADO con un click.
  */
 @Component({
   selector: 'app-panel-traspasos-page',
@@ -78,6 +82,32 @@ export class PanelTraspasosPage implements OnInit {
   protected readonly lineasNuevas = signal<LineaNueva[]>([]);
   protected readonly errorNuevo = signal<string | null>(null);
 
+  // --- sugerencias por demanda ---
+  protected readonly verSugerencias = signal(false);
+  protected readonly sugerencias = signal<SugerenciaTraspasoOut[]>([]);
+  protected readonly cargandoSugerencias = signal(false);
+  protected readonly errorSugerencias = signal<string | null>(null);
+  protected diasDemanda = 14;
+  protected horizonte = 21;
+
+  /** las sugerencias agrupadas por par origen -> destino: cada grupo es un traspaso posible */
+  protected readonly gruposSugeridos = computed(() => {
+    const grupos = new Map<string, { origenId: string; origen: string; destinoId: string; destino: string; items: SugerenciaTraspasoOut[] }>();
+    for (const s of this.sugerencias()) {
+      const clave = `${s.sucursal_origen_id}>${s.sucursal_destino_id}`;
+      const grupo = grupos.get(clave) ?? {
+        origenId: s.sucursal_origen_id,
+        origen: s.origen,
+        destinoId: s.sucursal_destino_id,
+        destino: s.destino,
+        items: [],
+      };
+      grupo.items.push(s);
+      grupos.set(clave, grupo);
+    }
+    return [...grupos.values()];
+  });
+
   protected readonly unidadesNuevas = computed(() =>
     this.lineasNuevas().reduce((suma, linea) => suma + linea.cantidad, 0),
   );
@@ -113,6 +143,57 @@ export class PanelTraspasosPage implements OnInit {
         this.cargando.set(false);
       },
     });
+  }
+
+  // ------------------------------------------------------------ sugerencias por demanda
+
+  protected alternarSugerencias(): void {
+    this.verSugerencias.update((v) => !v);
+    if (this.verSugerencias()) this.cargarSugerencias();
+  }
+
+  protected cargarSugerencias(): void {
+    this.cargandoSugerencias.set(true);
+    this.errorSugerencias.set(null);
+    this.servicio.sugerencias(this.diasDemanda, this.horizonte).subscribe({
+      next: (sugerencias) => {
+        this.sugerencias.set(sugerencias);
+        this.cargandoSugerencias.set(false);
+      },
+      error: (e: HttpErrorResponse) => {
+        this.errorSugerencias.set(interpretarError(e));
+        this.cargandoSugerencias.set(false);
+      },
+    });
+  }
+
+  /** Convierte un grupo sugerido (origen -> destino) en un traspaso SOLICITADO. */
+  protected crearDesdeSugerencia(grupo: { origenId: string; destinoId: string; destino: string; items: SugerenciaTraspasoOut[] }): void {
+    this.ocupado.set(true);
+    this.errorSugerencias.set(null);
+    this.servicio
+      .crear({
+        sucursal_origen_id: grupo.origenId,
+        sucursal_destino_id: grupo.destinoId,
+        lineas: grupo.items.map((s) => ({ variante_id: s.variante_id, cantidad: s.cantidad_sugerida })),
+      })
+      .subscribe({
+        next: (traspaso) => {
+          this.ocupado.set(false);
+          this.seleccionado.set(traspaso);
+          this.aviso.set(`Traspaso ${traspaso.numero} solicitado hacia ${grupo.destino}. Falta despacharlo desde el origen.`);
+          this.cargar();
+          this.cargarSugerencias();
+        },
+        error: (e: HttpErrorResponse) => {
+          this.ocupado.set(false);
+          this.errorSugerencias.set(interpretarError(e));
+        },
+      });
+  }
+
+  protected crecimiento(s: SugerenciaTraspasoOut): string {
+    return s.crecimiento_pct === null ? 'demanda nueva' : `+${s.crecimiento_pct}%`;
   }
 
   // ------------------------------------------------------------ alta

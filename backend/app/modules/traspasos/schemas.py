@@ -87,3 +87,26 @@ class MovimientoTraspasoOut(BaseModel):
     saldo_anterior: int
     saldo_nuevo: int
     fecha: datetime
+
+
+class SugerenciaTraspasoOut(BaseModel):
+    """Una prenda cuya demanda crece en el destino y que sobra en el origen (PENDIENTES 5.12)."""
+
+    variante_id: UUID
+    sku: str
+    producto: str
+    talla: str
+    color: str
+    codigo_hex: str
+    sucursal_destino_id: UUID
+    destino: str
+    sucursal_origen_id: UUID
+    origen: str
+    vendidas_recientes: int  # en el destino, ultimos `dias`
+    vendidas_anteriores: int  # en el destino, los `dias` previos
+    crecimiento_pct: float | None  # None si antes no se vendia (demanda nueva)
+    disponible_destino: int
+    cobertura_destino_dias: float | None  # cuantos dias alcanza el stock al ritmo actual
+    disponible_origen: int
+    excedente_origen: int  # lo que el origen puede soltar sin quedarse corto
+    cantidad_sugerida: int

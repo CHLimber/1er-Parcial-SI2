@@ -26,6 +26,9 @@
 
     <span class="barra__espacio"></span>
 
+    <button type="button" class="boton boton--secundario" (click)="alternarSugerencias()">
+      {{ verSugerencias() ? 'Ocultar sugerencias' : 'Sugerencias por demanda' }}
+    </button>
     @if (puedeCrear) {
       <button type="button" class="boton" (click)="abrirNuevo()">Nuevo traspaso</button>
     }
@@ -33,6 +36,90 @@
 
   @if (error()) {
     <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  @if (verSugerencias()) {
+    <section class="panel sugerencias">
+      <h2 class="panel__titulo">¿Hacia dónde crece la demanda?</h2>
+      <p class="estado secundario">
+        Prendas que se vendieron más en los últimos {{ diasDemanda }} días que en los {{ diasDemanda }} anteriores y cuyo
+        stock no alcanza para {{ horizonte }} días al ritmo actual. El origen propuesto es la sucursal a la que más le
+        sobra, sin dejarla por debajo de su stock mínimo ni de su propia demanda.
+      </p>
+      <div class="barra">
+        <div class="campo">
+          <label for="dias-demanda">Ventana (días)</label>
+          <select id="dias-demanda" [value]="diasDemanda" (change)="diasDemanda = +$any($event.target).value; cargarSugerencias()">
+            <option value="7">7</option>
+            <option value="14">14</option>
+            <option value="30">30</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="horizonte">Cubrir (días)</label>
+          <select id="horizonte" [value]="horizonte" (change)="horizonte = +$any($event.target).value; cargarSugerencias()">
+            <option value="14">14</option>
+            <option value="21">21</option>
+            <option value="30">30</option>
+          </select>
+        </div>
+      </div>
+
+      @if (errorSugerencias()) {
+        <p class="error" role="alert">{{ errorSugerencias() }}</p>
+      }
+      @if (cargandoSugerencias()) {
+        <p class="estado">Calculando…</p>
+      } @else if (gruposSugeridos().length === 0) {
+        <p class="estado">No hay prendas con demanda creciente que falten en alguna sucursal.</p>
+      } @else {
+        @for (grupo of gruposSugeridos(); track grupo.origenId + grupo.destinoId) {
+          <div class="grupo-sugerido">
+            <div class="grupo-sugerido__cabecera">
+              <strong>{{ grupo.origen }} → {{ grupo.destino }}</strong>
+              <span class="secundario">{{ grupo.items.length }} prenda(s)</span>
+              <span class="barra__espacio"></span>
+              @if (puedeCrear) {
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="crearDesdeSugerencia(grupo)">
+                  Crear traspaso
+                </button>
+              }
+            </div>
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Prenda</th>
+                    <th class="tabla__numero">Vendidas (antes → ahora)</th>
+                    <th class="tabla__numero">Crecimiento</th>
+                    <th class="tabla__numero">Stock destino</th>
+                    <th class="tabla__numero">Alcanza</th>
+                    <th class="tabla__numero">Sobra en origen</th>
+                    <th class="tabla__numero">Mover</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (s of grupo.items; track s.variante_id) {
+                    <tr>
+                      <td>
+                        {{ s.producto }}
+                        <div class="secundario">{{ s.sku }} · {{ s.talla }} · {{ s.color }}</div>
+                      </td>
+                      <td class="tabla__numero">{{ s.vendidas_anteriores }} → {{ s.vendidas_recientes }}</td>
+                      <td class="tabla__numero">{{ crecimiento(s) }}</td>
+                      <td class="tabla__numero">{{ s.disponible_destino }}</td>
+                      <td class="tabla__numero">{{ s.cobertura_destino_dias ?? '—' }} días</td>
+                      <td class="tabla__numero">{{ s.excedente_origen }}</td>
+                      <td class="tabla__numero"><strong>{{ s.cantidad_sugerida }}</strong></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
+      }
+    </section>
   }
 
   <div class="columnas columnas--detalle">

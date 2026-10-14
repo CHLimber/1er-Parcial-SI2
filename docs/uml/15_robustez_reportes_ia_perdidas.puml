@@ -1,0 +1,33 @@
+@startuml 15_robustez_reportes_ia_perdidas
+' ICONIX - Robustez / comunicación de CU30 "Consultar reportes con IA de varias sucursales"
+' (incluye la herramienta de pérdidas, CU29).
+left to right direction
+skinparam defaultFontName Arial
+title CU30 Reportes con IA de varias sucursales — Robustez / Comunicación
+
+actor "Encargado\n(o Admin)" as A
+actor "Claude API" as IA
+boundary "Pantalla Reportes\n(texto o voz)" as B1
+control "Verificar plan\n(ia_reportes)" as C0
+control "Loop de tool use" as C1
+control "Resolver sucursal\npor nombre" as C2
+control "Consultas de reporte\n(ventas por sucursal,\npérdidas, existencias…)" as C3
+entity "Suscripcion + Plan" as E0
+entity "Sucursal" as E1
+entity "Venta / Inventario /\nMovimiento / Devolucion" as E2
+
+A --> B1 : 1: «compará las pérdidas de las 6 sucursales»
+B1 --> C0 : 2: consultaIa(mensajes)
+C0 --> E0 : 3: plan Premium vigente
+C0 --> C1 : 4: [habilitado]
+C1 --> IA : 5: mensajes + herramientas
+IA --> C1 : 6: tool_use consultar_perdidas(desde, hasta)
+C1 --> C2 : 7: sucursal_nombre (opcional)
+C2 --> E1 : 8: buscar por ciudad/nombre
+C1 --> C3 : 9: ejecutar herramienta
+C3 --> E2 : 10: SQL por sucursal
+C1 --> IA : 11: tool_result (tabla)
+IA --> C1 : 12: respuesta en texto
+C1 --> B1 : 13: texto + tabla + columnas
+B1 --> A : 14: muestra / lee en voz alta
+@enduml

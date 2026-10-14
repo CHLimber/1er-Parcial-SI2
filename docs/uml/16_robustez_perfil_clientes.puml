@@ -1,0 +1,33 @@
+@startuml 16_robustez_perfil_clientes
+' ICONIX - Robustez / comunicación de CU24 "Gestionar el perfil de las clientas del tenant".
+left to right direction
+skinparam defaultFontName Arial
+title CU24 Perfil de clientas del tenant — Robustez / Comunicación
+
+actor "Encargado" as A
+boundary "Pantalla Clientas\n(panel-clientes)" as B1
+control "Verificar plan\n(perfiles_clientes)" as C0
+control "Armar cartera\nde la sucursal" as C1
+control "Sugerir segmento" as C2
+control "Guardar ficha" as C3
+entity "Suscripcion + Plan" as E0
+entity "Venta / Reserva\n(de la sucursal)" as E1
+entity "ClientePerfilTenant" as E2
+entity "Usuario (CLIENTE)" as E3
+entity "Auditoria" as E4
+
+A --> B1 : 1: abre la cartera
+B1 --> C0 : 2: listar(q, segmento)
+C0 --> E0 : 3: plan incluye perfiles y vigente
+C0 --> C1 : 4: [habilitado]
+C1 --> E1 : 5: compras y reservas en la sucursal
+C1 --> E2 : 6: fichas de ESTA sucursal
+C1 --> C2 : 7: compras, total, última compra
+C2 --> B1 : 8: cartera con segmento\n(fijado o sugerido)
+A --> B1 : 9: edita talla, estilo, notas, segmento
+B1 --> C3 : 10: editarPerfil(usuario, datos)
+C3 --> E3 : 11: [alta por email] buscar clienta
+C3 --> E2 : 12: UPSERT (sucursal, usuario)
+C3 --> E4 : 13: registrar cambio
+C3 --> B1 : 14: ficha guardada
+@enduml

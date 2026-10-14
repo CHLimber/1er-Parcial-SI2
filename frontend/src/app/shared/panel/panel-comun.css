@@ -362,7 +362,39 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Solapas para alternar vistas dentro de una pantalla del panel (catalogo, usuarios, devoluciones) */
+.solapas {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.solapa {
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 0.95rem;
+  cursor: pointer;
+}
+
+.solapa--activa {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--white);
+}
+
 @media (max-width: 48rem) {
+  .solapas {
+    flex-wrap: wrap;
+  }
+
+  .solapa {
+    flex: 1 1 8rem;
+  }
+
   .panel {
     padding: 0.9rem;
   }

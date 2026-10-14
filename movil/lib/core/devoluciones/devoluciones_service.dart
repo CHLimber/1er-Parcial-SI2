@@ -74,6 +74,8 @@ class VentaDevolvibleOut {
     required this.fueraDePlazo,
     required this.reintegroMetodo,
     required this.lineas,
+    this.cambioVenceEn,
+    this.fueraDePlazoCambio = false,
   });
 
   final String ventaId;
@@ -98,6 +100,10 @@ class VentaDevolvibleOut {
   final String? reintegroMetodo;
   final List<LineaVentaOut> lineas;
 
+  /// Segundo parcial (5.8): cambio por talla/color, con su propio plazo (cambio_plazo_dias)
+  final String? cambioVenceEn;
+  final bool fueraDePlazoCambio;
+
   factory VentaDevolvibleOut.desdeJson(Map<String, dynamic> j) => VentaDevolvibleOut(
         ventaId: j['venta_id'] as String,
         numero: j['numero'] as String,
@@ -116,8 +122,90 @@ class VentaDevolvibleOut {
         fueraDePlazo: j['fuera_de_plazo'] as bool? ?? false,
         reintegroMetodo: j['reintegro_metodo'] as String?,
         lineas: comoLista(j['lineas']).map(LineaVentaOut.desdeJson).toList(),
+        cambioVenceEn: j['cambio_vence_en'] as String?,
+        fueraDePlazoCambio: j['fuera_de_plazo_cambio'] as bool? ?? false,
       );
 }
+
+/// Otra talla/color de la misma prenda con su disponible en la sucursal (cambio por talla).
+class VarianteCambioOut {
+  VarianteCambioOut({
+    required this.varianteId,
+    required this.sku,
+    required this.talla,
+    required this.color,
+    required this.disponible,
+  });
+
+  final String varianteId;
+  final String sku;
+  final String talla;
+  final String color;
+  final int disponible;
+
+  factory VarianteCambioOut.desdeJson(Map<String, dynamic> j) => VarianteCambioOut(
+        varianteId: j['variante_id'] as String,
+        sku: j['sku'] as String,
+        talla: j['talla'] as String,
+        color: j['color'] as String,
+        disponible: aEntero(j['disponible']),
+      );
+}
+
+/// Una fila de "que prendas solicitaron cambio en el mes" (PENDIENTES 5.10).
+class CambioMesOut {
+  CambioMesOut({
+    required this.producto,
+    required this.motivoTipo,
+    required this.tallaOriginal,
+    required this.colorOriginal,
+    required this.tallaSolicitada,
+    required this.colorSolicitado,
+    required this.solicitudes,
+    required this.unidades,
+    required this.aprobadas,
+    required this.pendientes,
+    required this.rechazadas,
+    required this.sucursales,
+  });
+
+  final String producto;
+  final String motivoTipo;
+  final String tallaOriginal;
+  final String colorOriginal;
+  final String? tallaSolicitada;
+  final String? colorSolicitado;
+  final int solicitudes;
+  final int unidades;
+  final int aprobadas;
+  final int pendientes;
+  final int rechazadas;
+  final List<String> sucursales;
+
+  factory CambioMesOut.desdeJson(Map<String, dynamic> j) => CambioMesOut(
+        producto: j['producto'] as String,
+        motivoTipo: j['motivo_tipo'] as String,
+        tallaOriginal: j['talla_original'] as String,
+        colorOriginal: j['color_original'] as String,
+        tallaSolicitada: j['talla_solicitada'] as String?,
+        colorSolicitado: j['color_solicitado'] as String?,
+        solicitudes: aEntero(j['solicitudes']),
+        unidades: aEntero(j['unidades']),
+        aprobadas: aEntero(j['aprobadas']),
+        pendientes: aEntero(j['pendientes']),
+        rechazadas: aEntero(j['rechazadas']),
+        sucursales: (j['sucursales'] as List? ?? const []).cast<String>(),
+      );
+}
+
+/// Motivos de devolucion (PENDIENTES 5.8): TALLA/COLOR son cambios.
+const motivosDevolucion = <String, String>{
+  'TALLA': 'Cambio por talla',
+  'COLOR': 'Cambio por color',
+  'DEFECTO': 'Prenda con defecto',
+  'NO_GUSTO': 'No le gusto',
+  'OTRO': 'Otro motivo',
+};
 
 class DetalleDevolucionOut {
   DetalleDevolucionOut({
@@ -131,6 +219,8 @@ class DetalleDevolucionOut {
     required this.cantidad,
     required this.cantidadVendida,
     required this.precioUnitario,
+    this.tallaSolicitada,
+    this.colorSolicitado,
   });
 
   final String id;
@@ -144,6 +234,10 @@ class DetalleDevolucionOut {
   final int cantidadVendida;
   final double precioUnitario;
 
+  /// cambio por talla/color: lo que se lleva la clienta
+  final String? tallaSolicitada;
+  final String? colorSolicitado;
+
   factory DetalleDevolucionOut.desdeJson(Map<String, dynamic> j) => DetalleDevolucionOut(
         id: j['id'] as String,
         ventaDetalleId: j['venta_detalle_id'] as String,
@@ -155,6 +249,8 @@ class DetalleDevolucionOut {
         cantidad: aEntero(j['cantidad']),
         cantidadVendida: aEntero(j['cantidad_vendida']),
         precioUnitario: aDouble(j['precio_unitario']),
+        tallaSolicitada: j['talla_solicitada'] as String?,
+        colorSolicitado: j['color_solicitado'] as String?,
       );
 }
 
@@ -181,6 +277,8 @@ class DevolucionOut {
     this.reintegroReferencia,
     this.ventaCambioId,
     this.ventaCambioNumero,
+    this.numero = '',
+    this.motivoTipo = 'OTRO',
   });
 
   final String id;
@@ -209,6 +307,10 @@ class DevolucionOut {
   final String? ventaCambioId;
   final String? ventaCambioNumero;
 
+  /// numero de la nota de devolucion (NDV-000001) y motivo estructurado (Segundo parcial)
+  final String numero;
+  final String motivoTipo;
+
   bool get solicitada => estado == 'SOLICITADA';
 
   factory DevolucionOut.desdeJson(Map<String, dynamic> j) => DevolucionOut(
@@ -233,6 +335,8 @@ class DevolucionOut {
         reintegroReferencia: j['reintegro_referencia'] as String?,
         ventaCambioId: j['venta_cambio_id'] as String?,
         ventaCambioNumero: j['venta_cambio_numero'] as String?,
+        numero: j['numero'] as String? ?? '',
+        motivoTipo: j['motivo_tipo'] as String? ?? 'OTRO',
       );
 }
 
@@ -259,6 +363,8 @@ class DevolucionDetalleOut extends DevolucionOut {
     super.reintegroReferencia,
     super.ventaCambioId,
     super.ventaCambioNumero,
+    super.numero,
+    super.motivoTipo,
     required this.detalle,
     required this.pagoReembolsado,
   });
@@ -290,6 +396,8 @@ class DevolucionDetalleOut extends DevolucionOut {
       reintegroReferencia: base.reintegroReferencia,
       ventaCambioId: base.ventaCambioId,
       ventaCambioNumero: base.ventaCambioNumero,
+      numero: base.numero,
+      motivoTipo: base.motivoTipo,
       detalle: comoLista(j['detalle']).map(DetalleDevolucionOut.desdeJson).toList(),
       pagoReembolsado: j['pago_reembolsado'] as bool? ?? false,
     );
@@ -300,10 +408,11 @@ class DevolucionDetalleOut extends DevolucionOut {
 /// cantidades), aprobar (reingresa stock) o rechazar (con motivo). El backend nunca toca
 /// inventario directo, lo hace el trigger `tg_devolucion_stock`.
 class DevolucionesService {
-  Future<List<DevolucionOut>> listar({String? estado, String? venta}) async {
+  Future<List<DevolucionOut>> listar({String? estado, String? venta, String? motivoTipo}) async {
     final respuesta = await api.get('/devoluciones', query: {
       'estado': estado,
       'venta': venta,
+      'motivo_tipo': motivoTipo,
     });
     return comoLista(respuesta).map(DevolucionOut.desdeJson).toList();
   }
@@ -318,16 +427,30 @@ class DevolucionesService {
     return DevolucionDetalleOut.desdeJson(respuesta as Map<String, dynamic>);
   }
 
+  /// [solicitadas]: venta_detalle_id -> variante que se lleva la clienta (solo TALLA/COLOR).
   Future<DevolucionDetalleOut> registrar({
     required String ventaId,
     required String motivo,
     required List<MapEntry<String, int>> lineas,
+    String motivoTipo = 'OTRO',
+    bool conEtiqueta = true,
+    bool sinUso = true,
+    bool conComprobante = true,
+    Map<String, String> solicitadas = const {},
   }) async {
     final respuesta = await api.post('/devoluciones', cuerpo: {
       'venta_id': ventaId,
+      'motivo_tipo': motivoTipo,
       'motivo': motivo,
+      'con_etiqueta': conEtiqueta,
+      'sin_uso': sinUso,
+      'con_comprobante': conComprobante,
       'lineas': lineas
-          .map((l) => {'venta_detalle_id': l.key, 'cantidad': l.value})
+          .map((l) => {
+                'venta_detalle_id': l.key,
+                'cantidad': l.value,
+                'variante_solicitada_id': solicitadas[l.key],
+              })
           .toList(),
     });
     return DevolucionDetalleOut.desdeJson(respuesta as Map<String, dynamic>);
@@ -343,6 +466,20 @@ class DevolucionesService {
       'motivo': motivo,
     });
     return DevolucionDetalleOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  Future<List<VarianteCambioOut>> variantesCambio(String varianteId, String sucursalId) async {
+    final respuesta = await api.get('/devoluciones/variantes-cambio', query: {
+      'variante_id': varianteId,
+      'sucursal_id': sucursalId,
+    });
+    return comoLista(respuesta).map(VarianteCambioOut.desdeJson).toList();
+  }
+
+  /// Que prendas solicitaron cambio en el mes (PENDIENTES 5.10).
+  Future<List<CambioMesOut>> cambiosDelMes(int anio, int mes) async {
+    final respuesta = await api.get('/devoluciones/cambios-mes', query: {'anio': anio, 'mes': mes});
+    return comoLista((respuesta as Map<String, dynamic>)['filas']).map(CambioMesOut.desdeJson).toList();
   }
 
   /// Cambio de prenda: vincula la venta nueva (cobrada en caja) a una devolucion aprobada.

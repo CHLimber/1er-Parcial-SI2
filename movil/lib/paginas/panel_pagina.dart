@@ -113,6 +113,20 @@ class PanelPagina extends StatelessWidget {
           'traspasos.eliminar',
         ],
       ),
+      _AccesoPanel(
+        ruta: '/panel/clientes',
+        icono: Icons.people_alt_outlined,
+        titulo: 'Clientas',
+        detalle: 'Cartera y perfil de clientas de la sucursal',
+        permisos: const ['clientes.leer', 'clientes.actualizar'],
+      ),
+      _AccesoPanel(
+        ruta: '/panel/suscripcion',
+        icono: Icons.workspace_premium_outlined,
+        titulo: 'Suscripcion',
+        detalle: 'Plan y pago de la sucursal (SaaS)',
+        permisos: const ['suscripciones.leer', 'suscripciones.actualizar'],
+      ),
     ];
 
     final habilitados = accesos.where((a) => auth.tienePermiso(a.permisos)).toList();

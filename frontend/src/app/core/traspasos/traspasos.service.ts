@@ -8,6 +8,7 @@ import {
   EstadoTraspaso,
   MovimientoTraspasoOut,
   RecibirIn,
+  SugerenciaTraspasoOut,
   TraspasoDetalleOut,
   TraspasoIn,
   TraspasoOut,
@@ -25,6 +26,13 @@ export class TraspasosService {
     if (estado) params = params.set('estado', estado);
     if (direccion) params = params.set('direccion', direccion);
     return this.http.get<TraspasoOut[]>(this.base, { params });
+  }
+
+  /** Traspasos hacia donde la demanda crece (PENDIENTES 5.12). */
+  sugerencias(dias = 14, horizonte = 21): Observable<SugerenciaTraspasoOut[]> {
+    return this.http.get<SugerenciaTraspasoOut[]>(`${this.base}/sugerencias`, {
+      params: new HttpParams().set('dias', dias).set('horizonte', horizonte),
+    });
   }
 
   obtener(id: string): Observable<TraspasoDetalleOut> {

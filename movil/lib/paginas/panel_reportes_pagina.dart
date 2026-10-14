@@ -633,13 +633,14 @@ class _PestanaEstaticosState extends State<_PestanaEstaticos> {
 //  Pestana 3: Dinamicos (fecha/sucursal/categoria/canal/entrega), un tipo a la vez
 // ---------------------------------------------------------------------------------------
 
-enum _TipoDinamico { ventasDiarias, ventasPorSucursal, topProductos }
+enum _TipoDinamico { ventasDiarias, ventasPorSucursal, topProductos, perdidas }
 
 extension on _TipoDinamico {
   String get etiqueta => switch (this) {
         _TipoDinamico.ventasDiarias => 'Ventas diarias',
         _TipoDinamico.ventasPorSucursal => 'Ventas por sucursal',
         _TipoDinamico.topProductos => 'Top productos',
+        _TipoDinamico.perdidas => 'Perdidas por sucursal',
       };
 }
 
@@ -715,6 +716,12 @@ class _PestanaDinamicosState extends State<_PestanaDinamicos> {
             canal: _canal,
             entrega: _entrega,
             limite: 15,
+          );
+        case _TipoDinamico.perdidas:
+          items = await reportesService.listarPerdidas(
+            desde: _desde,
+            hasta: _hasta,
+            sucursalId: _sucursalId,
           );
       }
       if (!mounted) return;
@@ -877,6 +884,19 @@ class _PestanaDinamicosState extends State<_PestanaDinamicos> {
                 ],
               ),
             ),
+          ],
+        ),
+      PerdidaSucursalOut d => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(d.sucursal, style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            FilaDato('Mermas', '${d.mermasUnidades} u · ${formatearPrecio(d.mermasValor)}'),
+            FilaDato('Por defecto', '${d.defectosUnidades} u · ${formatearPrecio(d.defectosMonto)}'),
+            FilaDato('Faltante traspaso',
+                '${d.traspasoFaltanteUnidades} u · ${formatearPrecio(d.traspasoFaltanteValor)}'),
+            FilaDato('Faltante de caja', formatearPrecio(d.faltanteCaja)),
+            FilaDato('Perdida total', formatearPrecio(d.totalPerdida)),
           ],
         ),
       _ => const Text('Sin dato'),

@@ -84,6 +84,16 @@ const ENTRADAS_PANEL: EntradaNav[] = [
     visible: (auth) => auth.tienePermiso('reportes.leer'),
   },
   {
+    ruta: '/panel/clientes',
+    etiqueta: 'Clientas',
+    visible: (auth) => auth.tienePermiso('clientes.leer', 'clientes.actualizar'),
+  },
+  {
+    ruta: '/panel/suscripcion',
+    etiqueta: 'Suscripción',
+    visible: (auth) => auth.tienePermiso('suscripciones.leer', 'suscripciones.actualizar'),
+  },
+  {
     ruta: '/panel/auditoria',
     etiqueta: 'Auditoría',
     visible: (auth) => auth.tienePermiso('auditoria.leer'),

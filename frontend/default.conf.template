@@ -5,6 +5,13 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # PWA (PENDIENTES 5.1): el service worker decide que version de la app sirve leyendo
+    # ngsw.json; si el navegador cacheara estos archivos, una version nueva nunca llegaria.
+    location ~* ^/(ngsw-worker\.js|ngsw\.json|safety-worker\.js|worker-basic\.min\.js|index\.html|manifest\.webmanifest)$ {
+        add_header Cache-Control "no-cache";
+        try_files $uri =404;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

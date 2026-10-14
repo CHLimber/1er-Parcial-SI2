@@ -157,7 +157,7 @@ WHERE uso = 'AR_MODELO'
 
 -- 6.1 Overlays 2D (nivel 1): prendas de torso que ya estaban en el catalogo.
 --     anclajes = coordenadas normalizadas 0-1 sobre el PNG; escala_base = ancho de
---     hombro a hombro en cm a talla M (ver IMAGENES_AR.txt punto 4).
+--     hombro a hombro en cm a talla M (ver docs/IMAGENES_AR.txt punto 4).
 INSERT INTO producto_imagen (producto_id, color_id, uso, url, formato, es_principal, orden,
                              anclajes, escala_base)
 SELECT p.id, NULL, 'AR_OVERLAY', v.url, 'PNG', FALSE, 0, v.anclajes::jsonb, v.escala_base

@@ -49,6 +49,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.config import settings
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.plan import requiere_funcion_plan
 from app.modules.reportes.schemas import (
     CajaOcupacionOut,
     ClienteRankingOut,
@@ -59,6 +60,7 @@ from app.modules.reportes.schemas import (
     ExistenciaOut,
     ExistenciasPaginadoOut,
     IndicadoresOut,
+    PerdidaSucursalOut,
     ProductoRankingOut,
     ProductoSinMovimientoOut,
     RecepcionPendienteProveedorOut,
@@ -73,6 +75,8 @@ from app.modules.reportes.schemas import (
 router = APIRouter(prefix="/reportes", tags=["reportes"])
 
 puede_ver = requiere_permiso("reportes.leer")
+# SaaS (PENDIENTES 5.6): la consulta con IA es del plan Premium
+puede_consultar_ia = requiere_funcion_plan("ia_reportes", "reportes.leer")
 
 VENTA_ESTADOS_CONTADOS = ("PAGADA", "ENTREGADA")
 
@@ -615,6 +619,97 @@ async def listar_ventas_por_sucursal(
     return [VentaPorSucursalOut(**f) for f in filas]
 
 
+async def _consultar_perdidas(
+    conn: asyncpg.Connection, desde: date, hasta: date, sucursal: UUID | None
+) -> list[dict]:
+    """Perdidas del periodo por sucursal (PENDIENTES 5.13): mermas (AJUSTE a la baja en el
+    kardex), devoluciones aprobadas por DEFECTO, faltantes de traspaso (solicitado - recibido) y
+    faltantes de caja (sesiones cerradas con diferencia negativa). Mercaderia a precio de lista."""
+    filas = await conn.fetch(
+        """
+        WITH suc AS (
+            SELECT id, nombre FROM sucursal WHERE activa AND ($3::uuid IS NULL OR id = $3)
+        ),
+        mermas AS (
+            SELECT m.sucursal_id,
+                   SUM(m.saldo_anterior - m.saldo_nuevo) AS unidades,
+                   SUM((m.saldo_anterior - m.saldo_nuevo) * COALESCE(pv.precio, p.precio_base)) AS valor
+            FROM movimiento_inventario m
+            JOIN producto_variante pv ON pv.id = m.variante_id
+            JOIN producto p           ON p.id = pv.producto_id
+            WHERE m.tipo = 'AJUSTE' AND m.saldo_nuevo < m.saldo_anterior
+              AND m.fecha::date BETWEEN $1 AND $2
+            GROUP BY m.sucursal_id
+        ),
+        defectos AS (
+            SELECT d.sucursal_id, COUNT(*) AS casos, SUM(d.monto_devuelto) AS monto,
+                   SUM((SELECT SUM(dd.cantidad) FROM devolucion_detalle dd
+                         WHERE dd.devolucion_id = d.id)) AS unidades
+            FROM devolucion d
+            WHERE d.estado = 'APROBADA' AND d.motivo_tipo = 'DEFECTO'
+              AND d.fecha::date BETWEEN $1 AND $2
+            GROUP BY d.sucursal_id
+        ),
+        traspasos AS (
+            SELECT t.sucursal_destino_id AS sucursal_id,
+                   SUM(td.cantidad_solicitada - td.cantidad_recibida) AS unidades,
+                   SUM((td.cantidad_solicitada - td.cantidad_recibida)
+                       * COALESCE(pv.precio, p.precio_base)) AS valor
+            FROM traspaso t
+            JOIN traspaso_detalle td  ON td.traspaso_id = t.id
+            JOIN producto_variante pv ON pv.id = td.variante_id
+            JOIN producto p           ON p.id = pv.producto_id
+            WHERE t.estado = 'RECIBIDO' AND td.cantidad_recibida < td.cantidad_solicitada
+              AND t.fecha_recepcion::date BETWEEN $1 AND $2
+            GROUP BY t.sucursal_destino_id
+        ),
+        cajas AS (
+            SELECT c.sucursal_id, SUM(-sc.diferencia) AS faltante
+            FROM sesion_caja sc
+            JOIN caja c ON c.id = sc.caja_id
+            WHERE sc.estado = 'CERRADA' AND sc.diferencia < 0
+              AND sc.cerrada_en::date BETWEEN $1 AND $2
+            GROUP BY c.sucursal_id
+        )
+        SELECT s.id AS sucursal_id, s.nombre AS sucursal,
+               COALESCE(m.unidades, 0)::int AS mermas_unidades,
+               COALESCE(m.valor, 0) AS mermas_valor,
+               COALESCE(d.casos, 0)::int AS defectos_casos,
+               COALESCE(d.unidades, 0)::int AS defectos_unidades,
+               COALESCE(d.monto, 0) AS defectos_monto,
+               COALESCE(t.unidades, 0)::int AS traspaso_faltante_unidades,
+               COALESCE(t.valor, 0) AS traspaso_faltante_valor,
+               COALESCE(c.faltante, 0) AS faltante_caja,
+               COALESCE(m.valor, 0) + COALESCE(d.monto, 0) + COALESCE(t.valor, 0)
+                   + COALESCE(c.faltante, 0) AS total_perdida
+        FROM suc s
+        LEFT JOIN mermas m    ON m.sucursal_id = s.id
+        LEFT JOIN defectos d  ON d.sucursal_id = s.id
+        LEFT JOIN traspasos t ON t.sucursal_id = s.id
+        LEFT JOIN cajas c     ON c.sucursal_id = s.id
+        ORDER BY total_perdida DESC, s.nombre
+        """,
+        desde,
+        hasta,
+        sucursal,
+    )
+    return [_normalizar(f) for f in filas]
+
+
+@router.get("/perdidas", response_model=list[PerdidaSucursalOut])
+async def listar_perdidas(
+    desde: date | None = Query(default=None),
+    hasta: date | None = Query(default=None),
+    sucursal_id: UUID | None = Query(default=None),
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> list[PerdidaSucursalOut]:
+    desde_r, hasta_r = _rango_fechas(desde, hasta)
+    sucursal = _resolver_sucursal(staff, sucursal_id)
+    filas = await _consultar_perdidas(conn, desde_r, hasta_r, sucursal)
+    return [PerdidaSucursalOut(**f) for f in filas]
+
+
 @router.get("/top-productos", response_model=list[ProductoRankingOut])
 async def listar_top_productos(
     desde: date | None = Query(default=None),
@@ -799,9 +894,11 @@ _TOOLS_DINAMICOS = {
     "consultar_ventas_diarias",
     "consultar_ventas_por_sucursal",
     "consultar_top_productos",
+    "consultar_perdidas",
 }
 
 ETIQUETAS_TOOL: dict[str, str] = {
+    "consultar_perdidas": "Pérdidas por sucursal",
     "consultar_indicadores": "Indicadores del período",
     "consultar_ventas_diarias": "Ventas diarias",
     "consultar_ventas_por_sucursal": "Ventas por sucursal",
@@ -860,13 +957,24 @@ ETIQUETAS_CAMPO: dict[str, str] = {
     "vendidas": "Vendidas",
     "proximas_a_ingresar": "Por ingresar",
     "situacion": "Situación",
+    "mermas_unidades": "Mermas (u)",
+    "mermas_valor": "Mermas (Bs)",
+    "defectos_casos": "Devol. por defecto",
+    "defectos_unidades": "Defectuosas (u)",
+    "defectos_monto": "Reintegrado por defecto (Bs)",
+    "traspaso_faltante_unidades": "Faltante traspaso (u)",
+    "traspaso_faltante_valor": "Faltante traspaso (Bs)",
+    "faltante_caja": "Faltante de caja (Bs)",
+    "total_perdida": "Pérdida total (Bs)",
 }
 
 _SYSTEM_PROMPT_IA = """\
-Sos el analista de datos de FashionStore, una cadena de moda femenina con sucursales en Santa \
-Cruz, La Paz y Cochabamba (Bolivia). Atendes al personal de gestion (encargados y administradores) \
-que te consulta reportes de ventas, stock, reservas, envios, cajas y recepciones -- por texto o \
-por voz transcripta en el navegador.
+Sos el analista de datos de FashionStore, una cadena de moda femenina con seis sucursales en \
+Bolivia: Santa Cruz, La Paz, Cochabamba, Sucre, Tarija y Oruro. Atendes al personal de gestion \
+(encargados y administradores) que te consulta reportes de ventas, stock, reservas, envios, cajas, \
+recepciones y perdidas -- por texto o por voz transcripta en el navegador. Cuando te pidan comparar \
+sucursales, consulta sin filtro de sucursal (la herramienta devuelve una fila por sucursal) y \
+destaca la mejor y la peor.
 
 Reglas estrictas:
 - Nunca inventes una cifra. Toda cifra que menciones tiene que venir de una llamada a una de tus \
@@ -893,7 +1001,7 @@ respondes amablemente que no podes ayudar con eso.
 _PROP_SUCURSAL = {
     "type": "string",
     "description": (
-        "Ciudad o nombre de la sucursal (ej. 'Santa Cruz', 'La Paz', 'Cochabamba' o "
+        "Ciudad o nombre de la sucursal (ej. 'Santa Cruz', 'La Paz', 'Tarija' o "
         "'FashionStore Equipetrol'). Omitilo para no filtrar."
     ),
 }
@@ -973,6 +1081,23 @@ HERRAMIENTAS_REPORTES = [
         "Ranking de productos mas vendidos por unidades en el periodo.",
         con_limite=True,
     ),
+    {
+        "name": "consultar_perdidas",
+        "description": (
+            "Perdidas del periodo por sucursal: mermas (ajustes de inventario a la baja por robo, "
+            "rotura o manchas), devoluciones por prenda defectuosa (monto reintegrado), faltantes de "
+            "traspasos entre sucursales y faltantes de caja; todo en Bs y con un total por sucursal."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "desde": _PROP_FILTROS_DINAMICOS["desde"],
+                "hasta": _PROP_FILTROS_DINAMICOS["hasta"],
+                "sucursal_nombre": _PROP_SUCURSAL,
+            },
+            "additionalProperties": False,
+        },
+    },
     _tool_estatico(
         "consultar_stock_por_sucursal",
         "Foto actual del stock fisico, reservado y disponible por sucursal.",
@@ -1171,6 +1296,8 @@ async def _ejecutar_herramienta_reporte(
         filas = await _consultar_top_productos(
             conn, desde_r, hasta_r, sucursal, canal, categoria_id, vendedor_id, entrega, limite
         )
+    elif nombre_tool == "consultar_perdidas":
+        filas = await _consultar_perdidas(conn, desde_r, hasta_r, sucursal)
     elif nombre_tool == "consultar_stock_por_sucursal":
         filas = await _consultar_stock_por_sucursal(conn, sucursal)
     elif nombre_tool == "consultar_reservas_por_estado":
@@ -1230,7 +1357,7 @@ def _cliente_ia() -> anthropic.Anthropic:
 async def consulta_ia(
     body: ConsultaIaIn,
     conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_consultar_ia),
 ) -> ConsultaIaOut:
     cliente_ia = _cliente_ia()
     # Claude no sabe la fecha real "de hoy" (entrena con un corte de conocimiento pasado): sin
