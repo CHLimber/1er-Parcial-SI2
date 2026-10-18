@@ -2135,6 +2135,8 @@
  Relevado contra el codigo el 2026-10-14. Fechas: 25/10, 1/11 y 8/11 (entregas),
  10/11 defensa -- se presenta con URL y codigo QR.
 
+ [SUPERADO 2026-10-18 por la seccion 6: la especificacion tecnica dice que "una sucursal NO
+ es un tenant"; ahora el tenant es la EMPRESA. Lo de abajo queda como historia.]
  Decision de diseño tomada para avanzar (revisable con el docente): "un tenant para
  cada sucursal" se toma LITERAL -- cada sucursal es un tenant con su propia
  suscripcion (plan) y su propia cartera/perfil de clientes; el catalogo sigue siendo
@@ -2173,7 +2175,7 @@
       cerrar sesion. PROBADO: flutter analyze limpio; flutter test 7/7 (4 nuevos de
       test/base_local_test.dart contra SQLite real en memoria con sqflite_common_ffi).
       NO PROBADO en emulador/telefono (la parte de red y connectivity_plus).
-[5.4] [HECHO 2026-10-14 backend + web] SaaS: bloque 8 del esquema (plan, suscripcion,
+[5.4] [SUPERADO por 6.1-6.3] [HECHO 2026-10-14 backend + web] SaaS: bloque 8 del esquema (plan, suscripcion,
       pago_suscripcion, cliente_perfil_tenant). Tres planes: BASICO (Bs 350, 3 personas,
       1 caja), PROFESIONAL (Bs 750, 8/2, + perfil de clientas y traspasos), PREMIUM
       (Bs 1400, sin limites, + reportes con IA). Modulo backend/app/modules/saas/, permisos
@@ -2189,7 +2191,7 @@
       efectivo). Renovar suma al final del periodo vigente; si vencio, arranca hoy.
       NO PROBADO contra Stripe real (no hay STRIPE_SECRET_KEY en el entorno de prueba: el
       checkout responde 503 como corresponde); el pago manual si se probo en vivo.
-[5.6] [HECHO 2026-10-14 backend + web] Multi-tenant (tenant = sucursal): cada sucursal tiene
+[5.6] [SUPERADO por 6.1-6.3] [HECHO 2026-10-14 backend + web] Multi-tenant (tenant = sucursal): cada sucursal tiene
       su suscripcion; requiere_funcion_plan() en app/core/plan.py combina el permiso de CU13
       con el plan: plan sin la funcion -> 403 ("incluido desde el plan X"), suscripcion
       vencida -> 402. Aplicado a traspasos (crear + sugerencias), clientes y consulta-ia. El
@@ -2260,6 +2262,103 @@
       ficha editable). Rutas y accesos del panel registrados (/panel/suscripcion,
       /panel/clientes). PROBADO: flutter analyze limpio, flutter test 7/7, flutter build apk
       --debug OK. NO PROBADO en emulador/telefono.
+
+===============================================================================
+ 6. SAAS MULTITENANT POR EMPRESA (especificacion tecnica recibida 2026-10-18)
+===============================================================================
+ La especificacion ("FashionStore SaaS Multitenant") reemplaza la lectura de la seccion 5:
+ el tenant es la EMPRESA contratante; una sucursal pertenece a una empresa. Se adapto lo
+ existente (no se rehizo). Trabajo en la rama `multitenant-empresa` de fashionstore/.
+
+[6.1] [HECHO backend + web + movil] Modelo multi-tenant (Modulo A, RN01/RN02/RN03).
+      Tabla `empresa`; `empresa_id` en sucursal, catalogo (producto, categoria, talla,
+      color, temporada), proveedor, promocion, usuario, rol y auditoria; unicidades de
+      slug/codigo/cupon/rol por empresa. app/core/tenant.py resuelve el tenant: el personal
+      siempre opera SU empresa (la del token); la clienta (cuenta de la plataforma) elige la
+      tienda con el header X-Empresa o ?empresa=slug. Todo SQL de los routers filtra por
+      empresa y lo ajeno responde 404 (no 403: no se confirma que exista).
+      fn_mover_inventario rechaza mover stock de una prenda de otra empresa (defensa en la
+      base, ademas del backend). Rol SUPERADMIN (administracion de la plataforma, sin
+      empresa). Roles del sistema (empresa_id NULL) compartidos y de solo lectura; cada
+      empresa crea los propios.
+      Seed: FashionStore (Profesional, 6 sucursales), Boutique Andina (Basico, 2 sucursales,
+      admin@andina.bo) y Moda Urbana (Basico VENCIDA, admin@modaurbana.bo), mas
+      superadmin@fashionstore.bo. Todos con demo1234.
+[6.2] [HECHO backend + web + movil] Planes y suscripciones (5.3/5.4 de la especificacion,
+      RN04/RN05/RN06). Basico (Bs 350, hasta 2 sucursales, sin IA ni analitica) y
+      Profesional (Bs 900, hasta 10, con reportes IA y analitica ML); el viejo Premium quedo
+      inactivo. Limites configurables desde el backend: PUT /saas/planes/{codigo} (rigen desde
+      el request siguiente). Una suscripcion por empresa. La plataforma registra empresas con
+      su administrador (POST /saas/empresas), edita, suspende/reactiva, asigna o cambia plan
+      con fechas (PUT /saas/empresas/{id}/plan) y renueva en forma simulada (pago manual).
+      Suscripcion vencida -> 402 en las funciones del plan; la empresa suspendida no opera.
+      Web: /panel/empresas (plataforma) y /panel/suscripcion (empresa). Movil:
+      panel_suscripcion_pagina.dart adaptado (era por sucursal y se habia roto).
+[6.3] [HECHO backend + web + movil] Selector de tienda para la clienta: GET /saas/tiendas
+      (publico). Web: select en la cabecera de /tienda (core/tenant/tienda.ts, recordado en
+      localStorage). Movil: menu en el titulo de la Tienda (core/tenant/tienda.dart, en
+      SharedPreferences). Al cambiar de tienda se vacia la bolsa de reserva; el carrito del
+      backend no mezcla prendas de dos tiendas (409). La cache offline (IndexedDB y SQLite)
+      ahora se separa por tienda: la clave lleva el X-Empresa.
+[6.4] [HECHO backend + web + movil] Sincronizacion offline (Modulos B, C, D y E). Backend
+      modulo sincronizacion/: GET /sync/catalogo (paquete: sucursal autorizada, catalogo con
+      existencias, clientas y la sesion de caja abierta), POST /sync/operaciones (lotes, UUID
+      del cliente, idempotente: el mismo id devuelve el resultado guardado, tambien con 5
+      reenvios simultaneos), GET /sync/operaciones (log, RNF10) y /{id}/resolver
+      (REINTENTAR / ACEPTAR_PRECIO_ACTUAL / DESCARTAR). Estados: CONFIRMADA, RECHAZADA (con
+      codigo: SIN_PERMISO, SUCURSAL_NO_AUTORIZADA, PRENDA_AJENA, TOTAL_INCONSISTENTE,
+      SUSCRIPCION_VENCIDA...) o CONFLICTO (STOCK_INSUFICIENTE, PRECIO_CAMBIADO,
+      PRODUCTO_INACTIVO, SIN_CAJA_ABIERTA). Politica de vencimiento (punto ambiguo 19): lo
+      registrado ANTES del vencimiento se acepta, lo registrado despues se rechaza. Venta
+      confirmada + movimiento de inventario en una transaccion (RNF04).
+      Web: /offline "Vender sin conexion" (IndexedDB, estados, reintentos con backoff) y
+      /panel/sincronizacion (log del servidor con filtros y resolucion de conflictos).
+      Movil (NUEVO 2026-10-18): SQLite version 2 con tablas sucursal_local, producto_local,
+      variante_local, cliente_local (el paquete, con FK ON DELETE CASCADE), operacion +
+      operacion_detalle (venta y reserva en una tabla, con CHECK de estados) y resultado_sync;
+      migracion v1 -> v2 en onUpgrade. Cerrar sesion NO borra operaciones (RN12).
+      core/sincronizacion/ (SincronizacionService: quinto ChangeNotifier, sincroniza al volver
+      la red, cada 60 s y con backoff; si hay una vuelta en curso se espera esa) y
+      paginas/venta_offline_pagina.dart (/offline, desde Cuenta: catalogo con aviso de
+      desactualizado, ticket de venta de contado o reserva, operaciones con estado/motivo y
+      resolver).
+[6.5] [HECHO backend + web] Analitica con machine learning (Modulo G). analitica/:
+      sinteticos.py (datos sinteticos reproducibles con semilla), modelos.py (Random Forest de
+      demanda contra regresion lineal y el ingenuo "semana anterior", particion temporal +
+      TimeSeriesSplit, MAE/RMSE/R2/MAPE; KMeans de clientas con k por silueta y ARI contra los
+      perfiles generadores; IsolationForest de dias atipicos) y router.py (/analitica/modelo,
+      /entrenar, /datos-sinteticos en JSON o CSV, /dashboard aplicado a las ventas reales de
+      la empresa con hallazgos en texto). Solo plan Profesional. Web: /panel/analitica
+      (KPIs, pronostico apilado por tipo de prenda, segmentos, dias atipicos, metricas de los
+      modelos, importancia de variables, muestra y CSV de los datos sinteticos, reentrenar con
+      semilla). scikit-learn entra en requirements.txt (la imagen del backend crece).
+      El movil NO tiene dashboard de ML (la consigna no lo pide en movil).
+[6.6] [HECHO web + movil] Reportes con IA bloqueados en Basico tambien en la UI (web: aviso en
+      la solapa; movil: la pestana "Reporte con IA" muestra el aviso). Quien bloquea es el
+      backend (403).
+      PROBADO 2026-10-18: backend 186 tests + ruff; ng build; flutter analyze, flutter test
+      17/17 (10 nuevos en test/operaciones_offline_test.dart: reinicio, cascada, RN12, CHECK,
+      JSON de OperacionIn, IVA, UUID); E2E en vivo contra un Postgres descartable:
+      scripts/e2e_multitenant.py 122/0, scripts/e2e_sincronizacion.py 39/0 (en base nueva y
+      migrada), smoke de las paginas nuevas 26/0, y el ciclo movil completo contra el backend
+      real con movil/test_integracion/sincronizacion_en_vivo_test.dart (descargar, vender y
+      reservar sin red, reiniciar, sincronizar, reenvio sin duplicar, conflicto de stock).
+      Se corre con: flutter test test_integracion --dart-define=API_URL=http://localhost:8081
+      NO PROBADO: las pantallas nuevas mirandolas en un navegador o en el emulador.
+
+[6.7] [ABIERTO -- ACCION DEL USUARIO] Deploy. Sobre la base de Railway (que ya tiene
+      segundo_parcial.sql), y ANTES de desplegar el backend nuevo:
+        psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/reparaciones/multitenant_empresa.sql
+      (re-ejecutable). Lo mismo para el Docker local con volumen (o `docker compose down -v`).
+      Despues seguir 5.15 (railway login, desplegar backend y frontend, CORS/FRONTEND_URL, QR).
+[6.8] [HECHO 2026-10-18] Documentacion ICONIX del SaaS multitenant: docs/uml/
+      ICONIX_SAAS_MULTITENANT.md (aislamiento, planes, politica de vencimiento, narrativas de
+      CU01/02/05/13-16/18-22/26/27 con la numeracion de la especificacion) y diagramas 23
+      (dominio, tenant = empresa), 24 (casos de uso CU01-CU28), 25 (robustez sync), 26
+      (secuencia CU19), 27 (SQLite del movil) y 28 (robustez ML), con sus png/ (renderizados
+      con plantuml.jar + Java 8, sin Docker). El 09 y ICONIX_SEGUNDO_PARCIAL.md quedan marcados
+      como superados en lo de "tenant = sucursal". Los C4 (20-22) no se tocaron: no muestran
+      los modulos sync/ y analitica/.
 
 ===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)

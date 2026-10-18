@@ -13,7 +13,7 @@ from app.core.db import get_connection
 from app.core.deps import get_encargado_actual
 from app.main import app
 from app.modules.inventario import router as inventario_router
-from tests.conexion_falsa import ConexionFalsa
+from tests.conexion_falsa import EMPRESA, ConexionFalsa, staff
 
 SUCURSAL = uuid4()
 RESERVA = uuid4()
@@ -69,7 +69,7 @@ def _conn_resolver(sesion_abierta: bool) -> ConexionFalsa:
 
 def _resolver(cliente, conn: ConexionFalsa, metodo_pago: str):
     return cliente(
-        conn, {get_encargado_actual: lambda: {"usuario_id": uuid4(), "sucursal_id": SUCURSAL}}
+        conn, {get_encargado_actual: lambda: {"usuario_id": uuid4(), "sucursal_id": SUCURSAL, "empresa_id": EMPRESA}}
     ).post(
         f"/reservas/{RESERVA}/resolver",
         json={
@@ -113,7 +113,7 @@ def test_resolver_con_tarjeta_y_sesion_abierta_tambien_la_ata(cliente):
 
 # --- 7: ajuste manual de stock -------------------------------------------------------------------
 
-ADMIN = {"id": uuid4(), "permisos": ["sucursales.actualizar"], "sucursal_id": None}
+ADMIN = staff(permisos=["sucursales.actualizar"])
 
 
 def _ajustar(cliente, conn: ConexionFalsa, cantidad: int):

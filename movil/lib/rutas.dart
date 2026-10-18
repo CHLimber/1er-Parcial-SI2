@@ -32,6 +32,7 @@ import 'paginas/producto_detalle_pagina.dart';
 import 'paginas/registro_pagina.dart';
 import 'paginas/reservar_pagina.dart';
 import 'paginas/tienda_pagina.dart';
+import 'paginas/venta_offline_pagina.dart';
 import 'compartido/navegacion_cliente.dart';
 
 /// Rutas que solo puede ver quien NO tiene sesion (espejo de `invitadoGuard`).
@@ -42,6 +43,8 @@ const _rutasDeInvitado = {'/login', '/registro'};
 const Map<String, List<String>> _permisosPorRuta = {
   '/caja': [permisoCaja],
   '/atender-reservas': [permisoAtenderReservas],
+  // Modulos C y D: vender / reservar sin conexion
+  '/offline': [permisoCaja, permisoAtenderReservas],
   '/panel/catalogo': [
     'catalogo.leer',
     'catalogo.crear',
@@ -184,6 +187,7 @@ GoRouter construirRouter(AuthService auth) {
       ),
 
       // Panel de gestion (CU09 a CU13).
+      GoRoute(path: '/offline', builder: (contexto, estado) => const VentaOfflinePagina()),
       GoRoute(path: '/panel', builder: (contexto, estado) => const PanelPagina()),
       GoRoute(
         path: '/panel/catalogo',

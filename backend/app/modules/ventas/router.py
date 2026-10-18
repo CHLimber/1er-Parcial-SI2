@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.config import settings
 from app.core.db import get_connection
 from app.core.deps import get_cajero_actual, get_current_usuario
+from app.core.tenant import empresa_de_sucursal
 from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.envios.servicio import SinCoordenadas, cotizar
 from app.modules.pagos.servicio import (
@@ -196,7 +197,11 @@ async def _validar_reserva_del_carrito(
 
 
 async def _aplicar_cupon(
-    conn: asyncpg.Connection, codigo: str, items: list[asyncpg.Record], subtotal: Decimal
+    conn: asyncpg.Connection,
+    codigo: str,
+    items: list[asyncpg.Record],
+    subtotal: Decimal,
+    empresa_id: UUID,
 ) -> tuple[UUID, Decimal]:
     """Valida el cupon y consume un uso. Debe llamarse dentro de la transaccion del checkout: el
     FOR UPDATE serializa a dos clientas que usan el mismo cupon a la vez, asi la segunda ve el
@@ -206,10 +211,12 @@ async def _aplicar_cupon(
         SELECT id, tipo, valor, alcance, categoria_id, temporada_id, monto_minimo,
                uso_maximo, usos_actuales
         FROM promocion
-        WHERE codigo_cupon = $1 AND activa AND CURRENT_DATE BETWEEN fecha_inicio AND fecha_fin
+        WHERE codigo_cupon = $1 AND empresa_id = $2
+          AND activa AND CURRENT_DATE BETWEEN fecha_inicio AND fecha_fin
         FOR UPDATE
         """,
         codigo.strip().upper(),
+        empresa_id,
     )
     if promo is None:
         raise HTTPException(
@@ -273,7 +280,7 @@ async def iniciar_checkout(
     items = await conn.fetch(
         """
         SELECT ci.id, ci.variante_id, ci.cantidad, ci.precio_unitario,
-               p.categoria_id, p.temporada_id
+               p.categoria_id, p.temporada_id, p.empresa_id
         FROM carrito_item ci
         JOIN producto_variante pv ON pv.id = ci.variante_id
         JOIN producto p ON p.id = pv.producto_id
@@ -301,8 +308,11 @@ async def iniciar_checkout(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Elegi la sucursal desde la que se despacha tu pedido",
             )
+        # multi-tenant: la sucursal tiene que ser de la tienda de las prendas del carrito
         sucursal = await conn.fetchrow(
-            "SELECT id FROM sucursal WHERE id = $1 AND activa", body.sucursal_id
+            "SELECT id FROM sucursal WHERE id = $1 AND activa AND empresa_id = $2",
+            body.sucursal_id,
+            items[0]["empresa_id"],
         )
         if sucursal is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada")
@@ -338,6 +348,15 @@ async def iniciar_checkout(
                 float(direccion["latitud"]) if direccion["latitud"] is not None else None,
                 float(direccion["longitud"]) if direccion["longitud"] is not None else None,
             )
+
+    # Multi-tenant: una venta es de UNA empresa. El carrito ya impide mezclar tiendas
+    # (carrito/router.py), esto es la ultima verificacion antes de cobrar.
+    empresa_venta = await empresa_de_sucursal(conn, sucursal_id)
+    if any(item["empresa_id"] != empresa_venta for item in items):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tu carrito tiene prendas de otra tienda: compralas por separado",
+        )
 
     variante_ids = [item["variante_id"] for item in items]
     if carrito["reserva_id"] is None:
@@ -528,7 +547,9 @@ async def iniciar_checkout(
         descuento = Decimal("0")
         promocion_id = None
         if body.codigo_cupon:
-            promocion_id, descuento = await _aplicar_cupon(conn, body.codigo_cupon, items, subtotal)
+            promocion_id, descuento = await _aplicar_cupon(
+                conn, body.codigo_cupon, items, subtotal, empresa_venta
+            )
 
         # CU20: el delivery se vuelve a cotizar aca, del lado del servidor. Lo que la clienta vio
         # en /envios/cotizar es informativo; lo que se cobra es esto.
@@ -849,9 +870,11 @@ async def registrar_venta_pos(
         JOIN color c    ON c.id = pv.color_id
         LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
         WHERE pv.id = ANY($1::uuid[])
+          AND p.empresa_id = $3  -- una prenda de otra empresa queda como "no disponible"
         """,
         variante_ids,
         cajero["sucursal_id"],
+        cajero["empresa_id"],
     )
     info_por_variante = {fila["variante_id"]: fila for fila in filas}
 

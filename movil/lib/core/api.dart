@@ -43,6 +43,9 @@ class ApiClient {
   /// Lo setea AuthService al arrancar; devuelve el token de la sesion viva.
   String? Function() obtenerToken = () => null;
 
+  /// Lo setea AuthService: slug del tenant que viaja en `X-Empresa` (multi-tenant).
+  String? Function() obtenerEmpresa = () => null;
+
   /// Se dispara cuando la API responde 401: la sesion guardada ya no sirve.
   void Function()? alExpirarSesion;
 
@@ -64,13 +67,16 @@ class ApiClient {
     if (token != null && token.isNotEmpty) {
       cabeceras['Authorization'] = 'Bearer $token';
     }
+    final empresa = obtenerEmpresa();
+    if (empresa != null && empresa.isNotEmpty) cabeceras['X-Empresa'] = empresa;
     return cabeceras;
   }
 
   Future<dynamic> get(String ruta, {Map<String, dynamic>? query}) async {
     Future<http.Response> peticion() => _http.get(_uri(ruta, query), headers: _cabeceras());
     if (conexion == null || !_cacheables.any((p) => p.hasMatch(ruta))) return _enviar(peticion);
-    final clave = _uri(ruta, query).toString();
+    // la misma ruta devuelve otra cosa segun el tenant: la cache se separa por tienda
+    final clave = '${obtenerEmpresa() ?? ''}|${_uri(ruta, query)}';
     try {
       final cuerpo = await _enviar(peticion);
       baseLocal.guardarRespuesta(clave, cuerpo).catchError((_) {});

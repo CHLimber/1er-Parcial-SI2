@@ -42,6 +42,9 @@
       (click)="cambiarVista('ia')"
     >
       Reporte con IA
+      @if (!auth.tieneFuncion('ia_reportes')) {
+        <span class="submenu__candado" aria-label="no incluido en tu plan">· Profesional</span>
+      }
     </button>
   </nav>
 
@@ -1009,7 +1012,18 @@
        una cifra; la tabla con el detalle se arma con la ultima consulta que hizo. La voz se
        transcribe en el navegador con la Web Speech API (Chrome/Edge) y se manda como si el
        usuario la hubiera escrito -- no hay backend de audio. -->
-  @if (vista() === 'ia') {
+  @if (vista() === 'ia' && !auth.tieneFuncion('ia_reportes')) {
+    <!-- RN05: los reportes generativos son del plan Profesional. El backend igual responde 403;
+         aca solo se evita mostrar un chat que no va a funcionar. -->
+    <section class="panel">
+      <h2 class="panel__titulo">Reporte con IA</h2>
+      <p class="aviso">
+        Tu plan {{ auth.usuario()?.plan ?? '' }} no incluye los reportes generativos con IA:
+        están disponibles desde el plan Profesional. Los reportes convencionales (gráficas,
+        estáticos, dinámicos y existencias) siguen disponibles.
+      </p>
+    </section>
+  } @else if (vista() === 'ia') {
     <section class="panel">
       <div class="panel__cabecera">
         <h2 class="panel__titulo">Reporte con IA</h2>

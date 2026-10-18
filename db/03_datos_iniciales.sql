@@ -8,6 +8,12 @@
 --  multi-sucursal y promociones. Suficiente para desarrollar y demostrar
 --  el frontend/movil de punta a punta sin depender de datos reales.
 --  Password de todos los usuarios demo: "demo1234"
+--
+--  Multi-tenant (segundo parcial): FashionStore es la primera EMPRESA (tenant) de la
+--  plataforma. Todo el catalogo, las sucursales y el personal de este archivo son suyos (ver
+--  el DEFAULT temporal de empresa_id mas abajo). Al final se siembran dos empresas mas,
+--  independientes: Boutique Andina (plan Basico, 2 sucursales en La Paz / El Alto, catalogo
+--  propio) y Moda Urbana (suscripcion vencida, para mostrar el bloqueo).
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -15,13 +21,37 @@
 -- ---------------------------------------------------------------------
 
 INSERT INTO rol (nombre, descripcion, es_sistema) VALUES
-    ('ADMIN',      'Administracion general del sistema', TRUE),
+    ('SUPERADMIN', 'Administracion de la plataforma SaaS: empresas, planes y suscripciones', TRUE),
+    ('ADMIN',      'Administracion de una empresa: todo lo de su tenant', TRUE),
     ('ENCARGADO',  'Responsable de una sucursal', TRUE),
     ('CAJERO',     'Maneja caja, ventas presenciales y verificacion de pagos', TRUE),
     ('VENDEDOR',   'Atiende clientes y reservas en tienda', TRUE),
     ('ALMACEN',    'Recibe mercaderia y controla existencias', TRUE);
 -- El proveedor no es usuario: sus datos los carga el ADMIN en CU11. VENDEDOR y ALMACEN se
 -- mantienen (PENDIENTES 2.19.1.d: la reduccion de actores se descarto).
+
+-- ---------------------------------------------------------------------
+-- EMPRESAS (TENANTS). Ids fijos para que el seed y los scripts de demo los puedan nombrar.
+-- ---------------------------------------------------------------------
+
+INSERT INTO empresa (id, slug, nombre, razon_social, nit, email, telefono) VALUES
+    ('e0000000-0000-4000-8000-000000000001', 'fashionstore', 'FashionStore',
+     'FashionStore Bolivia S.R.L.', '1234567890', 'contacto@fashionstore.bo', '33400000'),
+    ('e0000000-0000-4000-8000-000000000002', 'andina', 'Boutique Andina',
+     'Boutique Andina Textiles S.R.L.', '4455667788', 'hola@andina.bo', '22790000'),
+    ('e0000000-0000-4000-8000-000000000003', 'moda-urbana', 'Moda Urbana',
+     'Moda Urbana Potosi S.R.L.', '9988776655', 'ventas@modaurbana.bo', '26220000');
+
+-- Hasta el bloque "EMPRESA 2" todo es de FashionStore: en vez de repetir el empresa_id en cada
+-- uno de los cientos de INSERT del catalogo, se fija como DEFAULT y se quita al terminar.
+ALTER TABLE sucursal  ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE proveedor ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE categoria ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE marca     ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE temporada ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE coleccion ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE producto  ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
+ALTER TABLE promocion ALTER COLUMN empresa_id SET DEFAULT 'e0000000-0000-4000-8000-000000000001';
 
 -- ---------------------------------------------------------------------
 -- PERMISOS Y ASIGNACION A ROLES (CU13)
@@ -80,15 +110,33 @@ INSERT INTO permiso (codigo, modulo, descripcion) VALUES
     ('traspasos.crear',       'traspasos',   'Solicitar un traspaso desde la propia sucursal a otra'),
     ('traspasos.actualizar',  'traspasos',   'Despachar un traspaso (sale el stock) o recibirlo (entra en destino)'),
     ('traspasos.eliminar',    'traspasos',   'Anular un traspaso solicitado o en transito'),
-    -- Segundo parcial (PENDIENTES 5.4-5.7): SaaS por tenant (sucursal)
-    ('suscripciones.leer',    'suscripciones','Consultar el plan y la suscripcion de la sucursal'),
-    ('suscripciones.actualizar','suscripciones','Cambiar de plan y pagar la suscripcion de la sucursal'),
-    ('clientes.leer',         'clientes',    'Consultar la cartera de clientas de la sucursal'),
-    ('clientes.actualizar',   'clientes',    'Editar el perfil de una clienta en la sucursal');
+    -- Segundo parcial: SaaS por tenant (empresa)
+    ('suscripciones.leer',    'suscripciones','Consultar el plan, la suscripcion y el uso de la empresa'),
+    ('suscripciones.actualizar','suscripciones','Cambiar de plan y pagar la suscripcion de la empresa'),
+    ('clientes.leer',         'clientes',    'Consultar la cartera de clientas de la empresa'),
+    ('clientes.actualizar',   'clientes',    'Editar el perfil de una clienta en la empresa'),
+    ('sincronizacion.leer',   'sincronizacion','Consultar las operaciones offline sincronizadas y sus conflictos'),
+    ('sincronizacion.actualizar','sincronizacion','Resolver conflictos de sincronizacion (reintentar, aceptar precio, descartar)'),
+    ('analitica.leer',        'analitica',   'Consultar el dashboard analitico (modelos de machine learning)'),
+    ('analitica.actualizar',  'analitica',   'Reentrenar los modelos de machine learning'),
+    -- Solo la plataforma (rol SUPERADMIN): no se asignan a roles de empresa
+    ('empresas.leer',         'empresas',    'Consultar las empresas contratantes de la plataforma'),
+    ('empresas.crear',        'empresas',    'Registrar una empresa contratante con su administrador'),
+    ('empresas.actualizar',   'empresas',    'Editar, suspender o reactivar una empresa y asignarle plan'),
+    ('planes.actualizar',     'planes',      'Configurar precio, limites y funciones de los planes');
 
--- ADMIN: todo
+-- ADMIN (de empresa): todo lo de su tenant; lo de la plataforma (empresas, planes) no
 INSERT INTO rol_permiso (rol_id, permiso_id)
-SELECT (SELECT id FROM rol WHERE nombre = 'ADMIN'), p.id FROM permiso p;
+SELECT (SELECT id FROM rol WHERE nombre = 'ADMIN'), p.id FROM permiso p
+ WHERE p.modulo NOT IN ('empresas', 'planes');
+
+-- SUPERADMIN (plataforma): empresas, planes, suscripciones de todas, bitacora y el
+-- reentrenamiento de los modelos. No opera la tienda de nadie (catalogo, caja, ventas).
+INSERT INTO rol_permiso (rol_id, permiso_id)
+SELECT (SELECT id FROM rol WHERE nombre = 'SUPERADMIN'), p.id FROM permiso p
+ WHERE p.modulo IN ('empresas', 'planes')
+    OR p.codigo IN ('suscripciones.leer', 'suscripciones.actualizar', 'auditoria.leer',
+                    'analitica.leer', 'analitica.actualizar');
 
 -- ENCARGADO: manda en su sucursal (inventario, recepciones, reservas, reportes); tambien puede
 -- cubrir la caja (caja.* + ventas.crear) si el cajero falta.
@@ -106,15 +154,17 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
                     'envios.leer','envios.actualizar',
                     'devoluciones.leer','devoluciones.crear','devoluciones.actualizar',
                     'traspasos.leer','traspasos.crear','traspasos.actualizar','traspasos.eliminar',
-                    'suscripciones.leer','suscripciones.actualizar',
-                    'clientes.leer','clientes.actualizar');
+                    'suscripciones.leer',
+                    'clientes.leer','clientes.actualizar',
+                    'sincronizacion.leer','sincronizacion.actualizar','analitica.leer');
 
 -- CAJERO: caja, punto de venta y verificacion de pagos online QR/efectivo (todo cuelga de
 -- caja.crear, ver get_cajero_actual en app/core/deps.py)
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'CAJERO'), p.id
   FROM permiso p
- WHERE p.codigo IN ('catalogo.leer','inventario.leer','caja.leer','caja.crear','caja.actualizar','ventas.crear');
+ WHERE p.codigo IN ('catalogo.leer','inventario.leer','caja.leer','caja.crear','caja.actualizar','ventas.crear',
+                    'clientes.leer','sincronizacion.leer');
 
 -- ALMACEN: solo el flujo de entrada de mercaderia
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -128,7 +178,7 @@ INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
   FROM permiso p
  WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar',
-                    'clientes.leer');
+                    'clientes.leer','sincronizacion.leer');
 
 -- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
 -- fn_cotizar_envio no tiene distancia que cobrar. Son las de cada barrio real.
@@ -140,8 +190,8 @@ INSERT INTO sucursal (codigo, nombre, ciudad, direccion, latitud, longitud,
      -16.5090000, -68.1290000, '09:30', '19:30', 2),
     ('CB-01', 'FashionStore Cala Cala',  'COCHABAMBA', 'Av. America Este #480',
      -17.3660000, -66.1540000, '09:00', '20:00', 2),
-    -- Segundo parcial (PENDIENTES 5.11): la cadena crece a 6 sucursales; cada una es un tenant
-    -- con su propia suscripcion (bloque SAAS, mas abajo).
+    -- Segundo parcial (PENDIENTES 5.11): la cadena crece a 6 sucursales, todas de la empresa
+    -- FashionStore (el tenant; su suscripcion esta en el bloque SAAS, mas abajo).
     ('SU-01', 'FashionStore Sucre Centro', 'SUCRE',  'Calle Arenales #45',
      -19.0476000, -65.2600000, '09:00', '19:30', 1),
     ('TJ-01', 'FashionStore Tarija Las Panosas', 'TARIJA', 'Av. Las Americas #310',
@@ -203,6 +253,15 @@ INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email
 INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado) VALUES
     ('cliente@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Cliente', 'Demo',   'CLIENTE', TRUE),
     ('cliente2@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Valeria', 'Rojas',  'CLIENTE', TRUE);
+
+-- Todo el personal de arriba es de FashionStore
+UPDATE usuario SET empresa_id = 'e0000000-0000-4000-8000-000000000001' WHERE tipo = 'STAFF';
+
+-- El administrador de la PLATAFORMA (SaaS): no pertenece a ninguna empresa (empresa_id NULL)
+-- ni tiene fila en empleado.
+INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email_verificado)
+VALUES ('superadmin@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Plataforma', 'SaaS',
+        'STAFF', (SELECT id FROM rol WHERE nombre = 'SUPERADMIN'), TRUE);
 
 INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
     ((SELECT id FROM usuario WHERE email = 'admin@fashionstore.bo'),
@@ -2385,8 +2444,6 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('pago_pendiente_horas_vigencia', '48', 'Horas antes de anular un pedido online en efectivo/QR sin pagar ni informar'),
     -- Lo lee devoluciones/router.py: pasado este plazo desde la venta no se registra la devolucion.
     ('devolucion_plazo_dias',  '30',  'Dias desde la venta para aceptar una devolucion'),
-    ('empresa_razon_social',   'FashionStore Bolivia S.R.L.', 'Razon social para comprobantes'),
-    ('empresa_nit',            '1234567890', 'NIT para comprobantes'),
     -- CU20: los lee fn_cotizar_envio(). Valores tomados del mercado boliviano de delivery
     -- (Yango / PedidosYa en Santa Cruz y La Paz, tramo corto urbano en moto).
     ('delivery_tarifa_base',   '8',   'Bs fijos por salida de reparto'),
@@ -2405,47 +2462,186 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('cambio_plazo_dias', '15', 'Dias desde la venta para aceptar un cambio de prenda por talla o color');
 
 -- ---------------------------------------------------------------------
--- SAAS (PENDIENTES 5.4-5.7): tres planes y una suscripcion por tenant (sucursal)
--- Mismos datos en db/reparaciones/segundo_parcial.sql.
+-- SAAS: dos planes (los de la consigna) y una suscripcion por EMPRESA.
+-- Los topes y funciones son datos: el SUPERADMIN los cambia con PUT /saas/planes/{codigo}.
+-- Mismos datos en db/reparaciones/multitenant_empresa.sql.
 -- ---------------------------------------------------------------------
 
-INSERT INTO plan (codigo, nombre, descripcion, precio_mensual, max_empleados, max_cajas,
-                  perfiles_clientes, traspasos, ia_reportes, orden) VALUES
-    ('BASICO',      'Basico',      'Caja, reservas, inventario y devoluciones de una tienda chica',
-     350,  3,    1,    FALSE, FALSE, FALSE, 1),
-    ('PROFESIONAL', 'Profesional', 'Suma perfil de clientas, traspasos entre sucursales y mas personal',
-     750,  8,    2,    TRUE,  TRUE,  FALSE, 2),
-    ('PREMIUM',     'Premium',     'Todo lo anterior mas reportes con IA y sin limites de personal ni cajas',
-     1400, NULL, NULL, TRUE,  TRUE,  TRUE,  3);
+INSERT INTO plan (codigo, nombre, descripcion, precio_mensual, max_sucursales, max_empleados,
+                  max_cajas, perfiles_clientes, traspasos, operacion_offline, reportes,
+                  ia_reportes, analitica_ml, orden) VALUES
+    ('BASICO',      'Basico',
+     'Hasta 2 sucursales: productos, ventas, reservas, operacion offline y reportes convencionales',
+     350,  2,  NULL, NULL, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, 1),
+    ('PROFESIONAL', 'Profesional',
+     'Hasta 10 sucursales: todo lo del Basico mas reportes generativos con IA y analitica de ML',
+     900,  10, NULL, NULL, TRUE, TRUE, TRUE, TRUE, TRUE,  TRUE,  2);
 
--- Equipetrol (casa matriz) en Premium; La Paz y Cochabamba en Profesional; Sucre y Tarija en
--- Basico (Tarija todavia en prueba); Oruro con la suscripcion vencida, para ver el bloqueo.
-INSERT INTO suscripcion (sucursal_id, plan_id, estado, inicio, vence_en)
-SELECT s.id, p.id, x.estado::estado_suscripcion, now() - x.desde, now() + x.vence
+-- FashionStore (6 sucursales) en Profesional; las otras dos empresas se suscriben mas abajo.
+INSERT INTO suscripcion (empresa_id, plan_id, estado, inicio, vence_en)
+VALUES ('e0000000-0000-4000-8000-000000000001',
+        (SELECT id FROM plan WHERE codigo = 'PROFESIONAL'), 'ACTIVA',
+        now() - interval '90 days', now() + interval '30 days');
+
+-- Perfil de la clienta demo en la cartera de FashionStore
+INSERT INTO cliente_perfil_tenant (empresa_id, usuario_id, segmento, talla_habitual,
+                                   estilo_preferido, acepta_whatsapp, notas)
+VALUES ('e0000000-0000-4000-8000-000000000001',
+        (SELECT id FROM usuario WHERE email = 'cliente@fashionstore.bo'),
+        'FRECUENTE', 'M', 'Casual / oficina', TRUE,
+        'Prefiere colores claros; avisarle cuando entren vestidos de la coleccion Llanura.');
+
+-- Fin de lo que es de FashionStore: se quita el DEFAULT temporal del principio. Desde aca
+-- cada INSERT dice explicitamente de que empresa es.
+ALTER TABLE sucursal  ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE proveedor ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE categoria ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE marca     ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE temporada ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE coleccion ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE producto  ALTER COLUMN empresa_id DROP DEFAULT;
+ALTER TABLE promocion ALTER COLUMN empresa_id DROP DEFAULT;
+
+
+-- =====================================================================
+--  EMPRESA 2: BOUTIQUE ANDINA (tenant independiente, plan Basico)
+--  Tejidos de altura para el frio: 2 sucursales (el tope del plan Basico, asi dar de alta
+--  una tercera muestra el limite), su propio personal, catalogo, proveedor e inventario.
+--  Comparte con FashionStore solo lo que es de la plataforma: tallas, colores y planes.
+-- =====================================================================
+
+INSERT INTO sucursal (empresa_id, codigo, nombre, ciudad, direccion, latitud, longitud,
+                      hora_apertura, hora_cierre, cantidad_vestidores) VALUES
+    ('e0000000-0000-4000-8000-000000000002', 'AN-LP1', 'Andina San Miguel', 'LA_PAZ',
+     'Calle 21 de Calacoto #8050', -16.5410000, -68.0790000, '10:00', '20:00', 2),
+    ('e0000000-0000-4000-8000-000000000002', 'AN-EA1', 'Andina Ceja El Alto', 'EL_ALTO',
+     'Av. 6 de Marzo #1200', -16.5050000, -68.1630000, '09:00', '19:00', 1);
+
+INSERT INTO caja (sucursal_id, codigo, nombre) VALUES
+    ((SELECT id FROM sucursal WHERE codigo = 'AN-LP1'), 'CAJA-01', 'Caja San Miguel'),
+    ((SELECT id FROM sucursal WHERE codigo = 'AN-EA1'), 'CAJA-01', 'Caja El Alto');
+
+INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, empresa_id, email_verificado) VALUES
+    ('admin@andina.bo',              crypt('demo1234', gen_salt('bf')), 'Ximena',  'Apaza',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ADMIN'),     'e0000000-0000-4000-8000-000000000002', TRUE),
+    ('encargada.sanmiguel@andina.bo', crypt('demo1234', gen_salt('bf')), 'Carla',  'Mendoza',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), 'e0000000-0000-4000-8000-000000000002', TRUE),
+    ('cajero.sanmiguel@andina.bo',   crypt('demo1234', gen_salt('bf')), 'Iver',    'Quisbert',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    'e0000000-0000-4000-8000-000000000002', TRUE),
+    ('cajera.elalto@andina.bo',      crypt('demo1234', gen_salt('bf')), 'Wara',    'Ticona',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    'e0000000-0000-4000-8000-000000000002', TRUE);
+
+INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
+    ((SELECT id FROM usuario WHERE email = 'admin@andina.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'AN-LP1'), 'ENCARGADO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'encargada.sanmiguel@andina.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'AN-LP1'), 'ENCARGADO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'cajero.sanmiguel@andina.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'AN-LP1'), 'CAJERO', CURRENT_DATE),
+    ((SELECT id FROM usuario WHERE email = 'cajera.elalto@andina.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'AN-EA1'), 'CAJERO', CURRENT_DATE);
+
+INSERT INTO proveedor (empresa_id, nombre, nit, contacto, email, telefono) VALUES
+    ('e0000000-0000-4000-8000-000000000002', 'Tejidos Altiplano', '330011223', 'Felix Mamani',
+     'pedidos@tejidosaltiplano.bo', '71122334');
+
+-- Mismo slug que en FashionStore ('abrigos', 'accesorios'): la unicidad es por empresa.
+INSERT INTO categoria (empresa_id, nombre, slug) VALUES
+    ('e0000000-0000-4000-8000-000000000002', 'Abrigos',    'abrigos'),
+    ('e0000000-0000-4000-8000-000000000002', 'Tejidos',    'tejidos'),
+    ('e0000000-0000-4000-8000-000000000002', 'Accesorios', 'accesorios');
+
+INSERT INTO marca (empresa_id, nombre) VALUES
+    ('e0000000-0000-4000-8000-000000000002', 'Andina Alpaca');
+
+INSERT INTO temporada (empresa_id, nombre, tipo, fecha_inicio, fecha_fin, activa) VALUES
+    ('e0000000-0000-4000-8000-000000000002', 'Invierno Andino 2026', 'OTONO_INVIERNO',
+     '2026-04-01', '2026-12-31', TRUE);
+
+INSERT INTO producto (empresa_id, categoria_id, marca_id, proveedor_id, temporada_id,
+                      codigo, nombre, slug, descripcion, material, genero, precio_base, destacado)
+SELECT 'e0000000-0000-4000-8000-000000000002', c.id, m.id, pr.id, t.id,
+       x.codigo, x.nombre, x.slug, x.descripcion, x.material, 'MUJER', x.precio, x.destacado
   FROM (VALUES
-        ('SC-01', 'PREMIUM',     'ACTIVA',  interval '90 days', interval '30 days'),
-        ('LP-01', 'PROFESIONAL', 'ACTIVA',  interval '60 days', interval '25 days'),
-        ('CB-01', 'PROFESIONAL', 'ACTIVA',  interval '60 days', interval '12 days'),
-        ('SU-01', 'BASICO',      'ACTIVA',  interval '30 days', interval '20 days'),
-        ('TJ-01', 'BASICO',      'PRUEBA',  interval '5 days',  interval '9 days'),
-        ('OR-01', 'BASICO',      'VENCIDA', interval '45 days', interval '-3 days')
-       ) AS x(codigo, plan, estado, desde, vence)
-  JOIN sucursal s ON s.codigo = x.codigo
-  JOIN plan p     ON p.codigo = x.plan;
+        ('AND-001', 'Poncho de Alpaca Tejido', 'poncho-de-alpaca-tejido', 'abrigos',
+         'Poncho tejido a mano con guarda andina, abrigado y liviano.', 'Alpaca 100%', 420.00, TRUE),
+        ('AND-002', 'Chompa de Alpaca Cuello Alto', 'chompa-de-alpaca-cuello-alto', 'tejidos',
+         'Chompa de punto grueso con cuello alto, ideal para El Alto.', 'Alpaca 70% lana 30%', 290.00, TRUE),
+        ('AND-003', 'Cardigan Tejido Largo', 'cardigan-tejido-largo', 'tejidos',
+         'Cardigan largo de punto trenzado con bolsillos.', 'Lana de oveja', 260.00, FALSE),
+        ('AND-004', 'Chalina Andina con Flecos', 'chalina-andina-con-flecos', 'accesorios',
+         'Chalina con flecos y diseno de aguayo.', 'Alpaca 50% acrilico 50%', 120.00, FALSE)
+       ) AS x(codigo, nombre, slug, cat, descripcion, material, precio, destacado)
+  JOIN categoria c ON c.empresa_id = 'e0000000-0000-4000-8000-000000000002' AND c.slug = x.cat
+  JOIN marca m     ON m.empresa_id = 'e0000000-0000-4000-8000-000000000002'
+  JOIN proveedor pr ON pr.empresa_id = 'e0000000-0000-4000-8000-000000000002'
+  JOIN temporada t ON t.empresa_id = 'e0000000-0000-4000-8000-000000000002';
 
+-- SKU con prefijo AND-: el SKU es unico en toda la plataforma (lo lee el lector de codigos).
+INSERT INTO producto_variante (producto_id, talla_id, color_id, sku)
+SELECT p.id, t.id, c.id, p.codigo || '-' || t.codigo || '-' || left(c.nombre, 3)
+  FROM producto p
+  JOIN talla t ON t.tipo = 'LETRA'
+              AND ((p.codigo = 'AND-004' AND t.codigo = 'UNICA')
+                OR (p.codigo <> 'AND-004' AND t.codigo IN ('S', 'M', 'L')))
+  JOIN color c ON c.nombre IN ('Gris', 'Camel', 'Vino')
+ WHERE p.empresa_id = 'e0000000-0000-4000-8000-000000000002';
+
+-- Fotos: el catalogo demo reusa las de prendas parecidas de /media/catalogo
+INSERT INTO producto_imagen (producto_id, uso, url, formato, es_principal, orden)
+SELECT p.id, 'CATALOGO', 'http://localhost:8081/media/catalogo/' || x.foto, 'JPG', TRUE, 0
+  FROM (VALUES ('AND-001', 'tapado-de-lana-largo.jpg'),
+               ('AND-002', 'cardigan-de-punto-grueso.jpg'),
+               ('AND-003', 'cardigan-de-punto-grueso.jpg'),
+               ('AND-004', 'chalina-de-alpaca.jpg')) AS x(codigo, foto)
+  JOIN producto p ON p.codigo = x.codigo
+                 AND p.empresa_id = 'e0000000-0000-4000-8000-000000000002';
+
+INSERT INTO inventario (sucursal_id, variante_id, cantidad_fisica, stock_minimo)
+SELECT s.id, pv.id, (6 + random() * 10)::int, 2
+  FROM producto_variante pv
+  JOIN producto p ON p.id = pv.producto_id
+  JOIN sucursal s ON s.empresa_id = p.empresa_id
+ WHERE p.empresa_id = 'e0000000-0000-4000-8000-000000000002';
+
+-- Mismo codigo de cupon que FashionStore usaria en otra empresa: no chocan.
+INSERT INTO promocion (empresa_id, nombre, codigo_cupon, tipo, valor, alcance, fecha_inicio, fecha_fin)
+VALUES ('e0000000-0000-4000-8000-000000000002', 'Bienvenida Andina 10%', 'BIENVENIDA10',
+        'PORCENTAJE', 10, 'TODO', '2026-01-01', '2026-12-31');
+
+INSERT INTO suscripcion (empresa_id, plan_id, estado, inicio, vence_en)
+VALUES ('e0000000-0000-4000-8000-000000000002', (SELECT id FROM plan WHERE codigo = 'BASICO'),
+        'ACTIVA', now() - interval '40 days', now() + interval '20 days');
+
+
+-- =====================================================================
+--  EMPRESA 3: MODA URBANA (suscripcion VENCIDA)
+--  Sirve para mostrar la politica de suscripcion vencida: su personal entra, ve su plan y
+--  puede renovar, pero las funciones de gestion responden 402.
+-- =====================================================================
+
+INSERT INTO sucursal (empresa_id, codigo, nombre, ciudad, direccion, latitud, longitud,
+                      hora_apertura, hora_cierre, cantidad_vestidores) VALUES
+    ('e0000000-0000-4000-8000-000000000003', 'MU-PT1', 'Moda Urbana Potosi', 'POTOSI',
+     'Calle Sucre #30', -19.5890000, -65.7530000, '09:30', '19:30', 1);
+
+INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, empresa_id, email_verificado) VALUES
+    ('admin@modaurbana.bo', crypt('demo1234', gen_salt('bf')), 'Sergio', 'Flores',
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ADMIN'), 'e0000000-0000-4000-8000-000000000003', TRUE);
+
+INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
+    ((SELECT id FROM usuario WHERE email = 'admin@modaurbana.bo'),
+     (SELECT id FROM sucursal WHERE codigo = 'MU-PT1'), 'ENCARGADO', CURRENT_DATE);
+
+INSERT INTO suscripcion (empresa_id, plan_id, estado, inicio, vence_en)
+VALUES ('e0000000-0000-4000-8000-000000000003', (SELECT id FROM plan WHERE codigo = 'BASICO'),
+        'VENCIDA', now() - interval '45 days', now() - interval '3 days');
+
+-- Historial de pagos: un mes cobrado por transferencia a cada suscripcion pagada
 INSERT INTO pago_suscripcion (suscripcion_id, plan_id, meses, monto, metodo, estado,
                               periodo_desde, periodo_hasta, creado_en, confirmado_en)
 SELECT su.id, su.plan_id, 1, p.precio_mensual, 'TRANSFERENCIA', 'APROBADO',
        su.vence_en - interval '1 month', su.vence_en,
        su.vence_en - interval '1 month', su.vence_en - interval '1 month'
   FROM suscripcion su
-  JOIN plan p ON p.id = su.plan_id
- WHERE su.estado IN ('ACTIVA','VENCIDA');
-
--- Perfil de la clienta demo en la cartera de Equipetrol
-INSERT INTO cliente_perfil_tenant (sucursal_id, usuario_id, segmento, talla_habitual,
-                                   estilo_preferido, acepta_whatsapp, notas)
-VALUES ((SELECT id FROM sucursal WHERE codigo = 'SC-01'),
-        (SELECT id FROM usuario WHERE email = 'cliente@fashionstore.bo'),
-        'FRECUENTE', 'M', 'Casual / oficina', TRUE,
-        'Prefiere colores claros; avisarle cuando entren vestidos de la coleccion Llanura.');
+  JOIN plan p ON p.id = su.plan_id;

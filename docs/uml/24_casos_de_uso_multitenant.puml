@@ -1,0 +1,119 @@
+@startuml 24_casos_de_uso_multitenant
+' ICONIX - Modelo de casos de uso del SaaS multitenant (UML 2.5.1). Numeracion de la
+' especificacion tecnica (CU01..CU28), con las relaciones que ella sugiere.
+left to right direction
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #FCEFF2
+  BorderColor #C1516B
+}
+title FashionStore SaaS — Casos de uso (especificacion multitenant)
+
+actor "Administrador\nde plataforma" as AP
+actor "Administrador\nde empresa" as AE
+actor "Gerente /\nusuario autorizado" as G
+actor "Empleado /\nVendedor" as E
+actor "Cliente" as C
+actor "Sistema de\nsincronizacion\n(temporizador / red)" as SS <<sistema>>
+actor "Servicio de IA\n(Claude API)" as IA <<sistema>>
+
+AE --|> G
+AE --|> E
+
+rectangle "Plataforma y suscripciones" {
+  usecase "CU01 Registrar empresa" as CU01
+  usecase "CU02 Asignar / cambiar plan" as CU02
+  usecase "CU03 Consultar estado\nde suscripcion" as CU03
+  usecase "CU04 Renovar suscripcion\n(simulada)" as CU04
+  usecase "CU05 Configurar limites\nde plan" as CU05
+}
+
+rectangle "Gestion del tenant" {
+  usecase "CU06 Gestionar sucursales" as CU06
+  usecase "CU07 Gestionar usuarios y roles" as CU07
+  usecase "CU08 Gestionar catalogo" as CU08
+  usecase "CU09 Gestionar inventario" as CU09
+  usecase "CU10 Gestionar clientes" as CU10
+  usecase "CU11 Autenticarse" as CU11
+  usecase "Verificar limite del plan" as Limite
+}
+
+rectangle "Operacion offline y sincronizacion" {
+  usecase "CU12 Instalar PWA" as CU12
+  usecase "CU13 Descargar catalogo\npara uso offline" as CU13
+  usecase "CU14 Consultar catalogo offline" as CU14
+  usecase "CU15 Registrar reserva\n(online/offline)" as CU15
+  usecase "CU16 Registrar venta de contado\n(online/offline)" as CU16
+  usecase "Asignar identificador unico\ny estado local" as UUID
+  usecase "CU17 Registrar cambio de prenda" as CU17
+  usecase "CU18 Consultar operaciones\npendientes" as CU18
+  usecase "CU19 Sincronizar operaciones\npendientes" as CU19
+  usecase "Validar tenant\ny suscripcion" as VT
+  usecase "Verificar idempotencia" as Idem
+  usecase "CU20 Consultar resultado\nde sincronizacion" as CU20
+  usecase "CU21 Resolver conflicto\nde sincronizacion" as CU21
+}
+
+rectangle "Reportes y analitica" {
+  usecase "CU22 Solicitar reporte en\nlenguaje natural" as CU22
+  usecase "Validar plan Profesional" as VP
+  usecase "Validar intencion y filtros" as VI
+  usecase "Manejar solicitud ambigua\n/ no soportada" as Ambigua
+  usecase "CU23 Visualizar reporte\n(tabla / grafico)" as CU23
+  usecase "CU24 Exportar reporte\na Excel / PDF" as CU24
+  usecase "CU25 Generar reporte\nconvencional" as CU25
+  usecase "CU26 Consultar dashboard\nanalitico" as CU26
+  usecase "CU27 Entrenar / actualizar\nmodelos ML" as CU27
+}
+
+usecase "CU28 Comprar online / usar RA" as CU28
+
+AP --> CU01
+AP --> CU02
+AP --> CU03
+AP --> CU04
+AP --> CU05
+AP --> CU27
+AE --> CU03
+AE --> CU06
+AE --> CU07
+AE --> CU08
+AE --> CU09
+AE --> CU21
+E --> CU09
+E --> CU10
+E --> CU11
+E --> CU12
+E --> CU13
+E --> CU14
+E --> CU15
+E --> CU16
+E --> CU17
+E --> CU18
+E --> CU19
+E --> CU20
+E --> CU21
+G --> CU22
+G --> CU23
+G --> CU24
+G --> CU25
+G --> CU26
+C --> CU15
+C --> CU28
+SS --> CU19
+CU22 --> IA
+
+CU06 ..> Limite : <<include>>
+CU07 ..> Limite : <<include>>
+CU15 ..> UUID : <<include>>
+CU16 ..> UUID : <<include>>
+CU19 ..> VT : <<include>>
+CU19 ..> Idem : <<include>>
+CU21 .> CU19 : <<extend>>\n[conflicto o rechazo]
+CU22 ..> VP : <<include>>
+CU22 ..> VI : <<include>>
+Ambigua .> CU22 : <<extend>>
+CU24 .> CU23 : <<extend>>
+@enduml

@@ -14,7 +14,7 @@ skinparam class {
 hide empty methods
 title FashionStore — Modelo de dominio (Segundo parcial)
 
-package "SaaS (tenant = sucursal)" {
+package "SaaS (tenant = sucursal — SUPERADO: ver diagrama 23, tenant = empresa)" {
   class Plan <<nuevo>> {
     codigo : BASICO | PROFESIONAL | PREMIUM
     precio_mensual : Decimal

@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # mas seguido al pool.
     expirar_reservas_intervalo_segundos: int = 120
 
+    # Multi-tenant: la tienda publica (catalogo, sucursales, asistente) es de UNA empresa. El
+    # frontend la elige con el header X-Empresa (o ?empresa=slug); sin ninguno se usa esta.
+    empresa_por_defecto: str = "fashionstore"
+
+    # Modulo G (app/modules/analitica/): donde se guardan los modelos entrenados (joblib).
+    modelos_dir: str = "modelos_ml"
+
     @property
     def cors_origins(self) -> list[str]:
         texto = _sin_comillas(self.cors_origins_raw.strip())

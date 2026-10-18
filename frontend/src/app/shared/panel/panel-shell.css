@@ -180,3 +180,16 @@
     padding: 1.1rem 1rem 2rem;
   }
 }
+
+.cabecera__plan {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.8;
+  vertical-align: middle;
+}

@@ -1,0 +1,43 @@
+@startuml 25_robustez_sincronizacion
+' ICONIX - Robustez / comunicacion de CU16 "Registrar venta de contado offline",
+' CU19 "Sincronizar operaciones pendientes" y CU21 "Resolver conflicto" (web y movil).
+left to right direction
+skinparam defaultFontName Arial
+title CU16 + CU19 + CU21 Venta offline y sincronizacion — Robustez / Comunicacion
+
+actor "Empleado" as A
+actor "Sistema de\nsincronizacion" as T <<sistema>>
+boundary "Vender sin conexion\n(/offline web, venta_offline_pagina movil)" as B1
+boundary "Lista de operaciones\ny su estado" as B2
+control "Registrar operacion\n(UUID v4 + estado REGISTRADA)" as C1
+control "Sincronizar\n(SincronizacionService)" as C2
+control "Procesar operacion\n(sincronizacion.servicio.procesar)" as C3
+control "Validar tenant, suscripcion\ny pertenencia" as C4
+control "Aplicar venta / reserva\n(en una transaccion)" as C5
+control "Resolver conflicto" as C6
+entity "Paquete local\n(catalogo, existencias)" as E1
+entity "Operacion local\nIndexedDB / SQLite" as E2
+entity "OperacionSync\n(log del servidor)" as E3
+entity "Venta + VentaDetalle\n+ MovimientoInventario" as E4
+
+A --> B1 : 1: arma el ticket y cobra el efectivo
+B1 --> C1 : 2: registrar venta
+C1 --> E1 : 3: leer precios conocidos
+C1 --> E2 : 4: guardar con id, empresa, sucursal,\nresponsable, total
+C1 --> E1 : 5: descontar existencias locales
+C1 --> B2 : 6: «Solo en este equipo»
+T --> C2 : 7: vuelve la red / cada 60 s / boton
+C2 --> E2 : 8: leer REGISTRADA y ENVIADA en orden;\nmarcar ENVIADA
+C2 --> C3 : 9: POST /sync/operaciones (lote)
+C3 --> E3 : 10: ¿id ya recibido? -> devolver lo guardado
+C3 --> C4 : 11: token, empresa, sucursal, plan vigente
+C3 --> C5 : 12: [valida] aplicar
+C5 --> E4 : 13: venta + detalle (el trigger mueve stock)
+C3 --> E3 : 14: guardar estado + motivo
+C2 --> E2 : 15: CONFIRMADA / RECHAZADA / CONFLICTO
+C2 --> B2 : 16: mostrar resultado y motivo
+A --> B2 : 17: [conflicto] reintentar / aceptar precio / descartar
+B2 --> C6 : 18: POST /sync/operaciones/{id}/resolver
+C6 --> C3 : 19: reprocesar
+C6 --> E3 : 20: anotar resolucion
+@enduml

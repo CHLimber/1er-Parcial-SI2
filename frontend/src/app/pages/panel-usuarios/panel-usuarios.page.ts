@@ -119,6 +119,12 @@ export class PanelUsuariosPage implements OnInit {
 
   // --- roles ---
   protected readonly rolSeleccionado = signal<RolOut | null>(null);
+  /** Multi-tenant: los roles del sistema (ADMIN, ENCARGADO, CAJERO...) los comparten todas las
+   * empresas, asi que se muestran en solo lectura; cada empresa edita solo los propios. El
+   * backend igual responde 409 si se intenta. */
+  protected readonly rolEditable = computed(
+    () => this.puedeGestionarRoles && !this.rolSeleccionado()?.es_sistema,
+  );
   protected readonly permisosMarcados = signal<Set<number>>(new Set());
   protected readonly guardandoRol = signal(false);
   protected readonly errorRol = signal<string | null>(null);

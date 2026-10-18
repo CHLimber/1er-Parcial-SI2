@@ -1,0 +1,32 @@
+@startuml 28_robustez_analitica_ml
+' ICONIX - Robustez / comunicacion de CU27 "Entrenar / actualizar modelos ML" y
+' CU26 "Consultar dashboard analitico" (Modulo G, backend/app/modules/analitica/).
+left to right direction
+skinparam defaultFontName Arial
+title CU27 + CU26 Analitica con machine learning — Robustez / Comunicacion
+
+actor "Administrador" as AP
+actor "Gerente" as G
+boundary "Analitica ML\n(/panel/analitica)" as B1
+control "Generar datos sinteticos\n(sinteticos.py, semilla)" as C1
+control "Entrenar y evaluar\n(modelos.entrenar)" as C2
+control "Verificar plan Profesional\n(requiere_funcion_plan)" as C3
+control "Aplicar modelos a la empresa\n(router.dashboard)" as C4
+control "Redactar hallazgos" as C5
+entity "Modelos entrenados\n(joblib en MODELOS_DIR)" as E1
+entity "Ventas reales\nde la empresa" as E2
+entity "Metricas\n(MAE, RMSE, R2, MAPE,\nsilueta, ARI)" as E3
+
+AP --> B1 : 1: reentrenar con semilla
+B1 --> C1 : 2: POST /analitica/entrenar
+C1 --> C2 : 3: demanda (dias x sucursal x tipo)\ny clientas sinteticas
+C2 --> E3 : 4: Random Forest vs lineal vs ingenuo;\nKMeans con k por silueta
+C2 --> E1 : 5: guardar paquete de modelos
+G --> B1 : 6: abrir dashboard (sucursal, horizonte)
+B1 --> C3 : 7: GET /analitica/dashboard
+C3 --> C4 : 8: [Profesional y vigente] seguir;\n[Basico] 403
+C4 --> E1 : 9: cargar modelos
+C4 --> E2 : 10: unidades 60 d, compras 90 d,\nventas diarias 90 d (solo su empresa)
+C4 --> C5 : 11: pronostico, segmentos,\ndias atipicos (IsolationForest)
+C5 --> B1 : 12: indicadores, graficos,\nmetricas y hallazgos en texto
+@enduml

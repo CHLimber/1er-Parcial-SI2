@@ -10,10 +10,10 @@ import { interpretarError } from '../../shared/errores';
 import { PanelShell } from '../../shared/panel/panel-shell';
 
 /**
- * Mi suscripcion (Segundo parcial, PENDIENTES 5.4 a 5.6). Cada sucursal es un tenant con su plan:
- * la administracion de la sucursal ve su plan, el uso contra los topes y paga (o cambia de plan)
- * con Stripe Checkout; al volver, `?sesion=cs_...` se verifica contra el backend. El ADMIN de la
- * plataforma ve ademas todos los tenants y registra pagos recibidos por transferencia/efectivo.
+ * Mi suscripcion (CU03). La empresa es el tenant: su administracion ve el plan, el uso contra
+ * los topes (sucursales, personal, cajas) y paga o cambia de plan con Stripe Checkout; al volver,
+ * `?sesion=cs_...` se verifica contra el backend. Las empresas, las renovaciones manuales y la
+ * configuracion de los planes son de la plataforma (pages/panel-empresas).
  */
 @Component({
   selector: 'app-panel-suscripcion-page',
@@ -28,11 +28,9 @@ export class PanelSuscripcionPage implements OnInit {
   private readonly ruta = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  protected readonly esAdmin = this.auth.tienePermiso('sucursales.actualizar');
   protected readonly puedePagar = this.auth.tienePermiso('suscripciones.actualizar');
 
   protected readonly planes = signal<PlanOut[]>([]);
-  protected readonly tenants = signal<SuscripcionOut[]>([]);
   protected readonly actual = signal<SuscripcionOut | null>(null);
   protected readonly pagos = signal<PagoSuscripcionOut[]>([]);
   protected readonly cargando = signal(true);
@@ -41,7 +39,6 @@ export class PanelSuscripcionPage implements OnInit {
   protected readonly ocupado = signal(false);
 
   protected meses = 1;
-  protected metodoManual: 'TRANSFERENCIA' | 'EFECTIVO' = 'TRANSFERENCIA';
 
   ngOnInit(): void {
     this.servicio.planes().subscribe({ next: (planes) => this.planes.set(planes) });
@@ -58,7 +55,7 @@ export class PanelSuscripcionPage implements OnInit {
               : 'Stripe todavía no confirmó el pago. Recargá en unos segundos.',
           );
           this.router.navigate([], { queryParams: {}, replaceUrl: true });
-          this.cargar(s.sucursal_id);
+          this.cargar();
         },
         error: (e: HttpErrorResponse) => {
           this.error.set(interpretarError(e));
@@ -70,68 +67,41 @@ export class PanelSuscripcionPage implements OnInit {
     }
   }
 
-  protected cargar(sucursalId?: string): void {
+  protected cargar(): void {
     this.cargando.set(true);
-    this.servicio.suscripciones().subscribe({
-      next: (tenants) => {
-        this.tenants.set(tenants);
-        const elegido =
-          tenants.find((t) => t.sucursal_id === (sucursalId ?? this.actual()?.sucursal_id)) ?? tenants[0] ?? null;
-        this.elegir(elegido);
+    this.servicio.miSuscripcion().subscribe({
+      next: (s) => {
+        this.actual.set(s);
         this.cargando.set(false);
+        // el plan o la vigencia pudieron cambiar: que el menu (funciones del plan) se entere
+        this.auth.refrescarSesion().subscribe({ error: () => undefined });
       },
       error: (e: HttpErrorResponse) => {
         this.error.set(interpretarError(e, 'No se pudo cargar la suscripción.'));
         this.cargando.set(false);
       },
     });
-  }
-
-  protected elegir(tenant: SuscripcionOut | null): void {
-    this.actual.set(tenant);
-    this.pagos.set([]);
-    if (!tenant) return;
-    this.servicio.pagos(tenant.sucursal_id).subscribe({ next: (pagos) => this.pagos.set(pagos) });
+    this.servicio.pagos().subscribe({ next: (pagos) => this.pagos.set(pagos) });
   }
 
   protected pagar(plan: PlanOut): void {
-    const tenant = this.actual();
-    if (!tenant) return;
     this.ocupado.set(true);
     this.error.set(null);
-    this.servicio
-      .iniciarPago({ plan_codigo: plan.codigo, meses: this.meses, sucursal_id: tenant.sucursal_id })
-      .subscribe({
-        next: (checkout) => (window.location.href = checkout.url_pago),
-        error: (e: HttpErrorResponse) => {
-          this.ocupado.set(false);
-          this.error.set(interpretarError(e));
-        },
-      });
-  }
-
-  protected registrarManual(plan: PlanOut): void {
-    const tenant = this.actual();
-    if (!tenant) return;
-    this.ocupado.set(true);
-    this.error.set(null);
-    this.servicio
-      .pagoManual(tenant.sucursal_id, { plan_codigo: plan.codigo, meses: this.meses, metodo: this.metodoManual })
-      .subscribe({
-        next: (s) => {
-          this.ocupado.set(false);
-          this.aviso.set(`Pago registrado: ${s.sucursal} queda en ${s.plan.nombre} hasta el ${this.fecha(s.vence_en)}.`);
-          this.cargar(s.sucursal_id);
-        },
-        error: (e: HttpErrorResponse) => {
-          this.ocupado.set(false);
-          this.error.set(interpretarError(e));
-        },
-      });
+    this.servicio.iniciarPago({ plan_codigo: plan.codigo, meses: this.meses }).subscribe({
+      next: (checkout) => (window.location.href = checkout.url_pago),
+      error: (e: HttpErrorResponse) => {
+        this.ocupado.set(false);
+        this.error.set(interpretarError(e));
+      },
+    });
   }
 
   protected tope(valor: number | null): string {
     return valor === null ? 'sin límite' : String(valor);
+  }
+
+  protected excede(uso: number, tope: number | null): boolean {
+    return tope !== null && uso >= tope;
   }
 
   protected precio(valor: number | string): string {

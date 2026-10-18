@@ -27,6 +27,10 @@ export class AuthService {
   readonly estaAutenticado = computed(() => this.sesion() !== null);
   readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
   readonly permisos = computed(() => this.usuario()?.permisos ?? []);
+  /** La administracion del SaaS: personal sin empresa con el modulo `empresas`. */
+  readonly esPlataforma = computed(
+    () => this.esStaff() && !this.usuario()?.empresa_id && this.permisos().includes('empresas.leer'),
+  );
 
   constructor(private readonly http: HttpClient) {}
 
@@ -38,6 +42,12 @@ export class AuthService {
   tienePermiso(...codigos: string[]): boolean {
     const propios = this.permisos();
     return codigos.some((codigo) => propios.includes(codigo));
+  }
+
+  /** Funcion del plan de la empresa (ia_reportes, analitica_ml, operacion_offline...). La
+   * plataforma no tiene plan: para ella todo lo de gestion de tiendas no aplica. */
+  tieneFuncion(funcion: string): boolean {
+    return (this.usuario()?.funciones_plan ?? []).includes(funcion);
   }
 
   iniciarSesion(credenciales: LoginRequest): Observable<UsuarioOut> {
@@ -95,6 +105,7 @@ export class AuthService {
       const guardada = JSON.parse(crudo) as SesionGuardada;
       // sesiones guardadas antes de CU13 no traen permisos
       guardada.usuario.permisos ??= [];
+      guardada.usuario.funciones_plan ??= [];
       return guardada;
     } catch {
       localStorage.removeItem(STORAGE_KEY);

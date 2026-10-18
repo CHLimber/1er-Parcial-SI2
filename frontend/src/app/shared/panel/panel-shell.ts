@@ -18,6 +18,12 @@ interface EntradaNav {
  */
 const ENTRADAS_PANEL: EntradaNav[] = [
   {
+    // la plataforma (SUPERADMIN): empresas contratantes, planes y suscripciones de todas
+    ruta: '/panel/empresas',
+    etiqueta: 'Empresas',
+    visible: (auth) => auth.tienePermiso('empresas.leer'),
+  },
+  {
     ruta: '/panel/catalogo',
     etiqueta: 'Catálogo',
     visible: (auth) => auth.tienePermiso('catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
@@ -91,7 +97,23 @@ const ENTRADAS_PANEL: EntradaNav[] = [
   {
     ruta: '/panel/suscripcion',
     etiqueta: 'Suscripción',
-    visible: (auth) => auth.tienePermiso('suscripciones.leer', 'suscripciones.actualizar'),
+    visible: (auth) =>
+      auth.tienePermiso('suscripciones.leer', 'suscripciones.actualizar') && !auth.esPlataforma(),
+  },
+  {
+    ruta: '/panel/analitica',
+    etiqueta: 'Analítica ML',
+    visible: (auth) => auth.tienePermiso('analitica.leer') && !auth.esPlataforma(),
+  },
+  {
+    ruta: '/panel/sincronizacion',
+    etiqueta: 'Sincronización',
+    visible: (auth) => auth.tienePermiso('sincronizacion.leer', 'sincronizacion.actualizar'),
+  },
+  {
+    ruta: '/offline',
+    etiqueta: 'Vender sin conexión',
+    visible: (auth) => auth.tienePermiso(PERMISO_CAJA, PERMISO_ATENDER_RESERVAS),
   },
   {
     ruta: '/panel/auditoria',

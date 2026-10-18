@@ -10,6 +10,11 @@ class UsuarioOut {
     required this.rol,
     required this.cargo,
     required this.permisos,
+    this.empresaId,
+    this.empresa,
+    this.empresaSlug,
+    this.plan,
+    this.funcionesPlan = const [],
   });
 
   final String id;
@@ -26,6 +31,15 @@ class UsuarioOut {
   /// Codigos de permiso del rol (CU13). Vacio para clientes.
   final List<String> permisos;
 
+  /// Multi-tenant: empresa del personal (null = clienta o administracion de la plataforma), su
+  /// plan y las funciones del plan que hoy puede usar (vacia si la suscripcion vencio). Igual
+  /// que [permisos], solo arman la UI: quien autoriza es la API.
+  final String? empresaId;
+  final String? empresa;
+  final String? empresaSlug;
+  final String? plan;
+  final List<String> funcionesPlan;
+
   bool get esStaff => tipo == 'STAFF';
   String get nombreCompleto => '$nombre $apellido';
 
@@ -38,6 +52,12 @@ class UsuarioOut {
         rol: json['rol'] as String?,
         cargo: json['cargo'] as String?,
         permisos: (json['permisos'] as List? ?? const []).map((p) => p.toString()).toList(),
+        empresaId: json['empresa_id'] as String?,
+        empresa: json['empresa'] as String?,
+        empresaSlug: json['empresa_slug'] as String?,
+        plan: json['plan'] as String?,
+        funcionesPlan:
+            (json['funciones_plan'] as List? ?? const []).map((p) => p.toString()).toList(),
       );
 
   Map<String, dynamic> aJson() => {
@@ -49,6 +69,11 @@ class UsuarioOut {
         'rol': rol,
         'cargo': cargo,
         'permisos': permisos,
+        'empresa_id': empresaId,
+        'empresa': empresa,
+        'empresa_slug': empresaSlug,
+        'plan': plan,
+        'funciones_plan': funcionesPlan,
       };
 }
 

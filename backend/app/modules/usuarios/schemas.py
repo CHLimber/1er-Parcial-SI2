@@ -53,6 +53,14 @@ class UsuarioOut(BaseModel):
     cargo: str | None = None
     # codigos de permiso del rol (CU13). El frontend los usa para mostrar u ocultar el panel.
     permisos: list[str] = []
+    # Multi-tenant: la empresa del personal (None = clienta o administracion de la plataforma),
+    # su plan y las funciones del plan que hoy puede usar (vacia si la suscripcion vencio).
+    # Igual que `permisos`, solo sirve para armar la UI: quien autoriza es la API.
+    empresa_id: UUID | None = None
+    empresa: str | None = None
+    empresa_slug: str | None = None
+    plan: str | None = None
+    funciones_plan: list[str] = []
 
 
 class TokenResponse(BaseModel):

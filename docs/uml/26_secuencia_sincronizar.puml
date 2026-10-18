@@ -1,0 +1,58 @@
+@startuml 26_secuencia_sincronizar
+' ICONIX - Diseno: secuencia de CU19 "Sincronizar operaciones pendientes", con los flujos
+' alternos de la especificacion (falla de red, id ya procesado, regla violada, suscripcion
+' vencida). Nombres tomados del codigo al 18/10/2026.
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+autonumber
+title CU19 Sincronizar operaciones pendientes — Secuencia
+
+actor "Empleado /\ntemporizador" as U
+participant "SincronizacionService\n(web: Angular / movil: Dart)" as S
+database "IndexedDB / SQLite\n(operacion)" as L
+participant "POST /sync/operaciones\n(router.sincronizar)" as R
+participant "servicio.procesar" as P
+database "PostgreSQL" as DB
+
+U -> S : sincronizar()
+note right of S : si ya hay una vuelta en curso,\nse espera esa (y luego otra vuelta)
+S -> L : pendientes (REGISTRADA / ENVIADA)\nordenadas por registrada_en
+S -> L : estado = ENVIADA, intentos_envio + 1
+S -> R : {operaciones: [OperacionIn x <= 50]}\nBearer + X-Empresa
+
+alt falla de red / timeout
+  R --x S
+  S -> L : error_red = "Sin conexion..."\n(sigue ENVIADA: no se borra, RN12)
+  S -> S : reintento con espera 30 s, 1 min, 2 min ... (max 10 min)
+else el servidor responde
+  R -> R : get_staff_actual (token) + empresa_de(staff)
+  loop cada operacion, en orden de registro
+    R -> P : procesar(conn, staff, op)
+    P -> DB : BEGIN; pg_advisory_xact_lock(id)
+    P -> DB : SELECT operacion_sync WHERE id
+    alt id ya procesado (RN11)
+      P -> DB : intentos + 1
+      P --> R : resultado guardado, duplicada = true
+    else operacion nueva
+      P -> P : validar_cabecera(op, staff, plan)\nresponsable = token, empresa, plan vigente
+      alt suscripcion vencida antes de registrar / sin permiso / sucursal ajena
+        P -> P : Rechazo(codigo)
+      else valida
+        P -> DB : SAVEPOINT
+        P -> DB : _aplicar_venta: prendas activas, precio, stock,\nsesion de caja; INSERT venta + venta_detalle
+        DB -> DB : tg_venta_descuenta_stock -> fn_mover_inventario\n(FOR UPDATE, kardex)
+        alt stock insuficiente / precio cambiado / prenda inactiva / caja cerrada
+          P -> DB : ROLLBACK TO SAVEPOINT
+          P -> P : Conflicto(codigo)
+        end
+      end
+      P -> DB : INSERT operacion_sync (estado, motivo, payload)\nON CONFLICT (id) DO UPDATE
+      P -> DB : COMMIT
+      P --> R : CONFIRMADA | RECHAZADA | CONFLICTO
+    end
+  end
+  R --> S : 200 {resultados, confirmadas, rechazadas, en_conflicto}
+  S -> L : guardar estado y resultado de cada una
+  S --> U : "Sincronizacion: N confirmada(s), M rechazada(s), K en conflicto"
+end
+@enduml

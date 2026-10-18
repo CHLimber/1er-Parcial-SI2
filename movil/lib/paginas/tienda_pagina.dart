@@ -13,6 +13,9 @@ import '../core/errores.dart';
 import 'notificaciones_pagina.dart' show BotonNotificaciones;
 import '../core/recomendaciones/recomendaciones_models.dart';
 import '../core/recomendaciones/recomendaciones_service.dart';
+import '../core/reservas/reserva_carrito_service.dart';
+import '../core/saas/saas_service.dart';
+import '../core/tenant/tienda.dart';
 import '../core/tema.dart';
 
 /// CU03: Consultar Catalogo. Busca, filtra y pagina la vitrina publica.
@@ -35,6 +38,10 @@ class _TiendaPaginaState extends State<TiendaPagina> {
   /// CU17: se llena en silencio (no es critico para la pagina), solo para clientes.
   List<ProductoRecomendadoOut> _recomendaciones = [];
 
+  /// Multi-tenant: tiendas de la plataforma para el selector de la clienta (el personal mira
+  /// siempre la de su empresa; el backend se la impone por el token).
+  List<TiendaOut> _tiendas = [];
+
   String? _categoriaSlug;
   int? _tallaId;
   int? _colorId;
@@ -53,7 +60,50 @@ class _TiendaPaginaState extends State<TiendaPagina> {
     _cargarTodo();
     if (!context.read<AuthService>().esStaff) {
       _cargarRecomendaciones();
+      saasService.tiendas().then((t) {
+        if (mounted) setState(() => _tiendas = t);
+      }).catchError((_) {});
     }
+  }
+
+  /// Cambiar de tienda: lo armado para la anterior (bolsa de reserva, filtros) no vale en la
+  /// nueva, porque el catalogo es de cada empresa.
+  Future<void> _cambiarTienda(String slug) async {
+    if (slug == tiendaActual.value) return;
+    await elegirTienda(slug);
+    if (!mounted) return;
+    context.read<ReservaCarritoService>().limpiar();
+    setState(() {
+      _filtros = null;
+      _categoriaSlug = null;
+      _tallaId = null;
+      _colorId = null;
+      _temporadaId = null;
+      _busqueda.clear();
+      _recomendaciones = [];
+    });
+    await _cargarTodo();
+    await _cargarRecomendaciones();
+  }
+
+  Widget _titulo() {
+    final auth = context.watch<AuthService>();
+    if (auth.esStaff) return Text(auth.usuario?.empresa ?? 'FashionStore');
+    final actual = _tiendas.where((t) => t.slug == tiendaActual.value).firstOrNull;
+    final nombre = actual?.nombre ?? 'FashionStore';
+    if (_tiendas.length < 2) return Text(nombre);
+    return PopupMenuButton<String>(
+      tooltip: 'Cambiar de tienda',
+      onSelected: _cambiarTienda,
+      itemBuilder: (_) => [
+        for (final t in _tiendas)
+          CheckedPopupMenuItem(value: t.slug, checked: t.slug == tiendaActual.value, child: Text(t.nombre)),
+      ],
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [Flexible(child: Text(nombre, overflow: TextOverflow.ellipsis)), const Icon(Icons.arrow_drop_down)],
+      ),
+    );
   }
 
   Future<void> _cargarRecomendaciones() async {
@@ -288,7 +338,7 @@ class _TiendaPaginaState extends State<TiendaPagina> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('FashionStore'),
+          title: _titulo(),
           actions: [
             const BotonNotificaciones(),
             IconButton(

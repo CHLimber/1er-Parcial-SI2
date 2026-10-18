@@ -30,6 +30,19 @@ os.environ.setdefault("PUBLIC_BASE_URL", "http://localhost:8081")
 os.environ.setdefault("EXPIRAR_RESERVAS_INTERVALO_SEGUNDOS", "120")
 
 
+@pytest.fixture(autouse=True)
+def tienda_publica():
+    """La vitrina publica (catalogo, asistente, recomendaciones) resuelve su empresa con
+    empresa_publica, que consulta la base: en los tests es siempre la empresa de prueba."""
+    from app.core.tenant import empresa_publica
+    from app.main import app
+    from tests.conexion_falsa import EMPRESA
+
+    app.dependency_overrides[empresa_publica] = lambda: EMPRESA
+    yield
+    app.dependency_overrides.pop(empresa_publica, None)
+
+
 @pytest.fixture
 def stripe_falso(monkeypatch):
     """Registra las llamadas a Stripe en vez de hacerlas."""

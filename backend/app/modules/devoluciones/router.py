@@ -51,6 +51,9 @@ Reglas de negocio:
   - Sucursal: la devolucion se registra y el stock reingresa en la sucursal de la venta.
   - La clienta recibe una notificacion (tipo VENTA, entidad VENTA) al aprobar o rechazar. Las
     ventas POS sin clienta identificada (venta.usuario_id NULL) no notifican a nadie.
+  - Multi-tenant: la venta, la devolucion y la sucursal tienen que ser de la empresa del
+    usuario; lo de otra empresa responde 404 (ni siquiera se confirma que el numero existe). La
+    nota de devolucion sale con la razon social y el NIT de la empresa (tabla empresa).
 """
 
 from datetime import date
@@ -64,6 +67,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.tenant import (
+    empresa_de,
+    empresa_de_sucursal,
+    es_admin_empresa,
+    exigir_variantes,
+    no_encontrado,
+)
 from app.modules.caja.router import obtener_sesion_abierta
 from app.modules.devoluciones.schemas import (
     CambioIn,
@@ -125,9 +135,9 @@ LEFT JOIN venta vc    ON vc.id = d.venta_cambio_id
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
-    """Mismo criterio que recepciones: un ADMIN (el que puede editar sucursales) ve todas; el
+    """Mismo criterio que recepciones: el ADMIN de la empresa ve todas las de su empresa; el
     resto solo la suya."""
-    if "sucursales.actualizar" in staff["permisos"]:
+    if es_admin_empresa(staff):
         return None
     if staff["sucursal_id"] is None:
         raise HTTPException(
@@ -137,7 +147,12 @@ def _sucursal_visible(staff: dict) -> UUID | None:
     return staff["sucursal_id"]
 
 
-def _exigir_alcance(staff: dict, sucursal_id: UUID, que: str) -> None:
+async def _exigir_alcance(
+    conn: asyncpg.Connection, staff: dict, sucursal_id: UUID, que: str
+) -> None:
+    """404 si la sucursal es de otra empresa; 403 si es de la empresa pero no la del usuario."""
+    if await empresa_de_sucursal(conn, sucursal_id) != empresa_de(staff):
+        raise no_encontrado(f"{que} no existe")
     limite = _sucursal_visible(staff)
     if limite is not None and sucursal_id != limite:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{que} es de otra sucursal")
@@ -294,7 +309,7 @@ async def _obtener(conn: asyncpg.Connection, devolucion_id: UUID, staff: dict) -
     fila = await conn.fetchrow(SELECT_DEVOLUCION + "WHERE d.id = $1", devolucion_id)
     if fila is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
-    _exigir_alcance(staff, fila["sucursal_id"], "Esa devolucion")
+    await _exigir_alcance(conn, staff, fila["sucursal_id"], "Esa devolucion")
     return DevolucionOut(**dict(fila))
 
 
@@ -350,7 +365,8 @@ async def listar_devoluciones(
     filas = await conn.fetch(
         SELECT_DEVOLUCION
         + """
-        WHERE ($1::uuid IS NULL OR d.sucursal_id = $1)
+        WHERE s.empresa_id = $7
+          AND ($1::uuid IS NULL OR d.sucursal_id = $1)
           AND ($2::text IS NULL OR d.estado::text = $2)
           AND ($3::text IS NULL OR v.numero ILIKE '%' || $3 || '%' OR d.numero ILIKE '%' || $3 || '%')
           AND ($4::text IS NULL OR d.motivo_tipo::text = $4)
@@ -365,6 +381,7 @@ async def listar_devoluciones(
         motivo_tipo,
         desde,
         hasta,
+        empresa_de(staff),
     )
     return [DevolucionOut(**dict(fila)) for fila in filas]
 
@@ -391,15 +408,16 @@ async def buscar_venta(
         FROM venta v
         JOIN sucursal s       ON s.id = v.sucursal_id
         LEFT JOIN usuario cli ON cli.id = v.usuario_id
-        WHERE upper(v.numero) = upper($1)
+        WHERE upper(v.numero) = upper($1) AND s.empresa_id = $4
         """,
         numero.strip(),
         await _plazo_dias(conn),
         await _plazo_cambio_dias(conn),
+        empresa_de(staff),
     )
     if venta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe una venta con ese numero")
-    _exigir_alcance(staff, venta["sucursal_id"], "Esa venta")
+    await _exigir_alcance(conn, staff, venta["sucursal_id"], "Esa venta")
     if venta["estado"] not in ESTADOS_VENTA_DEVOLVIBLE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -437,7 +455,8 @@ async def variantes_para_cambio(
 ) -> list[VarianteCambioOut]:
     """Las otras tallas/colores de la misma prenda con su disponible en la sucursal, para elegir
     que se lleva la clienta en un cambio."""
-    _exigir_alcance(staff, sucursal_id, "Esa sucursal")
+    await _exigir_alcance(conn, staff, sucursal_id, "Esa sucursal")
+    await exigir_variantes(conn, [variante_id], empresa_de(staff))
     filas = await conn.fetch(
         """
         SELECT pv.id AS variante_id, pv.sku, t.codigo AS talla, c.nombre AS color,
@@ -496,7 +515,7 @@ async def cambios_del_mes(
         LEFT JOIN producto_variante ps ON ps.id = dd.variante_solicitada_id
         LEFT JOIN talla ts             ON ts.id = ps.talla_id
         LEFT JOIN color cs             ON cs.id = ps.color_id
-        WHERE d.fecha >= $1 AND d.fecha < $2
+        WHERE d.fecha >= $1 AND d.fecha < $2 AND s.empresa_id = $5
           AND ($3::uuid IS NULL OR d.sucursal_id = $3)
           AND ($4 OR d.motivo_tipo IN ('TALLA','COLOR'))
         GROUP BY pr.id, pr.nombre, d.motivo_tipo, t.codigo, t.orden, c.nombre, ts.codigo, cs.nombre
@@ -506,6 +525,7 @@ async def cambios_del_mes(
         hasta,
         limite,
         incluir_otros_motivos,
+        empresa_de(staff),
     )
     resultado = [CambioMesOut(**dict(f)) for f in filas]
     return CambiosMesOut(
@@ -531,11 +551,10 @@ async def nota_de_devolucion(
     extra = await conn.fetchrow(
         """
         SELECT s.direccion AS sucursal_direccion, s.ciudad::text AS sucursal_ciudad,
-               v.fecha AS venta_fecha,
-               (SELECT valor FROM configuracion WHERE clave = 'empresa_razon_social') AS razon,
-               (SELECT valor FROM configuracion WHERE clave = 'empresa_nit') AS nit
+               v.fecha AS venta_fecha, e.razon_social AS razon, e.nit
         FROM devolucion d
         JOIN sucursal s ON s.id = d.sucursal_id
+        JOIN empresa e  ON e.id = s.empresa_id
         JOIN venta v    ON v.id = d.venta_id
         WHERE d.id = $1
         """,
@@ -545,7 +564,7 @@ async def nota_de_devolucion(
         _plazo_cambio_dias(conn) if devolucion.motivo_tipo in MOTIVOS_CAMBIO else _plazo_dias(conn)
     )
     return NotaDevolucionOut(
-        empresa_razon_social=extra["razon"] or "FashionStore",
+        empresa_razon_social=extra["razon"],
         empresa_nit=extra["nit"] or "-",
         sucursal_direccion=extra["sucursal_direccion"],
         sucursal_ciudad=extra["sucursal_ciudad"],
@@ -669,7 +688,7 @@ async def registrar_devolucion(
         )
         if venta is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venta no encontrada")
-        _exigir_alcance(staff, venta["sucursal_id"], "Esa venta")
+        await _exigir_alcance(conn, staff, venta["sucursal_id"], "Esa venta")
         if venta["estado"] not in ESTADOS_VENTA_DEVOLVIBLE:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -781,7 +800,7 @@ async def _bloquear_solicitada(conn: asyncpg.Connection, devolucion_id: UUID, st
     )
     if fila is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
-    _exigir_alcance(staff, fila["sucursal_id"], "Esa devolucion")
+    await _exigir_alcance(conn, staff, fila["sucursal_id"], "Esa devolucion")
     if fila["estado"] != "SOLICITADA":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -968,7 +987,7 @@ async def vincular_cambio(
         )
         if devolucion is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
-        _exigir_alcance(staff, devolucion["sucursal_id"], "Esa devolucion")
+        await _exigir_alcance(conn, staff, devolucion["sucursal_id"], "Esa devolucion")
         if devolucion["estado"] != "APROBADA":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -981,9 +1000,11 @@ async def vincular_cambio(
             )
 
         venta = await conn.fetchrow(
-            "SELECT id, numero, sucursal_id, estado::text AS estado, fecha "
-            "FROM venta WHERE upper(numero) = upper($1)",
+            "SELECT v.id, v.numero, v.sucursal_id, v.estado::text AS estado, v.fecha "
+            "FROM venta v JOIN sucursal s ON s.id = v.sucursal_id "
+            "WHERE upper(v.numero) = upper($1) AND s.empresa_id = $2",
             body.venta_numero.strip(),
+            empresa_de(staff),
         )
         if venta is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe una venta con ese numero")

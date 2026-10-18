@@ -24,8 +24,12 @@ APROBADAS (`_DEVUELTO_VENTA`, `_DEVUELTO_LINEA`) y una venta devuelta entera (su
 REEMBOLSADO) no cuenta como venta (`_NO_DEVUELTA_ENTERA`). Mismo criterio en las vistas
 v_ventas_diarias y v_existencias_consolidadas (db/02_logica.sql).
 
-Un ENCARGADO solo ve su propia sucursal (igual que recepciones.py); un ADMIN (el que puede editar
-sucursales) ve la cadena completa y puede filtrar por sucursal. No hay motor de consultas
+Multi-tenant: cada consulta recibe la LISTA de sucursales que el usuario puede ver (`_alcance`),
+nunca "sin filtro": un ENCARGADO ve solo la suya (igual que recepciones.py) y el ADMIN de la empresa
+todas las de SU empresa (y puede filtrar por una). Asi ningun reporte -- ni los que arma la IA --
+puede sumar datos de otra empresa. Los reportes convencionales exigen la funcion `reportes` del
+plan (402 con la suscripcion vencida) y la consulta con IA la funcion `ia_reportes` (plan
+Profesional). No hay motor de consultas
 generico: cada endpoint es una consulta SQL fija, en linea con el resto del backend (sin capa de
 servicio/ORM, el SQL vive en el router). `/reportes/vendedores` es un endpoint auxiliar de solo
 lectura para poblar el filtro de vendedor en la UI (staff de la sucursal visible), no es un
@@ -48,8 +52,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.config import settings
 from app.core.db import get_connection
-from app.core.deps import requiere_permiso
 from app.core.plan import requiere_funcion_plan
+from app.core.tenant import empresa_de, es_admin_empresa, exigir_sucursal
 from app.modules.reportes.schemas import (
     CajaOcupacionOut,
     ClienteRankingOut,
@@ -74,8 +78,9 @@ from app.modules.reportes.schemas import (
 
 router = APIRouter(prefix="/reportes", tags=["reportes"])
 
-puede_ver = requiere_permiso("reportes.leer")
-# SaaS (PENDIENTES 5.6): la consulta con IA es del plan Premium
+# SaaS: los reportes convencionales estan en todos los planes pero piden la suscripcion al dia;
+# la consulta generativa con IA es del plan Profesional (RN05)
+puede_ver = requiere_funcion_plan("reportes", "reportes.leer")
 puede_consultar_ia = requiere_funcion_plan("ia_reportes", "reportes.leer")
 
 VENTA_ESTADOS_CONTADOS = ("PAGADA", "ENTREGADA")
@@ -100,8 +105,8 @@ SITUACION_PATTERN = "^(" + "|".join(SITUACIONES_EXISTENCIA) + ")$"
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
-    """Un ADMIN (el que puede editar sucursales) ve todas; el resto solo la suya."""
-    if "sucursales.actualizar" in staff["permisos"]:
+    """El ADMIN de la empresa ve todas las de su empresa (None); el resto solo la suya."""
+    if es_admin_empresa(staff):
         return None
     if staff["sucursal_id"] is None:
         raise HTTPException(
@@ -122,6 +127,18 @@ def _resolver_sucursal(staff: dict, solicitado: UUID | None) -> UUID | None:
             detail="No podes consultar reportes de otra sucursal",
         )
     return limite
+
+
+async def _alcance(conn: asyncpg.Connection, staff: dict, solicitado: UUID | None) -> list[UUID]:
+    """Las sucursales que entran en el reporte, siempre de la empresa del usuario: la pedida
+    (404 si es de otra empresa) o, sin pedir ninguna, todas las que puede ver."""
+    empresa_id = empresa_de(staff)
+    sucursal = _resolver_sucursal(staff, solicitado)
+    if sucursal is not None:
+        await exigir_sucursal(conn, sucursal, empresa_id)
+        return [sucursal]
+    filas = await conn.fetch("SELECT id FROM sucursal WHERE empresa_id = $1", empresa_id)
+    return [f["id"] for f in filas]
 
 
 def _rango_fechas(desde: date | None, hasta: date | None) -> tuple[date, date]:
@@ -154,7 +171,7 @@ async def _consultar_indicadores(
     conn: asyncpg.Connection,
     desde: date,
     hasta: date,
-    sucursal: UUID | None,
+    sucursal: list[UUID],
     categoria_id: UUID | None,
     vendedor_id: UUID | None,
     canal: str | None,
@@ -167,7 +184,7 @@ async def _consultar_indicadores(
             WHERE v.fecha::date BETWEEN $1 AND $2
               AND v.estado = ANY($3::estado_venta[])
               AND {_NO_DEVUELTA_ENTERA}
-              AND ($4::uuid IS NULL OR v.sucursal_id = $4)
+              AND v.sucursal_id = ANY($4::uuid[])
               AND ($5::uuid IS NULL OR EXISTS (
                   SELECT 1 FROM venta_detalle vd
                   JOIN producto_variante pv ON pv.id = vd.variante_id
@@ -181,7 +198,7 @@ async def _consultar_indicadores(
         filtro_reserva AS (
             SELECT estado FROM reserva r
             WHERE r.creada_en::date BETWEEN $1 AND $2
-              AND ($4::uuid IS NULL OR r.sucursal_id = $4)
+              AND r.sucursal_id = ANY($4::uuid[])
               AND ($5::uuid IS NULL OR EXISTS (
                   SELECT 1 FROM reserva_detalle rd
                   JOIN producto_variante pv ON pv.id = rd.variante_id
@@ -201,13 +218,13 @@ async def _consultar_indicadores(
             (
                 SELECT COUNT(*) FROM inventario i
                 JOIN sucursal s ON s.id = i.sucursal_id
-                WHERE s.activa AND ($4::uuid IS NULL OR i.sucursal_id = $4)
+                WHERE s.activa AND i.sucursal_id = ANY($4::uuid[])
                   AND i.stock_minimo > 0 AND i.disponible > 0 AND i.disponible <= i.stock_minimo
             )                                                                    AS variantes_stock_bajo,
             (
                 SELECT COUNT(*) FROM inventario i
                 JOIN sucursal s ON s.id = i.sucursal_id
-                WHERE s.activa AND ($4::uuid IS NULL OR i.sucursal_id = $4)
+                WHERE s.activa AND i.sucursal_id = ANY($4::uuid[])
                   AND i.disponible = 0
             )                                                                    AS variantes_agotadas
         """,
@@ -231,7 +248,7 @@ async def _consultar_ventas_diarias(
     conn: asyncpg.Connection,
     desde: date,
     hasta: date,
-    sucursal: UUID | None,
+    sucursal: list[UUID],
     canal: str | None,
     categoria_id: UUID | None,
     vendedor_id: UUID | None,
@@ -247,7 +264,7 @@ async def _consultar_ventas_diarias(
         WHERE v.estado = ANY($3::estado_venta[])
           AND {_NO_DEVUELTA_ENTERA}
           AND v.fecha::date BETWEEN $1 AND $2
-          AND ($4::uuid IS NULL OR v.sucursal_id = $4)
+          AND v.sucursal_id = ANY($4::uuid[])
           AND ($5::text IS NULL OR v.canal::text = $5)
           AND ($6::uuid IS NULL OR EXISTS (
               SELECT 1 FROM venta_detalle vd
@@ -276,7 +293,7 @@ async def _consultar_ventas_por_sucursal(
     conn: asyncpg.Connection,
     desde: date,
     hasta: date,
-    sucursal: UUID | None,
+    sucursal: list[UUID],
     canal: str | None,
     categoria_id: UUID | None,
     vendedor_id: UUID | None,
@@ -293,7 +310,7 @@ async def _consultar_ventas_por_sucursal(
         WHERE v.estado = ANY($3::estado_venta[])
           AND {_NO_DEVUELTA_ENTERA}
           AND v.fecha::date BETWEEN $1 AND $2
-          AND ($4::uuid IS NULL OR v.sucursal_id = $4)
+          AND v.sucursal_id = ANY($4::uuid[])
           AND ($5::text IS NULL OR v.canal::text = $5)
           AND ($6::uuid IS NULL OR EXISTS (
               SELECT 1 FROM venta_detalle vd
@@ -322,7 +339,7 @@ async def _consultar_top_productos(
     conn: asyncpg.Connection,
     desde: date,
     hasta: date,
-    sucursal: UUID | None,
+    sucursal: list[UUID],
     canal: str | None,
     categoria_id: UUID | None,
     vendedor_id: UUID | None,
@@ -340,7 +357,7 @@ async def _consultar_top_productos(
         JOIN producto p           ON p.id = pv.producto_id
         WHERE v.estado = ANY($3::estado_venta[])
           AND v.fecha::date BETWEEN $1 AND $2
-          AND ($4::uuid IS NULL OR v.sucursal_id = $4)
+          AND v.sucursal_id = ANY($4::uuid[])
           AND ($5::text IS NULL OR v.canal::text = $5)
           AND ($6::uuid IS NULL OR p.categoria_id = $6)
           AND ($7::uuid IS NULL OR v.registrada_por_id = $7)
@@ -363,7 +380,7 @@ async def _consultar_top_productos(
     return [_normalizar(f) for f in filas]
 
 
-async def _consultar_stock_por_sucursal(conn: asyncpg.Connection, sucursal: UUID | None) -> list[dict]:
+async def _consultar_stock_por_sucursal(conn: asyncpg.Connection, sucursal: list[UUID]) -> list[dict]:
     filas = await conn.fetch(
         """
         SELECT i.sucursal_id, s.nombre AS sucursal,
@@ -376,7 +393,7 @@ async def _consultar_stock_por_sucursal(conn: asyncpg.Connection, sucursal: UUID
                ) AS variantes_stock_bajo
         FROM inventario i
         JOIN sucursal s ON s.id = i.sucursal_id
-        WHERE s.activa AND ($1::uuid IS NULL OR i.sucursal_id = $1)
+        WHERE s.activa AND i.sucursal_id = ANY($1::uuid[])
         GROUP BY i.sucursal_id, s.nombre
         ORDER BY s.nombre
         """,
@@ -385,12 +402,12 @@ async def _consultar_stock_por_sucursal(conn: asyncpg.Connection, sucursal: UUID
     return [_normalizar(f) for f in filas]
 
 
-async def _consultar_reservas_por_estado(conn: asyncpg.Connection, sucursal: UUID | None) -> list[dict]:
+async def _consultar_reservas_por_estado(conn: asyncpg.Connection, sucursal: list[UUID]) -> list[dict]:
     filas = await conn.fetch(
         """
         SELECT r.estado::text AS estado, COUNT(*) AS cantidad
         FROM reserva r
-        WHERE ($1::uuid IS NULL OR r.sucursal_id = $1)
+        WHERE r.sucursal_id = ANY($1::uuid[])
         GROUP BY r.estado
         ORDER BY r.estado
         """,
@@ -399,12 +416,12 @@ async def _consultar_reservas_por_estado(conn: asyncpg.Connection, sucursal: UUI
     return [_normalizar(f) for f in filas]
 
 
-async def _consultar_envios_por_estado(conn: asyncpg.Connection, sucursal: UUID | None) -> list[dict]:
+async def _consultar_envios_por_estado(conn: asyncpg.Connection, sucursal: list[UUID]) -> list[dict]:
     filas = await conn.fetch(
         """
         SELECT e.estado::text AS estado, COUNT(*) AS cantidad
         FROM envio e
-        WHERE ($1::uuid IS NULL OR e.sucursal_id = $1)
+        WHERE e.sucursal_id = ANY($1::uuid[])
         GROUP BY e.estado
         ORDER BY e.estado
         """,
@@ -414,7 +431,7 @@ async def _consultar_envios_por_estado(conn: asyncpg.Connection, sucursal: UUID 
 
 
 async def _consultar_productos_sin_movimiento(
-    conn: asyncpg.Connection, sucursal: UUID | None, limite: int
+    conn: asyncpg.Connection, sucursal: list[UUID], limite: int
 ) -> list[dict]:
     filas = await conn.fetch(
         """
@@ -427,7 +444,7 @@ async def _consultar_productos_sin_movimiento(
         JOIN talla t              ON t.id = pv.talla_id
         JOIN color c              ON c.id = pv.color_id
         WHERE s.activa AND i.cantidad_fisica > 0
-          AND ($1::uuid IS NULL OR i.sucursal_id = $1)
+          AND i.sucursal_id = ANY($1::uuid[])
           AND NOT EXISTS (SELECT 1 FROM venta_detalle vd WHERE vd.variante_id = pv.id)
         ORDER BY p.nombre, t.codigo, c.nombre
         LIMIT $2
@@ -438,7 +455,7 @@ async def _consultar_productos_sin_movimiento(
     return [_normalizar(f) for f in filas]
 
 
-async def _consultar_top_clientes(conn: asyncpg.Connection, sucursal: UUID | None, limite: int) -> list[dict]:
+async def _consultar_top_clientes(conn: asyncpg.Connection, sucursal: list[UUID], limite: int) -> list[dict]:
     filas = await conn.fetch(
         f"""
         SELECT v.usuario_id, (u.nombre || ' ' || u.apellido) AS cliente, u.email,
@@ -448,7 +465,7 @@ async def _consultar_top_clientes(conn: asyncpg.Connection, sucursal: UUID | Non
         WHERE v.estado = ANY($3::estado_venta[])
           AND {_NO_DEVUELTA_ENTERA}
           AND v.usuario_id IS NOT NULL
-          AND ($1::uuid IS NULL OR v.sucursal_id = $1)
+          AND v.sucursal_id = ANY($1::uuid[])
         GROUP BY v.usuario_id, u.nombre, u.apellido, u.email
         ORDER BY monto_total DESC
         LIMIT $2
@@ -460,7 +477,7 @@ async def _consultar_top_clientes(conn: asyncpg.Connection, sucursal: UUID | Non
     return [_normalizar(f) for f in filas]
 
 
-async def _consultar_ocupacion_cajas(conn: asyncpg.Connection, sucursal: UUID | None) -> list[dict]:
+async def _consultar_ocupacion_cajas(conn: asyncpg.Connection, sucursal: list[UUID]) -> list[dict]:
     filas = await conn.fetch(
         """
         SELECT c.sucursal_id, s.nombre AS sucursal,
@@ -470,7 +487,7 @@ async def _consultar_ocupacion_cajas(conn: asyncpg.Connection, sucursal: UUID | 
         JOIN sucursal s ON s.id = c.sucursal_id
         LEFT JOIN sesion_caja sc ON sc.caja_id = c.id AND sc.estado = 'ABIERTA'
         WHERE c.activa AND s.activa
-          AND ($1::uuid IS NULL OR c.sucursal_id = $1)
+          AND c.sucursal_id = ANY($1::uuid[])
         GROUP BY c.sucursal_id, s.nombre
         ORDER BY s.nombre
         """,
@@ -479,7 +496,7 @@ async def _consultar_ocupacion_cajas(conn: asyncpg.Connection, sucursal: UUID | 
     return [_normalizar(f) for f in filas]
 
 
-async def _consultar_recepciones_pendientes(conn: asyncpg.Connection, sucursal: UUID | None) -> list[dict]:
+async def _consultar_recepciones_pendientes(conn: asyncpg.Connection, sucursal: list[UUID]) -> list[dict]:
     filas = await conn.fetch(
         """
         SELECT r.proveedor_id, pr.nombre AS proveedor,
@@ -487,7 +504,7 @@ async def _consultar_recepciones_pendientes(conn: asyncpg.Connection, sucursal: 
         FROM recepcion r
         JOIN proveedor pr ON pr.id = r.proveedor_id
         WHERE r.estado = 'BORRADOR'
-          AND ($1::uuid IS NULL OR r.sucursal_id = $1)
+          AND r.sucursal_id = ANY($1::uuid[])
         GROUP BY r.proveedor_id, pr.nombre
         ORDER BY cantidad DESC, pr.nombre
         """,
@@ -498,7 +515,7 @@ async def _consultar_recepciones_pendientes(conn: asyncpg.Connection, sucursal: 
 
 async def _consultar_existencias(
     conn: asyncpg.Connection,
-    sucursal: UUID | None,
+    sucursal: list[UUID],
     categoria_id: UUID | None,
     busqueda: str | None,
     situacion: str | None,
@@ -524,7 +541,7 @@ async def _consultar_existencias(
             COALESCE(SUM(e.vendidas), 0)                                   AS unidades_vendidas,
             COALESCE(SUM(e.proximas_a_ingresar), 0)                        AS unidades_por_ingresar
         FROM v_existencias_consolidadas e
-        WHERE ($1::uuid IS NULL OR e.sucursal_id = $1)
+        WHERE e.sucursal_id = ANY($1::uuid[])
           AND ($2::uuid IS NULL OR e.categoria_id = $2)
           AND ($3::text IS NULL OR e.producto ILIKE '%' || $3 || '%' OR e.sku ILIKE '%' || $3 || '%')
         """,
@@ -539,7 +556,7 @@ async def _consultar_existencias(
                e.sucursal_id, e.sucursal, e.cantidad_fisica, e.cantidad_reservada, e.disponible,
                e.stock_minimo, e.vendidas, e.proximas_a_ingresar, e.situacion
         FROM v_existencias_consolidadas e
-        WHERE ($1::uuid IS NULL OR e.sucursal_id = $1)
+        WHERE e.sucursal_id = ANY($1::uuid[])
           AND ($2::uuid IS NULL OR e.categoria_id = $2)
           AND ($3::text IS NULL OR e.producto ILIKE '%' || $3 || '%' OR e.sku ILIKE '%' || $3 || '%')
           AND ($4::text IS NULL OR e.situacion = $4)
@@ -576,7 +593,7 @@ async def obtener_indicadores(
     staff: dict = Depends(puede_ver),
 ) -> IndicadoresOut:
     desde_r, hasta_r = _rango_fechas(desde, hasta)
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     datos = await _consultar_indicadores(conn, desde_r, hasta_r, sucursal, categoria_id, vendedor_id, canal, entrega)
     return IndicadoresOut(**datos)
 
@@ -594,7 +611,7 @@ async def listar_ventas_diarias(
     staff: dict = Depends(puede_ver),
 ) -> list[VentaDiariaOut]:
     desde_r, hasta_r = _rango_fechas(desde, hasta)
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_ventas_diarias(conn, desde_r, hasta_r, sucursal, canal, categoria_id, vendedor_id, entrega)
     return [VentaDiariaOut(**f) for f in filas]
 
@@ -612,7 +629,7 @@ async def listar_ventas_por_sucursal(
     staff: dict = Depends(puede_ver),
 ) -> list[VentaPorSucursalOut]:
     desde_r, hasta_r = _rango_fechas(desde, hasta)
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_ventas_por_sucursal(
         conn, desde_r, hasta_r, sucursal, canal, categoria_id, vendedor_id, entrega
     )
@@ -620,7 +637,7 @@ async def listar_ventas_por_sucursal(
 
 
 async def _consultar_perdidas(
-    conn: asyncpg.Connection, desde: date, hasta: date, sucursal: UUID | None
+    conn: asyncpg.Connection, desde: date, hasta: date, sucursal: list[UUID]
 ) -> list[dict]:
     """Perdidas del periodo por sucursal (PENDIENTES 5.13): mermas (AJUSTE a la baja en el
     kardex), devoluciones aprobadas por DEFECTO, faltantes de traspaso (solicitado - recibido) y
@@ -628,7 +645,7 @@ async def _consultar_perdidas(
     filas = await conn.fetch(
         """
         WITH suc AS (
-            SELECT id, nombre FROM sucursal WHERE activa AND ($3::uuid IS NULL OR id = $3)
+            SELECT id, nombre FROM sucursal WHERE activa AND id = ANY($3::uuid[])
         ),
         mermas AS (
             SELECT m.sucursal_id,
@@ -705,7 +722,7 @@ async def listar_perdidas(
     staff: dict = Depends(puede_ver),
 ) -> list[PerdidaSucursalOut]:
     desde_r, hasta_r = _rango_fechas(desde, hasta)
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_perdidas(conn, desde_r, hasta_r, sucursal)
     return [PerdidaSucursalOut(**f) for f in filas]
 
@@ -724,7 +741,7 @@ async def listar_top_productos(
     staff: dict = Depends(puede_ver),
 ) -> list[ProductoRankingOut]:
     desde_r, hasta_r = _rango_fechas(desde, hasta)
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_top_productos(
         conn, desde_r, hasta_r, sucursal, canal, categoria_id, vendedor_id, entrega, limite
     )
@@ -742,7 +759,7 @@ async def listar_stock_por_sucursal(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[StockSucursalOut]:
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_stock_por_sucursal(conn, sucursal)
     return [StockSucursalOut(**f) for f in filas]
 
@@ -753,7 +770,7 @@ async def listar_reservas_por_estado(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[ReservaEstadoOut]:
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_reservas_por_estado(conn, sucursal)
     return [ReservaEstadoOut(**f) for f in filas]
 
@@ -764,7 +781,7 @@ async def listar_envios_por_estado(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[EnvioEstadoOut]:
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_envios_por_estado(conn, sucursal)
     return [EnvioEstadoOut(**f) for f in filas]
 
@@ -777,7 +794,7 @@ async def listar_productos_sin_movimiento(
     staff: dict = Depends(puede_ver),
 ) -> list[ProductoSinMovimientoOut]:
     """Variantes con stock fisico en sucursal que nunca tuvieron una linea en venta_detalle."""
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_productos_sin_movimiento(conn, sucursal, limite)
     return [ProductoSinMovimientoOut(**f) for f in filas]
 
@@ -790,7 +807,7 @@ async def listar_top_clientes(
     staff: dict = Depends(puede_ver),
 ) -> list[ClienteRankingOut]:
     """Ranking historico (sin rango de fecha, foto actual) de clientes por monto comprado."""
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_top_clientes(conn, sucursal, limite)
     return [ClienteRankingOut(**f) for f in filas]
 
@@ -802,7 +819,7 @@ async def listar_ocupacion_cajas(
     staff: dict = Depends(puede_ver),
 ) -> list[CajaOcupacionOut]:
     """Cajas activas por sucursal vs. cuantas tienen una sesion ABIERTA en este momento."""
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_ocupacion_cajas(conn, sucursal)
     return [CajaOcupacionOut(**f) for f in filas]
 
@@ -814,7 +831,7 @@ async def listar_recepciones_pendientes(
     staff: dict = Depends(puede_ver),
 ) -> list[RecepcionPendienteProveedorOut]:
     """Recepciones en BORRADOR (todavia no confirmadas) agrupadas por proveedor."""
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     filas = await _consultar_recepciones_pendientes(conn, sucursal)
     return [RecepcionPendienteProveedorOut(**f) for f in filas]
 
@@ -833,7 +850,7 @@ async def listar_existencias(
     """Consolidado de existencias por variante x sucursal (foto actual): disponible, reservada,
     vendidas (historicas, ventas PAGADA/ENTREGADA), proximas a ingresar (recepciones BORRADOR) y
     la situacion derivada. Mismo alcance por sucursal que el resto de CU15."""
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
     datos = await _consultar_existencias(
         conn, sucursal, categoria_id, busqueda, situacion, tamanio_pagina, (pagina - 1) * tamanio_pagina
     )
@@ -853,7 +870,7 @@ async def listar_vendedores(
     staff: dict = Depends(puede_ver),
 ) -> list[VendedorOut]:
     """Staff de la sucursal visible, para poblar el filtro 'vendedor' de los reportes dinamicos."""
-    sucursal = _resolver_sucursal(staff, sucursal_id)
+    sucursal = await _alcance(conn, staff, sucursal_id)
 
     filas = await conn.fetch(
         """
@@ -861,7 +878,7 @@ async def listar_vendedores(
         FROM empleado e
         JOIN usuario u ON u.id = e.usuario_id
         WHERE e.activo AND u.activo
-          AND ($1::uuid IS NULL OR e.sucursal_id = $1)
+          AND e.sucursal_id = ANY($1::uuid[])
         ORDER BY nombre
         """,
         sucursal,
@@ -969,8 +986,8 @@ ETIQUETAS_CAMPO: dict[str, str] = {
 }
 
 _SYSTEM_PROMPT_IA = """\
-Sos el analista de datos de FashionStore, una cadena de moda femenina con seis sucursales en \
-Bolivia: Santa Cruz, La Paz, Cochabamba, Sucre, Tarija y Oruro. Atendes al personal de gestion \
+Sos el analista de datos de {empresa}, una tienda de moda con estas sucursales en Bolivia: \
+{sucursales}. Atendes al personal de gestion \
 (encargados y administradores) que te consulta reportes de ventas, stock, reservas, envios, cajas, \
 recepciones y perdidas -- por texto o por voz transcripta en el navegador. Cuando te pidan comparar \
 sucursales, consulta sin filtro de sucursal (la herramienta devuelve una fila por sucursal) y \
@@ -994,9 +1011,24 @@ filas, describi lo que encontraste, no lo contrario.
 - Respondes en espanol, tono profesional y directo, 2-4 oraciones con las cifras clave nomas -- \
 esto se puede leer en voz alta, asi que evita markdown pesado (tablas, negritas, listas): la \
 tabla completa con el detalle ya se muestra aparte en la pantalla.
-- Solo hablas de reportes e indicadores de FashionStore. Si te preguntan algo sin relacion, \
-respondes amablemente que no podes ayudar con eso.
+- Solo hablas de reportes e indicadores de {empresa}. Si te preguntan algo sin relacion, \
+respondes amablemente que no podes ayudar con eso. Tus herramientas solo ven los datos de esta \
+empresa: si te piden datos de otra tienda o de toda la plataforma, explica que no tenes acceso.
+- Si piden algo que ninguna herramienta cubre (por ejemplo una consulta SQL, borrar o modificar \
+datos, o un reporte que no existe), decilo y ofrece el reporte mas parecido que si podes hacer.
 """
+
+
+async def _system_prompt_ia(conn: asyncpg.Connection, staff: dict) -> str:
+    empresa_id = empresa_de(staff)
+    nombre = await conn.fetchval("SELECT nombre FROM empresa WHERE id = $1", empresa_id)
+    filas = await conn.fetch(
+        """SELECT nombre, replace(initcap(ciudad::text), '_', ' ') AS ciudad FROM sucursal
+            WHERE empresa_id = $1 AND activa ORDER BY nombre""",
+        empresa_id,
+    )
+    sucursales = ", ".join(f"{f['nombre']} ({f['ciudad']})" for f in filas) or "ninguna activa"
+    return _SYSTEM_PROMPT_IA.format(empresa=nombre, sucursales=sucursales)
 
 _PROP_SUCURSAL = {
     "type": "string",
@@ -1176,19 +1208,19 @@ def _parsear_fecha(valor: object) -> date | None:
 
 async def _resolver_sucursal_nombre(
     conn: asyncpg.Connection, staff: dict, nombre: str | None
-) -> tuple[UUID | None, str | None]:
+) -> tuple[list[UUID], str | None]:
     """Nombre en lenguaje natural -> uuid, aplicando el mismo alcance por sucursal que los
     endpoints HTTP. Si el nombre no matchea o el usuario no tiene permiso para verla, devuelve el
     alcance por defecto del usuario y un aviso en texto (no un 403 que corte la conversacion)."""
     if not nombre:
-        return _resolver_sucursal(staff, None), None
+        return await _alcance(conn, staff, None), None
     # `sucursal.nombre` es el nombre comercial ("FashionStore Equipetrol"), no la ciudad -- la
     # gente pregunta por ciudad ("Santa Cruz", "La Paz"), que vive en `ciudad` (ENUM ciudad_bo,
     # ej. 'SANTA_CRUZ'). Se matchea contra ambos.
     fila = await conn.fetchrow(
         """
         SELECT id FROM sucursal
-        WHERE activa AND (
+        WHERE activa AND empresa_id = $2 AND (
             nombre ILIKE '%' || $1 || '%'
             OR replace(ciudad::text, '_', ' ') ILIKE '%' || $1 || '%'
         )
@@ -1196,29 +1228,36 @@ async def _resolver_sucursal_nombre(
         LIMIT 1
         """,
         nombre,
+        empresa_de(staff),
     )
     if fila is None:
         return (
-            _resolver_sucursal(staff, None),
+            await _alcance(conn, staff, None),
             f"No se encontro una sucursal activa llamada '{nombre}'; se uso tu alcance por defecto.",
         )
     try:
-        return _resolver_sucursal(staff, fila["id"]), None
+        return await _alcance(conn, staff, fila["id"]), None
     except HTTPException as exc:
-        return _resolver_sucursal(staff, None), str(exc.detail)
+        return await _alcance(conn, staff, None), str(exc.detail)
 
 
-async def _resolver_categoria_nombre(conn: asyncpg.Connection, nombre: str | None) -> tuple[UUID | None, str | None]:
+async def _resolver_categoria_nombre(
+    conn: asyncpg.Connection, staff: dict, nombre: str | None
+) -> tuple[UUID | None, str | None]:
     if not nombre:
         return None, None
-    fila = await conn.fetchrow("SELECT id FROM categoria WHERE nombre ILIKE '%' || $1 || '%' LIMIT 1", nombre)
+    fila = await conn.fetchrow(
+        "SELECT id FROM categoria WHERE nombre ILIKE '%' || $1 || '%' AND empresa_id = $2 LIMIT 1",
+        nombre,
+        empresa_de(staff),
+    )
     if fila is None:
         return None, f"No se encontro una categoria llamada '{nombre}'; se muestra sin ese filtro."
     return fila["id"], None
 
 
 async def _resolver_vendedor_nombre(
-    conn: asyncpg.Connection, sucursal: UUID | None, nombre: str | None
+    conn: asyncpg.Connection, sucursal: list[UUID], nombre: str | None
 ) -> tuple[UUID | None, str | None]:
     if not nombre:
         return None, None
@@ -1226,7 +1265,7 @@ async def _resolver_vendedor_nombre(
         """
         SELECT u.id FROM empleado e JOIN usuario u ON u.id = e.usuario_id
         WHERE e.activo AND u.activo AND (u.nombre || ' ' || u.apellido) ILIKE '%' || $1 || '%'
-          AND ($2::uuid IS NULL OR e.sucursal_id = $2)
+          AND e.sucursal_id = ANY($2::uuid[])
         LIMIT 1
         """,
         nombre,
@@ -1270,11 +1309,11 @@ async def _ejecutar_herramienta_reporte(
 
     categoria_id = vendedor_id = None
     if nombre_tool == "consultar_existencias":
-        categoria_id, aviso = await _resolver_categoria_nombre(conn, entrada.get("categoria_nombre"))
+        categoria_id, aviso = await _resolver_categoria_nombre(conn, staff, entrada.get("categoria_nombre"))
         if aviso:
             avisos.append(aviso)
     if nombre_tool in _TOOLS_DINAMICOS:
-        categoria_id, aviso = await _resolver_categoria_nombre(conn, entrada.get("categoria_nombre"))
+        categoria_id, aviso = await _resolver_categoria_nombre(conn, staff, entrada.get("categoria_nombre"))
         if aviso:
             avisos.append(aviso)
         vendedor_id, aviso = await _resolver_vendedor_nombre(conn, sucursal, entrada.get("vendedor_nombre"))
@@ -1362,7 +1401,7 @@ async def consulta_ia(
     cliente_ia = _cliente_ia()
     # Claude no sabe la fecha real "de hoy" (entrena con un corte de conocimiento pasado): sin
     # esto, "este mes" o "hoy" salian con el anio/mes del entrenamiento, no el actual.
-    system = f"{_SYSTEM_PROMPT_IA}\n\nHoy es {date.today().isoformat()}."
+    system = f"{await _system_prompt_ia(conn, staff)}\n\nHoy es {date.today().isoformat()}."
     mensajes: list[dict] = [{"role": m.rol, "content": m.texto} for m in body.mensajes]
 
     titulo: str | None = None

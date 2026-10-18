@@ -17,7 +17,7 @@ from app.core.db import get_connection
 from app.core.deps import get_current_usuario
 from app.main import app
 from app.modules.ventas import router as ventas_router
-from tests.conexion_falsa import ConexionFalsa
+from tests.conexion_falsa import EMPRESA, ConexionFalsa
 
 SUBTOTAL = Decimal("200.00")
 
@@ -41,6 +41,7 @@ def _conn_checkout(
     item = {
         "id": uuid4(), "variante_id": variante, "cantidad": 1,
         "precio_unitario": SUBTOTAL, "categoria_id": None, "temporada_id": None,
+        "empresa_id": EMPRESA,
     }
     respuestas = {
         "FROM carrito WHERE usuario_id": {"id": carrito, "reserva_id": None},

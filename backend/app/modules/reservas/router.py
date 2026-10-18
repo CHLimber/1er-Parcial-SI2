@@ -191,6 +191,9 @@ async def _crear_reserva_pendiente(
         JOIN color c    ON c.id = pv.color_id
         LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
         WHERE pv.id = ANY($1::uuid[])
+          -- multi-tenant: solo prendas del catalogo de la empresa de esa sucursal; una de otra
+          -- tienda queda como "no disponible"
+          AND p.empresa_id = (SELECT empresa_id FROM sucursal WHERE id = $2)
         """,
         variante_ids,
         body.sucursal_id,

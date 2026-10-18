@@ -146,14 +146,14 @@ async def agregar_item(
 
     variante = await conn.fetchrow(
         """
-        SELECT pv.id, pv.activa,
+        SELECT pv.id, pv.activa, p.empresa_id,
                COALESCE(pv.precio_oferta, pv.precio, p.precio_base) AS precio,
                COALESCE(SUM(i.disponible), 0) AS disponible
         FROM producto_variante pv
         JOIN producto p ON p.id = pv.producto_id
         LEFT JOIN inventario i ON i.variante_id = pv.id
         WHERE pv.id = $1
-        GROUP BY pv.id, pv.activa, pv.precio_oferta, pv.precio, p.precio_base
+        GROUP BY pv.id, pv.activa, pv.precio_oferta, pv.precio, p.precio_base, p.empresa_id
         """,
         body.variante_id,
     )
@@ -164,7 +164,7 @@ async def agregar_item(
     if variante["disponible"] < body.cantidad:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Solo hay {variante['disponible']} unidad(es) disponible(s) en toda la cadena",
+            detail=f"Solo hay {variante['disponible']} unidad(es) disponible(s) en toda la tienda",
         )
 
     carrito = await _obtener_o_crear_carrito(conn, usuario["id"])
@@ -172,6 +172,24 @@ async def agregar_item(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Este carrito viene de una reserva; vacialo antes de agregar otras prendas",
+        )
+    # Multi-tenant: la cuenta de la clienta es de la plataforma y puede comprar en varias
+    # tiendas, pero una venta es de UNA empresa: el carrito no mezcla prendas de dos tiendas.
+    otra_tienda = await conn.fetchval(
+        """
+        SELECT 1 FROM carrito_item ci
+          JOIN producto_variante pv ON pv.id = ci.variante_id
+          JOIN producto p ON p.id = pv.producto_id
+         WHERE ci.carrito_id = $1 AND p.empresa_id <> $2
+         LIMIT 1
+        """,
+        carrito["id"],
+        variante["empresa_id"],
+    )
+    if otra_tienda:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tu carrito tiene prendas de otra tienda: termina esa compra o vacialo primero",
         )
 
     async with conn.transaction():

@@ -26,7 +26,8 @@ SELECT
         WHEN i.disponible > 0                    THEN 'DISPONIBLE'
         WHEN i.cantidad_reservada > 0            THEN 'RESERVADA'
         ELSE                                          'AGOTADA'
-    END AS situacion
+    END AS situacion,
+    s.empresa_id
 FROM inventario i
 JOIN producto_variante pv ON pv.id = i.variante_id
 JOIN producto p           ON p.id  = pv.producto_id
@@ -44,11 +45,12 @@ SELECT
     SUM(i.cantidad_fisica)    AS total_fisico,
     SUM(i.cantidad_reservada) AS total_reservado,
     SUM(i.disponible)         AS total_disponible,
-    COUNT(*) FILTER (WHERE i.disponible > 0) AS sucursales_con_stock
+    COUNT(*) FILTER (WHERE i.disponible > 0) AS sucursales_con_stock,
+    p.empresa_id
 FROM producto_variante pv
 JOIN producto p    ON p.id = pv.producto_id
 LEFT JOIN inventario i ON i.variante_id = pv.id
-GROUP BY pv.id, pv.sku, p.nombre;
+GROUP BY pv.id, pv.sku, p.nombre, p.empresa_id;
  
 -- Ventas por dia, sucursal y canal: base de los dashboards (RF24)
 -- Neto de devoluciones: el monto resta lo reintegrado en devoluciones APROBADAS, y una venta
@@ -69,10 +71,11 @@ SELECT
     v.canal,
     COUNT(*)           AS cantidad_ventas,
     SUM(v.total_neto)  AS monto_total,
-    AVG(v.total_neto)  AS ticket_promedio
+    AVG(v.total_neto)  AS ticket_promedio,
+    s.empresa_id
 FROM neta v
 JOIN sucursal s ON s.id = v.sucursal_id
-GROUP BY 1, 2, 3;
+GROUP BY 1, 2, 3, s.empresa_id;
  
  
 -- ---------------------------------------------------------------------
@@ -102,7 +105,19 @@ BEGIN
     IF p_cantidad < 0 OR (p_cantidad = 0 AND p_tipo <> 'AJUSTE') THEN
         RAISE EXCEPTION 'La cantidad del movimiento debe ser positiva (recibido: %)', p_cantidad;
     END IF;
- 
+
+    -- Multi-tenant: la prenda tiene que ser del catalogo de la misma empresa que la sucursal.
+    -- El backend ya lo valida al armar cada operacion; esto es la ultima barrera, asi ni una
+    -- venta, ni una reserva, ni un traspaso, ni una recepcion pueden mover stock ajeno.
+    IF NOT EXISTS (SELECT 1
+                     FROM producto_variante pv
+                     JOIN producto p ON p.id = pv.producto_id
+                     JOIN sucursal s ON s.id = p_sucursal_id
+                    WHERE pv.id = p_variante_id AND p.empresa_id = s.empresa_id) THEN
+        RAISE EXCEPTION 'La prenda no pertenece a la empresa de la sucursal (variante %, sucursal %)',
+                        p_variante_id, p_sucursal_id;
+    END IF;
+
     -- crea la fila de inventario si la prenda nunca estuvo en esta sucursal
     INSERT INTO inventario (sucursal_id, variante_id)
     VALUES (p_sucursal_id, p_variante_id)
@@ -689,7 +704,8 @@ SELECT
         WHEN COALESCE(i.cantidad_reservada, 0) > 0  THEN 'RESERVADA'
         WHEN COALESCE(en.proximas_a_ingresar, 0) > 0 THEN 'PROXIMA_A_INGRESAR'
         ELSE                                             'AGOTADA'
-    END)::text                              AS situacion
+    END)::text                              AS situacion,
+    s.empresa_id
 FROM base b
 JOIN producto_variante pv ON pv.id  = b.variante_id
 JOIN producto p           ON p.id   = pv.producto_id

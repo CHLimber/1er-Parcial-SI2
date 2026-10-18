@@ -47,6 +47,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario
+from app.core.tenant import empresa_publica
 from app.modules.recomendaciones.schemas import ProductoRecomendadoOut
 
 router = APIRouter(prefix="/recomendaciones", tags=["recomendaciones"])
@@ -177,7 +178,7 @@ candidatos AS (
     LEFT JOIN talla_producto tp  ON tp.producto_id = p.id
     LEFT JOIN temporada tem      ON tem.id = p.temporada_id
     LEFT JOIN popularidad pop    ON pop.producto_id = p.id
-    WHERE p.activo
+    WHERE p.activo AND p.empresa_id = $4  -- multi-tenant: solo la tienda que se esta mirando
       AND sp.total_disponible > 0  -- disponibilidad: filtro duro, nunca se recomienda un agotado
       AND NOT EXISTS (SELECT 1 FROM tocados tc WHERE tc.producto_id = p.id)
 ),
@@ -205,8 +206,8 @@ SELECT p.id, p.codigo, p.nombre, p.slug, p.descripcion, p.precio_base, p.genero,
                THEN 'En liquidacion: ' || pu.temporada
            WHEN pu.en_promocion THEN 'En promocion'
            WHEN pu.color_ok THEN 'En tu color favorito'
-           WHEN p.destacado THEN 'Destacado en FashionStore'
-           ELSE 'Tendencia en FashionStore'
+           WHEN p.destacado THEN 'Destacado en la tienda'
+           ELSE 'Tendencia en la tienda'
        END
        || CASE WHEN pu.talla_ok IS NOT NULL THEN ' · hay tu talla ' || pu.talla_ok ELSE '' END
        AS motivo
@@ -247,6 +248,7 @@ async def obtener_recomendaciones(
     limite: int = Query(default=8, ge=1, le=20),
     conn: asyncpg.Connection = Depends(get_connection),
     usuario: dict = Depends(get_current_usuario),
+    empresa_id=Depends(empresa_publica),
 ) -> list[ProductoRecomendadoOut]:
     _exigir_cliente(usuario)
     filas = await conn.fetch(
@@ -254,5 +256,6 @@ async def obtener_recomendaciones(
         usuario["id"],
         list(VENTA_ESTADOS_CONTADOS),
         limite,
+        empresa_id,
     )
     return [ProductoRecomendadoOut(**dict(fila)) for fila in filas]

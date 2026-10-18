@@ -53,7 +53,9 @@ export const offlineInterceptor: HttpInterceptorFn = (req, next) => {
   const ruta = req.url.slice(environment.apiUrl.length);
 
   if (req.method === 'GET' && CACHEABLES.some((p) => p.test(ruta))) {
-    const clave = req.urlWithParams;
+    // la misma URL devuelve otra cosa segun el tenant (X-Empresa): sin esto, una clienta que
+    // cambia de tienda sin red veria el catalogo cacheado de la anterior
+    const clave = `${req.headers.get('X-Empresa') ?? ''}|${req.urlWithParams}`;
     return next(req).pipe(
       tap((evento) => {
         if (evento instanceof HttpResponse && evento.ok) void offlineDb.guardarRespuesta(clave, evento.body).catch(() => null);

@@ -7,6 +7,12 @@ verlas para reactivarlas.
 Regla del modelo (ver CLAUDE.md): `producto` es la prenda descriptiva y `producto_variante`
 (producto x talla x color) es la unidad fisica. El stock NUNCA se toca desde aca: entra por
 recepcion (CU09) o por ajuste, siempre via fn_mover_inventario.
+
+Multi-tenant: todo el catalogo es de la empresa del usuario (empresa_id en producto, categoria,
+marca, temporada, coleccion, proveedor y promocion). Cada lectura se recorta a su empresa, cada
+alta nace con su empresa_id, y cada referencia que llega en el body (categoria, marca,
+proveedor...) se valida contra la empresa antes de escribir: un id de otra empresa es 404 aunque
+exista. El slug y el codigo son unicos por empresa, no globales.
 """
 
 import json
@@ -22,6 +28,7 @@ from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
 from app.core.media import eliminar_si_es_local, guardar_imagen_producto
+from app.core.tenant import empresa_de, exigir_fila, no_encontrado
 from app.modules.catalogo.admin_schemas import (
     CategoriaAdminOut,
     CategoriaEstadoIn,
@@ -74,18 +81,24 @@ def _slugificar(texto: str) -> str:
 
 
 async def _slug_unico(
-    conn: asyncpg.Connection, tabla: str, nombre: str, excluir_id: UUID | None = None
+    conn: asyncpg.Connection,
+    tabla: str,
+    nombre: str,
+    empresa_id: UUID,
+    excluir_id: UUID | None = None,
 ) -> str:
-    """El slug es UNIQUE en producto y en categoria; si dos prendas se llaman igual se
-    desempata con un sufijo numerico."""
+    """El slug es UNIQUE por empresa en producto y en categoria; si dos prendas se llaman igual
+    se desempata con un sufijo numerico."""
     base = _slugificar(nombre)
     candidato = base
     intento = 2
     while True:
         existe = await conn.fetchval(
-            f"SELECT 1 FROM {tabla} WHERE slug = $1 AND ($2::uuid IS NULL OR id <> $2)",
+            f"""SELECT 1 FROM {tabla}
+                 WHERE slug = $1 AND empresa_id = $3 AND ($2::uuid IS NULL OR id <> $2)""",
             candidato,
             excluir_id,
+            empresa_id,
         )
         if not existe:
             return candidato
@@ -118,11 +131,26 @@ LEFT JOIN coleccion col ON col.id = p.coleccion_id
 """
 
 
-async def _obtener_producto(conn: asyncpg.Connection, producto_id: UUID) -> ProductoAdminOut:
-    fila = await conn.fetchrow(SELECT_PRODUCTO + "WHERE p.id = $1", producto_id)
+async def _obtener_producto(
+    conn: asyncpg.Connection, producto_id: UUID, empresa_id: UUID
+) -> ProductoAdminOut:
+    fila = await conn.fetchrow(
+        SELECT_PRODUCTO + "WHERE p.id = $1 AND p.empresa_id = $2", producto_id, empresa_id
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prenda no encontrada")
+        raise no_encontrado("Prenda no encontrada")
     return ProductoAdminOut(**dict(fila))
+
+
+async def _validar_referencias_producto(
+    conn: asyncpg.Connection, body: ProductoIn, empresa_id: UUID
+) -> None:
+    """Cada referencia del body tiene que ser de la misma empresa (si no, 404)."""
+    await exigir_fila(conn, "categoria", body.categoria_id, empresa_id, "Categoria no encontrada")
+    await exigir_fila(conn, "marca", body.marca_id, empresa_id, "Marca no encontrada")
+    await exigir_fila(conn, "proveedor", body.proveedor_id, empresa_id, "Proveedor no encontrado")
+    await exigir_fila(conn, "temporada", body.temporada_id, empresa_id, "Temporada no encontrada")
+    await exigir_fila(conn, "coleccion", body.coleccion_id, empresa_id, "Coleccion no encontrada")
 
 
 async def _variantes(conn: asyncpg.Connection, producto_id: UUID) -> list[VarianteAdminOut]:
@@ -180,16 +208,28 @@ def _validar_genero(genero: str | None) -> None:
 @router.get("/referencias", response_model=ReferenciasOut)
 async def obtener_referencias(
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> ReferenciasOut:
-    categorias = await conn.fetch(SELECT_CATEGORIA_ADMIN + "ORDER BY c.orden, c.nombre")
-    marcas = await conn.fetch("SELECT id, nombre, logo_url FROM marca ORDER BY nombre")
-    proveedores = await conn.fetch("SELECT id, nombre FROM proveedor WHERE activo ORDER BY nombre")
+    empresa_id = empresa_de(staff)
+    categorias = await conn.fetch(
+        SELECT_CATEGORIA_ADMIN + "WHERE c.empresa_id = $1 ORDER BY c.orden, c.nombre", empresa_id
+    )
+    marcas = await conn.fetch(
+        "SELECT id, nombre, logo_url FROM marca WHERE empresa_id = $1 ORDER BY nombre", empresa_id
+    )
+    proveedores = await conn.fetch(
+        "SELECT id, nombre FROM proveedor WHERE activo AND empresa_id = $1 ORDER BY nombre",
+        empresa_id,
+    )
     temporadas = await conn.fetch(
-        "SELECT id, nombre, tipo, fecha_inicio, fecha_fin FROM temporada ORDER BY fecha_inicio DESC"
+        """SELECT id, nombre, tipo, fecha_inicio, fecha_fin FROM temporada
+            WHERE empresa_id = $1 ORDER BY fecha_inicio DESC""",
+        empresa_id,
     )
     colecciones = await conn.fetch(
-        "SELECT id, nombre, temporada_id FROM coleccion WHERE activa ORDER BY nombre"
+        """SELECT id, nombre, temporada_id FROM coleccion
+            WHERE activa AND empresa_id = $1 ORDER BY nombre""",
+        empresa_id,
     )
     tallas = await conn.fetch("SELECT id, codigo, tipo FROM talla ORDER BY tipo, orden")
     colores = await conn.fetch("SELECT id, nombre, codigo_hex FROM color ORDER BY nombre")
@@ -217,12 +257,13 @@ async def listar_productos_admin(
     categoria_id: UUID | None = Query(default=None),
     activo: bool | None = Query(default=None),
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> list[ProductoAdminOut]:
     filas = await conn.fetch(
         SELECT_PRODUCTO
         + """
-        WHERE ($1::text IS NULL OR p.nombre ILIKE '%' || $1 || '%' OR p.codigo ILIKE '%' || $1 || '%')
+        WHERE p.empresa_id = $4
+          AND ($1::text IS NULL OR p.nombre ILIKE '%' || $1 || '%' OR p.codigo ILIKE '%' || $1 || '%')
           AND ($2::uuid IS NULL OR p.categoria_id = $2)
           AND ($3::boolean IS NULL OR p.activo = $3)
         ORDER BY p.activo DESC, p.creado_en DESC
@@ -230,6 +271,7 @@ async def listar_productos_admin(
         q,
         categoria_id,
         activo,
+        empresa_de(staff),
     )
     return [ProductoAdminOut(**dict(fila)) for fila in filas]
 
@@ -238,9 +280,9 @@ async def listar_productos_admin(
 async def obtener_producto_admin(
     producto_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> ProductoAdminDetalleOut:
-    producto = await _obtener_producto(conn, producto_id)
+    producto = await _obtener_producto(conn, producto_id, empresa_de(staff))
     return ProductoAdminDetalleOut(
         **producto.model_dump(),
         variantes=await _variantes(conn, producto_id),
@@ -255,15 +297,17 @@ async def crear_producto(
     staff: dict = Depends(puede_crear),
 ) -> ProductoAdminDetalleOut:
     _validar_genero(body.genero)
+    empresa_id = empresa_de(staff)
+    await _validar_referencias_producto(conn, body, empresa_id)
     try:
         async with conn.transaction():
-            slug = await _slug_unico(conn, "producto", body.nombre)
+            slug = await _slug_unico(conn, "producto", body.nombre, empresa_id)
             nuevo_id = await conn.fetchval(
                 """
                 INSERT INTO producto (categoria_id, marca_id, proveedor_id, temporada_id, coleccion_id,
                                       codigo, nombre, slug, descripcion, material, genero,
-                                      precio_base, destacado)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::genero_prenda, $12, $13)
+                                      precio_base, destacado, empresa_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::genero_prenda, $12, $13, $14)
                 RETURNING id
                 """,
                 body.categoria_id,
@@ -279,6 +323,7 @@ async def crear_producto(
                 body.genero,
                 body.precio_base,
                 body.destacado,
+                empresa_id,
             )
             await registrar_auditoria(
                 conn,
@@ -307,13 +352,17 @@ async def actualizar_producto(
     staff: dict = Depends(puede_actualizar),
 ) -> ProductoAdminDetalleOut:
     _validar_genero(body.genero)
-    antes = await _obtener_producto(conn, producto_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_producto(conn, producto_id, empresa_id)
+    await _validar_referencias_producto(conn, body, empresa_id)
 
     try:
         async with conn.transaction():
             slug = antes.slug
             if body.nombre != antes.nombre:
-                slug = await _slug_unico(conn, "producto", body.nombre, excluir_id=producto_id)
+                slug = await _slug_unico(
+                    conn, "producto", body.nombre, empresa_id, excluir_id=producto_id
+                )
             await conn.execute(
                 """
                 UPDATE producto
@@ -366,7 +415,7 @@ async def cambiar_estado_producto(
 ) -> ProductoAdminDetalleOut:
     """Baja logica: la prenda desaparece de la vitrina pero sigue existiendo en el historial de
     ventas y en el kardex. Se bloquea si hay stock comprometido por reservas en curso."""
-    antes = await _obtener_producto(conn, producto_id)
+    antes = await _obtener_producto(conn, producto_id, empresa_de(staff))
 
     if not body.activo:
         reservado = await conn.fetchval(
@@ -414,7 +463,8 @@ async def crear_variante(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> VarianteAdminOut:
-    await _obtener_producto(conn, producto_id)
+    empresa_id = empresa_de(staff)
+    await _obtener_producto(conn, producto_id, empresa_id)
     _validar_precios(body)
 
     try:
@@ -452,7 +502,7 @@ async def crear_variante(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Talla o color inexistente"
         )
 
-    return await _obtener_variante(conn, nueva_id)
+    return await _obtener_variante(conn, nueva_id, empresa_id)
 
 
 @router.put("/variantes/{variante_id}", response_model=VarianteAdminOut)
@@ -462,7 +512,8 @@ async def actualizar_variante(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_actualizar),
 ) -> VarianteAdminOut:
-    antes = await _obtener_variante(conn, variante_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_variante(conn, variante_id, empresa_id)
     _validar_precios(body)
 
     try:
@@ -501,7 +552,7 @@ async def actualizar_variante(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Talla o color inexistente"
         )
 
-    return await _obtener_variante(conn, variante_id)
+    return await _obtener_variante(conn, variante_id, empresa_id)
 
 
 @router.patch("/variantes/{variante_id}/estado", response_model=VarianteAdminOut)
@@ -511,7 +562,8 @@ async def cambiar_estado_variante(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_cambiar_estado),
 ) -> VarianteAdminOut:
-    antes = await _obtener_variante(conn, variante_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_variante(conn, variante_id, empresa_id)
 
     if not body.activo:
         reservado = await conn.fetchval(
@@ -537,7 +589,7 @@ async def cambiar_estado_variante(
             datos_antes={"activa": antes.activa},
             datos_despues={"activa": body.activo},
         )
-    return await _obtener_variante(conn, variante_id)
+    return await _obtener_variante(conn, variante_id, empresa_id)
 
 
 # ---------------------------------------------------------------------
@@ -597,7 +649,7 @@ async def agregar_imagen(
 ) -> ImagenOut:
     """Alta de imagen a partir de una URL ya publica (hosting externo tipo Cloudinary/Imgur, o
     el link a un archivo ya subido con /imagenes/subir)."""
-    await _obtener_producto(conn, producto_id)
+    await _obtener_producto(conn, producto_id, empresa_de(staff))
     if body.uso not in USOS_IMAGEN:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Uso de imagen invalido")
     return await _crear_fila_imagen(conn, producto_id, body, staff)
@@ -621,7 +673,7 @@ async def subir_imagen(
     """Como agregar_imagen, pero recibe el archivo (multipart/form-data) en vez de una URL: lo
     guarda en disco (app/core/media.py, servido desde /media) y arma la URL publica antes de
     insertar la fila."""
-    await _obtener_producto(conn, producto_id)
+    await _obtener_producto(conn, producto_id, empresa_de(staff))
     if uso not in USOS_IMAGEN:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Uso de imagen invalido")
 
@@ -639,10 +691,17 @@ async def eliminar_imagen(
     staff: dict = Depends(puede_eliminar),
 ) -> None:
     fila = await conn.fetchrow(
-        "SELECT id, producto_id, url, uso FROM producto_imagen WHERE id = $1", imagen_id
+        """
+        SELECT pi.id, pi.producto_id, pi.url, pi.uso
+          FROM producto_imagen pi
+          JOIN producto p ON p.id = pi.producto_id
+         WHERE pi.id = $1 AND p.empresa_id = $2
+        """,
+        imagen_id,
+        empresa_de(staff),
     )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Imagen no encontrada")
+        raise no_encontrado("Imagen no encontrada")
 
     async with conn.transaction():
         await conn.execute("DELETE FROM producto_imagen WHERE id = $1", imagen_id)
@@ -670,19 +729,26 @@ LEFT JOIN categoria padre ON padre.id = c.categoria_padre_id
 """
 
 
-async def _obtener_categoria(conn: asyncpg.Connection, categoria_id: UUID) -> CategoriaAdminOut:
-    fila = await conn.fetchrow(SELECT_CATEGORIA_ADMIN + "WHERE c.id = $1", categoria_id)
+async def _obtener_categoria(
+    conn: asyncpg.Connection, categoria_id: UUID, empresa_id: UUID
+) -> CategoriaAdminOut:
+    fila = await conn.fetchrow(
+        SELECT_CATEGORIA_ADMIN + "WHERE c.id = $1 AND c.empresa_id = $2", categoria_id, empresa_id
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Categoria no encontrada")
+        raise no_encontrado("Categoria no encontrada")
     return CategoriaAdminOut(**dict(fila))
 
 
 @router.get("/categorias", response_model=list[CategoriaAdminOut])
 async def listar_categorias(
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> list[CategoriaAdminOut]:
-    filas = await conn.fetch(SELECT_CATEGORIA_ADMIN + "ORDER BY c.orden, c.nombre")
+    filas = await conn.fetch(
+        SELECT_CATEGORIA_ADMIN + "WHERE c.empresa_id = $1 ORDER BY c.orden, c.nombre",
+        empresa_de(staff),
+    )
     return [CategoriaAdminOut(**dict(fila)) for fila in filas]
 
 
@@ -692,13 +758,15 @@ async def crear_categoria(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> CategoriaAdminOut:
+    empresa_id = empresa_de(staff)
+    await exigir_fila(conn, "categoria", body.categoria_padre_id, empresa_id, "La categoria padre no existe")
     async with conn.transaction():
-        slug = await _slug_unico(conn, "categoria", body.nombre)
+        slug = await _slug_unico(conn, "categoria", body.nombre, empresa_id)
         try:
             nueva_id = await conn.fetchval(
                 """
-                INSERT INTO categoria (categoria_padre_id, nombre, slug, imagen_url, orden)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO categoria (categoria_padre_id, nombre, slug, imagen_url, orden, empresa_id)
+                VALUES ($1, $2, $3, $4, $5, $6)
                 RETURNING id
                 """,
                 body.categoria_padre_id,
@@ -706,6 +774,7 @@ async def crear_categoria(
                 slug,
                 body.imagen_url,
                 body.orden,
+                empresa_id,
             )
         except asyncpg.ForeignKeyViolationError:
             raise HTTPException(
@@ -719,7 +788,7 @@ async def crear_categoria(
             accion="CREAR",
             datos_despues=body.model_dump(mode="json"),
         )
-    return await _obtener_categoria(conn, nueva_id)
+    return await _obtener_categoria(conn, nueva_id, empresa_id)
 
 
 @router.put("/categorias/{categoria_id}", response_model=CategoriaAdminOut)
@@ -729,17 +798,21 @@ async def actualizar_categoria(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_actualizar),
 ) -> CategoriaAdminOut:
-    antes = await _obtener_categoria(conn, categoria_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_categoria(conn, categoria_id, empresa_id)
     if body.categoria_padre_id == categoria_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Una categoria no puede ser su propia padre",
         )
+    await exigir_fila(conn, "categoria", body.categoria_padre_id, empresa_id, "La categoria padre no existe")
 
     async with conn.transaction():
         slug = antes.slug
         if body.nombre != antes.nombre:
-            slug = await _slug_unico(conn, "categoria", body.nombre, excluir_id=categoria_id)
+            slug = await _slug_unico(
+                conn, "categoria", body.nombre, empresa_id, excluir_id=categoria_id
+            )
         try:
             await conn.execute(
                 """
@@ -767,7 +840,7 @@ async def actualizar_categoria(
             datos_antes=antes.model_dump(mode="json"),
             datos_despues=body.model_dump(mode="json"),
         )
-    return await _obtener_categoria(conn, categoria_id)
+    return await _obtener_categoria(conn, categoria_id, empresa_id)
 
 
 @router.patch("/categorias/{categoria_id}/estado", response_model=CategoriaAdminOut)
@@ -777,7 +850,8 @@ async def cambiar_estado_categoria(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_cambiar_estado),
 ) -> CategoriaAdminOut:
-    antes = await _obtener_categoria(conn, categoria_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_categoria(conn, categoria_id, empresa_id)
 
     if not body.activa:
         activos = await conn.fetchval(
@@ -800,7 +874,7 @@ async def cambiar_estado_categoria(
             datos_antes={"activa": antes.activa},
             datos_despues={"activa": body.activa},
         )
-    return await _obtener_categoria(conn, categoria_id)
+    return await _obtener_categoria(conn, categoria_id, empresa_id)
 
 
 @router.post("/marcas", response_model=MarcaAdminOut, status_code=status.HTTP_201_CREATED)
@@ -812,9 +886,11 @@ async def crear_marca(
     try:
         async with conn.transaction():
             fila = await conn.fetchrow(
-                "INSERT INTO marca (nombre, logo_url) VALUES ($1, $2) RETURNING id, nombre, logo_url",
+                """INSERT INTO marca (nombre, logo_url, empresa_id) VALUES ($1, $2, $3)
+                   RETURNING id, nombre, logo_url""",
                 body.nombre,
                 body.logo_url,
+                empresa_de(staff),
             )
             await registrar_auditoria(
                 conn,
@@ -873,10 +949,14 @@ def _validar_promocion(body: PromocionIn) -> None:
         raise _error422("El alcance TEMPORADA necesita una temporada y ninguna categoria")
 
 
-async def _obtener_promocion(conn: asyncpg.Connection, promocion_id: UUID) -> PromocionAdminOut:
-    fila = await conn.fetchrow(SELECT_PROMOCION_ADMIN + "WHERE pr.id = $1", promocion_id)
+async def _obtener_promocion(
+    conn: asyncpg.Connection, promocion_id: UUID, empresa_id: UUID
+) -> PromocionAdminOut:
+    fila = await conn.fetchrow(
+        SELECT_PROMOCION_ADMIN + "WHERE pr.id = $1 AND pr.empresa_id = $2", promocion_id, empresa_id
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Promocion no encontrada")
+        raise no_encontrado("Promocion no encontrada")
     return PromocionAdminOut(**dict(fila))
 
 
@@ -884,12 +964,14 @@ async def _obtener_promocion(conn: asyncpg.Connection, promocion_id: UUID) -> Pr
 async def listar_promociones(
     activa: bool | None = Query(default=None),
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> list[PromocionAdminOut]:
     filas = await conn.fetch(
         SELECT_PROMOCION_ADMIN
-        + "WHERE ($1::boolean IS NULL OR pr.activa = $1) ORDER BY pr.fecha_inicio DESC, pr.nombre",
+        + """WHERE pr.empresa_id = $2 AND ($1::boolean IS NULL OR pr.activa = $1)
+             ORDER BY pr.fecha_inicio DESC, pr.nombre""",
         activa,
+        empresa_de(staff),
     )
     return [PromocionAdminOut(**dict(fila)) for fila in filas]
 
@@ -904,8 +986,11 @@ async def _guardar_promocion(
     codigo de cupon, auditoria y el manejo de las dos excepciones que puede tirar la base.
     `antes` se busca ANTES de validar (para que una edicion sobre un id inexistente siga dando
     404 y no un 422, igual que el resto de las entidades de este archivo)."""
-    antes = await _obtener_promocion(conn, promocion_id) if promocion_id else None
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_promocion(conn, promocion_id, empresa_id) if promocion_id else None
     _validar_promocion(body)
+    await exigir_fila(conn, "categoria", body.categoria_id, empresa_id, "La categoria no existe")
+    await exigir_fila(conn, "temporada", body.temporada_id, empresa_id, "La temporada no existe")
     codigo = body.codigo_cupon.strip().upper()
 
     try:
@@ -914,8 +999,10 @@ async def _guardar_promocion(
                 promocion_id = await conn.fetchval(
                     """
                     INSERT INTO promocion (nombre, codigo_cupon, tipo, valor, alcance, categoria_id,
-                                           temporada_id, monto_minimo, fecha_inicio, fecha_fin, uso_maximo)
-                    VALUES ($1, $2, $3::tipo_promocion, $4, $5::alcance_promocion, $6, $7, $8, $9, $10, $11)
+                                           temporada_id, monto_minimo, fecha_inicio, fecha_fin, uso_maximo,
+                                           empresa_id)
+                    VALUES ($1, $2, $3::tipo_promocion, $4, $5::alcance_promocion, $6, $7, $8, $9, $10, $11,
+                            $12)
                     RETURNING id
                     """,
                     body.nombre,
@@ -929,6 +1016,7 @@ async def _guardar_promocion(
                     body.fecha_inicio,
                     body.fecha_fin,
                     body.uso_maximo,
+                    empresa_id,
                 )
             else:
                 await conn.execute(
@@ -979,7 +1067,7 @@ async def crear_promocion(
     staff: dict = Depends(puede_crear),
 ) -> PromocionAdminOut:
     nueva_id = await _guardar_promocion(conn, staff, body)
-    return await _obtener_promocion(conn, nueva_id)
+    return await _obtener_promocion(conn, nueva_id, empresa_de(staff))
 
 
 @router.put("/promociones/{promocion_id}", response_model=PromocionAdminOut)
@@ -990,7 +1078,7 @@ async def actualizar_promocion(
     staff: dict = Depends(puede_actualizar),
 ) -> PromocionAdminOut:
     await _guardar_promocion(conn, staff, body, promocion_id)
-    return await _obtener_promocion(conn, promocion_id)
+    return await _obtener_promocion(conn, promocion_id, empresa_de(staff))
 
 
 @router.patch("/promociones/{promocion_id}/estado", response_model=PromocionAdminOut)
@@ -1000,7 +1088,8 @@ async def cambiar_estado_promocion(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_cambiar_estado),
 ) -> PromocionAdminOut:
-    antes = await _obtener_promocion(conn, promocion_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener_promocion(conn, promocion_id, empresa_id)
     async with conn.transaction():
         await conn.execute("UPDATE promocion SET activa = $2 WHERE id = $1", promocion_id, body.activa)
         await registrar_auditoria(
@@ -1012,7 +1101,7 @@ async def cambiar_estado_promocion(
             datos_antes={"activa": antes.activa},
             datos_despues={"activa": body.activa},
         )
-    return await _obtener_promocion(conn, promocion_id)
+    return await _obtener_promocion(conn, promocion_id, empresa_id)
 
 
 # ---------------------------------------------------------------------
@@ -1020,7 +1109,9 @@ async def cambiar_estado_promocion(
 # ---------------------------------------------------------------------
 
 
-async def _obtener_variante(conn: asyncpg.Connection, variante_id: UUID) -> VarianteAdminOut:
+async def _obtener_variante(
+    conn: asyncpg.Connection, variante_id: UUID, empresa_id: UUID
+) -> VarianteAdminOut:
     fila = await conn.fetchrow(
         """
         SELECT pv.id, pv.sku, pv.codigo_barras, pv.talla_id, t.codigo AS talla,
@@ -1036,11 +1127,13 @@ async def _obtener_variante(conn: asyncpg.Connection, variante_id: UUID) -> Vari
             FROM inventario i WHERE i.variante_id = pv.id
         ) inv ON true
         WHERE pv.id = $1
+          AND EXISTS (SELECT 1 FROM producto p WHERE p.id = pv.producto_id AND p.empresa_id = $2)
         """,
         variante_id,
+        empresa_id,
     )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Variante no encontrada")
+        raise no_encontrado("Variante no encontrada")
     return VarianteAdminOut(**dict(fila))
 
 

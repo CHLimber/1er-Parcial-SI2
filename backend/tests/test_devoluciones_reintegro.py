@@ -16,12 +16,12 @@ from app.core.deps import get_cajero_actual
 from app.main import app
 from app.modules.devoluciones import router as devoluciones_router
 from app.modules.pagos import servicio
-from tests.conexion_falsa import ConexionFalsa
+from tests.conexion_falsa import EMPRESA, ConexionFalsa, staff
 
 SUCURSAL = uuid4()
 DEVOLUCION = uuid4()
 VENTA = uuid4()
-ADMIN = {"id": uuid4(), "permisos": ["sucursales.actualizar"], "sucursal_id": None}
+ADMIN = staff(permisos=["sucursales.actualizar"])
 
 
 @pytest.fixture
@@ -172,7 +172,7 @@ def test_aprobar_devolucion_con_tarjeta_de_caja_no_llama_a_stripe(cliente, monke
 def _entregar(cliente, venta: dict | None):
     conn = ConexionFalsa({"FROM venta\n            WHERE id = $1 AND sucursal_id = $2": venta})
     respuesta = cliente(
-        conn, {get_cajero_actual: lambda: {"usuario_id": uuid4(), "sucursal_id": SUCURSAL}}
+        conn, {get_cajero_actual: lambda: {"usuario_id": uuid4(), "sucursal_id": SUCURSAL, "empresa_id": EMPRESA}}
     ).post(f"/caja/pedidos/{VENTA}/entregar")
     return respuesta, conn
 

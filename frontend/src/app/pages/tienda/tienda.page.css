@@ -552,3 +552,14 @@
     padding: 0.3rem 0.7rem;
   }
 }
+
+/* Multi-tenant: selector de tienda de la clienta, al lado de la marca */
+.cabecera__tienda {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--paper-line);
+  background: var(--paper);
+  color: var(--ink);
+  max-width: 12rem;
+}

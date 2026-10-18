@@ -1,0 +1,172 @@
+<app-panel-shell
+  titulo="Sincronización"
+  bajada="Las ventas y reservas registradas sin conexión que llegaron al servidor: cuáles se confirmaron, cuáles se rechazaron y cuáles esperan una decisión."
+>
+  <div class="barra">
+    @if (eligeSucursal) {
+      <div class="campo">
+        <label for="sucursal">Sucursal</label>
+        <select id="sucursal" [(ngModel)]="sucursalId" name="sucursal" (change)="cargar()">
+          <option value="">Todas</option>
+          @for (s of sucursales(); track s.id) {
+            <option [value]="s.id">{{ s.nombre }}</option>
+          }
+        </select>
+      </div>
+    }
+    <div class="campo">
+      <label for="estado">Estado</label>
+      <select id="estado" [(ngModel)]="filtroEstado" name="estado" (change)="cargar()">
+        <option value="">Todos</option>
+        <option value="CONFIRMADA">Confirmadas</option>
+        <option value="RECHAZADA">Rechazadas</option>
+        <option value="CONFLICTO">En conflicto</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="desde">Recibidas desde</label>
+      <input id="desde" type="date" [(ngModel)]="desde" name="desde" (change)="cargar()" />
+    </div>
+    <label class="campo__casilla">
+      <input type="checkbox" [(ngModel)]="soloAbiertas" name="soloAbiertas" (change)="cargar()" />
+      Solo conflictos sin resolver
+    </label>
+    <span class="barra__espacio"></span>
+    <button type="button" class="boton boton--secundario" (click)="cargar()">Actualizar</button>
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="kpis-sync">
+    <span class="badge badge--ok">{{ resumen().confirmadas }} confirmada(s)</span>
+    <span class="badge badge--baja">{{ resumen().rechazadas }} rechazada(s)</span>
+    <span class="badge badge--alerta">{{ resumen().conflictos }} conflicto(s) abierto(s)</span>
+    <span class="badge">{{ resumen().duplicadas }} reenviada(s) más de una vez</span>
+  </div>
+
+  <div class="columnas columnas--detalle">
+    <section class="panel">
+      <h2 class="panel__titulo">Operaciones ({{ operaciones().length }})</h2>
+      @if (cargando()) {
+        <p class="estado">Cargando…</p>
+      } @else if (operaciones().length === 0) {
+        <p class="estado">Todavía no llegó ninguna operación offline con esos filtros.</p>
+      } @else {
+        <ul class="lista">
+          @for (o of operaciones(); track o.id) {
+            <li>
+              <button type="button" class="tarjeta" [class.tarjeta--activa]="seleccionada()?.id === o.id" (click)="abrir(o)">
+                <span class="tarjeta__numero">
+                  {{ o.tipo === 'VENTA' ? 'Venta' : 'Reserva' }} · {{ fecha(o.registrada_en) }}
+                </span>
+                <span class="tarjeta__proveedor">{{ o.usuario }} · {{ o.sucursal }}</span>
+                <span class="tarjeta__meta">
+                  <span
+                    class="badge"
+                    [class.badge--ok]="o.estado === 'CONFIRMADA'"
+                    [class.badge--baja]="o.estado === 'RECHAZADA'"
+                    [class.badge--alerta]="o.estado === 'CONFLICTO'"
+                  >{{ etiquetas[o.estado] }}{{ o.estado === 'CONFLICTO' && o.resuelta_en ? ' (resuelto)' : '' }}</span>
+                  {{ detalle(o) }}
+                </span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="panel">
+      @if (aviso()) {
+        <p class="exito">{{ aviso() }}</p>
+      }
+      @if (seleccionada(); as o) {
+        <h2 class="panel__titulo">{{ o.tipo === 'VENTA' ? 'Venta' : 'Reserva' }} offline</h2>
+        <dl class="ficha">
+          <dt>Id de la operación</dt>
+          <dd class="mono">{{ o.id }}</dd>
+          <dt>Estado</dt>
+          <dd>{{ etiquetas[o.estado] }}</dd>
+          @if (o.codigo_motivo) {
+            <dt>Motivo</dt>
+            <dd><span class="mono">{{ o.codigo_motivo }}</span> — {{ o.motivo }}</dd>
+          }
+          <dt>Registrada en el dispositivo</dt>
+          <dd>{{ fecha(o.registrada_en) }} por {{ o.usuario }}</dd>
+          <dt>Recibida por el servidor</dt>
+          <dd>{{ fecha(o.recibida_en) }} · {{ o.intentos }} envío(s)</dd>
+          @if (resultadoTexto(o); as numero) {
+            <dt>Generó</dt>
+            <dd class="mono">{{ numero }}</dd>
+          }
+          @if (o.resuelta_en) {
+            <dt>Resolución</dt>
+            <dd>{{ fecha(o.resuelta_en) }} · {{ o.resolucion }}</dd>
+          }
+        </dl>
+
+        <h3 class="panel__titulo">Detalle enviado</h3>
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Variante</th>
+                <th class="tabla__numero">Cantidad</th>
+                @if (o.payload.venta) {
+                  <th class="tabla__numero">Precio usado</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @if (o.payload.venta) {
+                @for (i of o.payload.venta.items; track i.variante_id) {
+                  <tr>
+                    <td class="mono">{{ i.variante_id.slice(0, 8) }}</td>
+                    <td class="tabla__numero">{{ i.cantidad }}</td>
+                    <td class="tabla__numero">Bs {{ +i.precio_unitario | number: '1.2-2' }}</td>
+                  </tr>
+                }
+              } @else if (o.payload.reserva) {
+                @for (i of o.payload.reserva.items; track i.variante_id) {
+                  <tr>
+                    <td class="mono">{{ i.variante_id.slice(0, 8) }}</td>
+                    <td class="tabla__numero">{{ i.cantidad }}</td>
+                  </tr>
+                }
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (o.estado === 'CONFLICTO' && !o.resuelta_en) {
+          <div class="formulario">
+            <div class="campo">
+              <label for="nota">Nota (opcional)</label>
+              <input id="nota" type="text" maxlength="250" [(ngModel)]="nota" name="nota"
+                placeholder="Ej.: se devolvió el efectivo a la clienta" />
+            </div>
+            <div class="acciones">
+              <button type="button" class="boton" [disabled]="ocupado()" (click)="resolver('REINTENTAR')">Reintentar</button>
+              @if (puedeResolver) {
+                @if (o.codigo_motivo === 'PRECIO_CAMBIADO') {
+                  <button type="button" class="boton boton--secundario" [disabled]="ocupado()"
+                    (click)="resolver('ACEPTAR_PRECIO_ACTUAL')">Aceptar el precio actual</button>
+                }
+                <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="resolver('DESCARTAR')">
+                  Descartar
+                </button>
+              }
+            </div>
+            <p class="campo__ayuda">
+              Reintentar vuelve a procesarla tal cual (por ejemplo, después de abrir la caja o de que entró stock).
+            </p>
+          </div>
+        }
+      } @else {
+        <p class="estado">Elegí una operación para ver el detalle.</p>
+      }
+    </section>
+  </div>
+</app-panel-shell>

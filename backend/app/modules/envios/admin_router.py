@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.tenant import empresa_de, es_admin_empresa, no_encontrado
 from app.modules.envios.admin_schemas import (
     CambioEstadoIn,
     EnvioAdminDetalleOut,
@@ -61,8 +62,8 @@ LEFT JOIN usuario c ON c.id = v.usuario_id
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
-    """Un ADMIN (el que puede editar sucursales) ve todas; el resto solo la suya."""
-    if "sucursales.actualizar" in staff["permisos"]:
+    """El ADMIN de la empresa ve todas las de su empresa (None); el resto solo la suya."""
+    if es_admin_empresa(staff):
         return None
     if staff["sucursal_id"] is None:
         raise HTTPException(
@@ -100,9 +101,11 @@ def _a_salida(fila: asyncpg.Record) -> EnvioAdminOut:
 
 
 async def _obtener(conn: asyncpg.Connection, envio_id: UUID, staff: dict) -> asyncpg.Record:
-    fila = await conn.fetchrow(SELECT_ENVIO + " WHERE e.id = $1", envio_id)
+    fila = await conn.fetchrow(
+        SELECT_ENVIO + " WHERE e.id = $1 AND s.empresa_id = $2", envio_id, empresa_de(staff)
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Envio no encontrado")
+        raise no_encontrado("Envio no encontrado")
 
     limite = _sucursal_visible(staff)
     if limite is not None and fila["sucursal_id"] != limite:
@@ -128,8 +131,9 @@ async def listar_envios(
         )
     sucursal_filtro = limite_sucursal if limite_sucursal is not None else sucursal_id
 
-    condiciones = []
-    parametros: list = []
+    # multi-tenant: siempre dentro de la empresa del usuario
+    parametros: list = [empresa_de(staff)]
+    condiciones = ["s.empresa_id = $1"]
 
     if sucursal_filtro is not None:
         parametros.append(sucursal_filtro)
@@ -177,8 +181,10 @@ async def resumen(
             count(*) FILTER (WHERE estado = 'FALLIDO')                              AS fallidos
         FROM envio
         WHERE ($1::uuid IS NULL OR sucursal_id = $1::uuid)
+          AND sucursal_id IN (SELECT id FROM sucursal WHERE empresa_id = $2)
         """,
         sucursal_filtro,
+        empresa_de(staff),
     )
     return ResumenEnviosOut(
         pendientes=fila["pendientes"],

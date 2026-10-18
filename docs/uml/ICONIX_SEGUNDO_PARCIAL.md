@@ -30,7 +30,11 @@ Clases nuevas (en rosa en el diagrama): `Plan`, `Suscripcion`, `PagoSuscripcion`
 número de nota, el motivo estructurado y las condiciones; `DevolucionDetalle` gana la variante
 solicitada a cambio; `Configuracion` gana `cambio_plazo_dias`.
 
-Decisión de diseño: **tenant = sucursal**, tal como lo pide la consigna. Cada sucursal tiene su
+> **Superado el 18/10/2026:** la especificación técnica del SaaS dice que una sucursal *no* es un
+> tenant. Ahora el tenant es la **empresa**: ver `ICONIX_SAAS_MULTITENANT.md` y el diagrama `23`.
+> El párrafo siguiente queda como historia de la decisión.
+
+Decisión de diseño (primera versión): **tenant = sucursal**, tal como lo pide la consigna. Cada sucursal tiene su
 suscripción y su cartera de clientas. El catálogo es de la cadena, porque lo provee la casa
 matriz; así los traspasos y los reportes de varias sucursales siguen funcionando.
 

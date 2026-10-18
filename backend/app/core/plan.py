@@ -1,17 +1,20 @@
-"""SaaS: que puede usar cada tenant segun su plan (Segundo parcial, PENDIENTES 5.4 a 5.6).
+"""SaaS: que puede usar cada tenant segun su plan (segundo parcial, Modulo A).
 
-Tenant = sucursal. Cada una tiene una fila en `suscripcion` con su `plan`; el plan dice que
-funciones de gestion habilita (columnas booleanas de `plan`: perfiles_clientes, traspasos,
-ia_reportes) y cuanto personal y cuantas cajas admite (max_empleados / max_cajas, NULL = sin
-limite). Una suscripcion vencida (vence_en pasado, o estado VENCIDA/CANCELADA) bloquea esas
-funciones con 402 hasta que se renueve.
+Tenant = EMPRESA. Cada una tiene una fila en `suscripcion` con su `plan`; el plan dice que
+funciones habilita (columnas booleanas de `plan`: perfiles_clientes, traspasos,
+operacion_offline, reportes, ia_reportes, analitica_ml) y cuantos recursos admite
+(max_sucursales / max_empleados / max_cajas, NULL = sin limite). Todo eso es dato: el
+SUPERADMIN lo edita con PUT /saas/planes/{codigo} y rige en el request siguiente.
 
-El ADMIN (el que puede editar sucursales, mismo criterio que recepciones/traspasos) es el dueño
-de la plataforma: no esta atado al plan de ninguna sucursal.
+Politica de suscripcion vencida (RN06): una suscripcion vencida (vence_en pasado, o estado
+VENCIDA/CANCELADA) bloquea con 402 las funciones de gestion que pasan por
+requiere_funcion_plan y la sincronizacion de operaciones offline registradas despues del
+vencimiento. El personal igual puede entrar, ver su plan y renovarlo. La tienda publica y lo ya
+comprado por las clientas no se cortan: no se castiga a la clienta por una deuda de la empresa.
 
 `requiere_funcion_plan` combina el chequeo de permiso de CU13 con el del plan, asi un endpoint
 reemplaza su `requiere_permiso(...)` por `requiere_funcion_plan("traspasos", ...)` sin cambiar
-nada mas.
+nada mas. El SUPERADMIN no depende de ningun plan (no es de ninguna empresa).
 """
 
 from datetime import datetime, timezone
@@ -27,27 +30,41 @@ from app.core.deps import requiere_permiso
 FUNCIONES_PLAN = {
     "perfiles_clientes": "el perfil de clientas",
     "traspasos": "los traspasos entre sucursales",
-    "ia_reportes": "los reportes con IA",
+    "operacion_offline": "la operacion sin conexion",
+    "reportes": "los reportes",
+    "ia_reportes": "los reportes generativos con IA",
+    "analitica_ml": "la analitica con machine learning",
 }
 
-SELECT_PLAN_SUCURSAL = """
+RECURSOS_PLAN = {
+    "sucursales": "max_sucursales",
+    "empleados": "max_empleados",
+    "cajas": "max_cajas",
+}
+
+SELECT_PLAN_EMPRESA = """
 SELECT su.id AS suscripcion_id, su.estado::text AS estado, su.vence_en, su.inicio,
        p.id AS plan_id, p.codigo AS plan_codigo, p.nombre AS plan_nombre,
-       p.precio_mensual, p.max_empleados, p.max_cajas,
-       p.perfiles_clientes, p.traspasos, p.ia_reportes
+       p.precio_mensual, p.max_sucursales, p.max_empleados, p.max_cajas,
+       p.perfiles_clientes, p.traspasos, p.operacion_offline, p.reportes, p.ia_reportes,
+       p.analitica_ml
 FROM suscripcion su
 JOIN plan p ON p.id = su.plan_id
-WHERE su.sucursal_id = $1
+WHERE su.empresa_id = $1
 """
-
-
-def es_admin_plataforma(staff: dict) -> bool:
-    return "sucursales.actualizar" in staff["permisos"]
 
 
 def esta_vigente(plan: dict | asyncpg.Record, ahora: datetime | None = None) -> bool:
     ahora = ahora or datetime.now(timezone.utc)
     return plan["estado"] in ("PRUEBA", "ACTIVA") and plan["vence_en"] > ahora
+
+
+def funciones_habilitadas(plan: dict | asyncpg.Record | None) -> list[str]:
+    """Las funciones que el plan incluye y se pueden usar hoy (vacia si vencio). Viaja en
+    UsuarioOut para que web y movil oculten lo que la API igual rechazaria."""
+    if plan is None or not esta_vigente(plan):
+        return []
+    return [f for f in FUNCIONES_PLAN if plan[f]]
 
 
 def evaluar_acceso(
@@ -61,13 +78,13 @@ def evaluar_acceso(
     if plan is None:
         return (
             status.HTTP_402_PAYMENT_REQUIRED,
-            "Tu sucursal no tiene una suscripcion: elegi un plan en Mi suscripcion",
+            "Tu empresa no tiene una suscripcion: elegi un plan en Mi suscripcion",
         )
     if not esta_vigente(plan, ahora):
         vence = plan["vence_en"].strftime("%d/%m/%Y")
         return (
             status.HTTP_402_PAYMENT_REQUIRED,
-            f"La suscripcion de tu sucursal vencio el {vence}: renovala en Mi suscripcion",
+            f"La suscripcion de tu empresa vencio el {vence}: renovala en Mi suscripcion",
         )
     if funcion is not None and not plan[funcion]:
         sugerencia = f"; esta incluido desde el plan {plan_minimo}" if plan_minimo else ""
@@ -78,8 +95,8 @@ def evaluar_acceso(
     return None
 
 
-async def plan_de_sucursal(conn: asyncpg.Connection, sucursal_id: UUID) -> asyncpg.Record | None:
-    return await conn.fetchrow(SELECT_PLAN_SUCURSAL, sucursal_id)
+async def plan_de_empresa(conn: asyncpg.Connection, empresa_id: UUID) -> asyncpg.Record | None:
+    return await conn.fetchrow(SELECT_PLAN_EMPRESA, empresa_id)
 
 
 async def _plan_minimo(conn: asyncpg.Connection, funcion: str) -> str | None:
@@ -89,20 +106,11 @@ async def _plan_minimo(conn: asyncpg.Connection, funcion: str) -> str | None:
     )
 
 
-async def exigir_funcion(
-    conn: asyncpg.Connection, staff: dict, funcion: str | None, sucursal_id: UUID | None = None
+async def exigir_funcion_empresa(
+    conn: asyncpg.Connection, empresa_id: UUID, funcion: str | None
 ) -> None:
-    """Corta con 402/403 si la sucursal (la del empleado, o la indicada) no puede usar la
-    funcion. El ADMIN de la plataforma pasa siempre."""
-    if es_admin_plataforma(staff):
-        return
-    sucursal = sucursal_id or staff["sucursal_id"]
-    if sucursal is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    plan = await plan_de_sucursal(conn, sucursal)
+    """Corta con 402/403 si la empresa no puede usar la funcion."""
+    plan = await plan_de_empresa(conn, empresa_id)
     bloqueo = evaluar_acceso(plan, funcion)
     if bloqueo is None:
         return
@@ -112,8 +120,15 @@ async def exigir_funcion(
     raise HTTPException(status_code=bloqueo[0], detail=bloqueo[1])
 
 
+async def exigir_funcion(conn: asyncpg.Connection, staff: dict, funcion: str | None) -> None:
+    """Version para el personal: la empresa es la del usuario. La plataforma pasa siempre."""
+    if staff.get("empresa_id") is None:
+        return
+    await exigir_funcion_empresa(conn, staff["empresa_id"], funcion)
+
+
 def requiere_funcion_plan(funcion: str | None, *codigos: str):
-    """Permiso de CU13 (uno de `codigos`) + plan del tenant que habilite `funcion` y este al
+    """Permiso de CU13 (uno de `codigos`) + plan de la empresa que habilite `funcion` y este al
     dia. funcion=None solo exige la suscripcion vigente."""
     if funcion is not None and funcion not in FUNCIONES_PLAN:
         raise ValueError(f"Funcion de plan desconocida: {funcion}")
@@ -129,31 +144,47 @@ def requiere_funcion_plan(funcion: str | None, *codigos: str):
     return verificar
 
 
-async def exigir_limite(conn: asyncpg.Connection, sucursal_id: UUID, recurso: str) -> None:
-    """recurso: 'empleados' o 'cajas'. 409 si el plan de la sucursal ya llego a su tope."""
-    plan = await plan_de_sucursal(conn, sucursal_id)
+async def uso_de_empresa(conn: asyncpg.Connection, empresa_id: UUID) -> dict[str, int]:
+    fila = await conn.fetchrow(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM sucursal s WHERE s.empresa_id = $1 AND s.activa)::int AS sucursales,
+          (SELECT COUNT(*) FROM empleado e
+             JOIN usuario u  ON u.id = e.usuario_id
+             JOIN sucursal s ON s.id = e.sucursal_id
+            WHERE s.empresa_id = $1 AND e.activo AND u.activo)::int AS empleados,
+          (SELECT COUNT(*) FROM caja c JOIN sucursal s ON s.id = c.sucursal_id
+            WHERE s.empresa_id = $1 AND c.activa)::int AS cajas
+        """,
+        empresa_id,
+    )
+    return dict(fila)
+
+
+def evaluar_limite(plan: dict | asyncpg.Record | None, recurso: str, actuales: int) -> str | None:
+    """Mensaje de rechazo si agregar uno mas pasaria el tope del plan; None si entra. Pura,
+    para probar las reglas sin base."""
     if plan is None:
-        return  # sucursal sin suscripcion (base vieja): no se limita
-    tope = plan["max_empleados"] if recurso == "empleados" else plan["max_cajas"]
-    if tope is None:
-        return
-    if recurso == "empleados":
-        actuales = await conn.fetchval(
-            """
-            SELECT COUNT(*) FROM empleado e JOIN usuario u ON u.id = e.usuario_id
-             WHERE e.sucursal_id = $1 AND e.activo AND u.activo
-            """,
-            sucursal_id,
-        )
-    else:
-        actuales = await conn.fetchval(
-            "SELECT COUNT(*) FROM caja WHERE sucursal_id = $1 AND activa", sucursal_id
-        )
-    if actuales >= tope:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"El plan {plan['plan_nombre']} de la sucursal admite hasta {tope} {recurso}: "
-                "subi de plan para agregar mas"
-            ),
-        )
+        return None  # empresa sin suscripcion (base vieja): no se limita
+    tope = plan[RECURSOS_PLAN[recurso]]
+    if tope is None or actuales < tope:
+        return None
+    return (
+        f"El plan {plan['plan_nombre']} de tu empresa admite hasta {tope} {recurso} activas: "
+        "subi de plan para agregar mas"
+        if recurso == "sucursales"
+        else f"El plan {plan['plan_nombre']} de tu empresa admite hasta {tope} {recurso}: "
+        "subi de plan para agregar mas"
+    )
+
+
+async def exigir_limite(conn: asyncpg.Connection, empresa_id: UUID, recurso: str) -> None:
+    """recurso: 'sucursales', 'empleados' o 'cajas'. 409 si el plan de la empresa ya llego a
+    su tope (RN04). Se llama antes de dar de alta o de reactivar."""
+    if recurso not in RECURSOS_PLAN:
+        raise ValueError(f"Recurso de plan desconocido: {recurso}")
+    plan = await plan_de_empresa(conn, empresa_id)
+    uso = await uso_de_empresa(conn, empresa_id)
+    rechazo = evaluar_limite(plan, recurso, uso[recurso])
+    if rechazo is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=rechazo)

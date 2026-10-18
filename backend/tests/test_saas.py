@@ -1,5 +1,6 @@
-"""SaaS (Segundo parcial, PENDIENTES 5.4 a 5.7): reglas del plan del tenant, periodo de la
-suscripcion al pagar y segmento sugerido de la clienta. Sin Postgres ni Stripe."""
+"""SaaS (segundo parcial, Modulo A): reglas del plan de la empresa (tenant), periodo de la
+suscripcion al pagar y segmento sugerido de la clienta. Sin Postgres ni Stripe. El aislamiento
+entre empresas y los topes del plan estan en tests/test_multitenant.py."""
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -14,7 +15,7 @@ from app.core.plan import evaluar_acceso
 from app.main import app
 from app.modules.clientes.router import segmento_sugerido
 from app.modules.saas.servicio import nuevo_periodo, sumar_meses
-from tests.conexion_falsa import ConexionFalsa
+from tests.conexion_falsa import ConexionFalsa, staff
 
 AHORA = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
 
@@ -23,6 +24,7 @@ def _plan(**cambios) -> dict:
     plan = {
         "estado": "ACTIVA", "vence_en": AHORA + timedelta(days=10), "plan_nombre": "Basico",
         "perfiles_clientes": False, "traspasos": False, "ia_reportes": False,
+        "operacion_offline": True, "reportes": True, "analitica_ml": False,
     }
     plan.update(cambios)
     return plan
@@ -36,9 +38,12 @@ def test_plan_vigente_que_incluye_la_funcion_pasa():
 
 
 def test_plan_que_no_incluye_la_funcion_da_403_con_el_plan_minimo():
-    codigo, detalle = evaluar_acceso(_plan(), "ia_reportes", "Premium", ahora=AHORA)
+    codigo, detalle = evaluar_acceso(_plan(), "ia_reportes", "Profesional", ahora=AHORA)
     assert codigo == 403
-    assert detalle == "Tu plan Basico no incluye los reportes con IA; esta incluido desde el plan Premium"
+    assert detalle == (
+        "Tu plan Basico no incluye los reportes generativos con IA; "
+        "esta incluido desde el plan Profesional"
+    )
 
 
 def test_suscripcion_vencida_da_402_aunque_el_estado_diga_activa():
@@ -57,7 +62,7 @@ def test_en_prueba_se_puede_usar_lo_del_plan():
     assert evaluar_acceso(_plan(estado="PRUEBA"), None, ahora=AHORA) is None
 
 
-def test_sucursal_sin_suscripcion_da_402():
+def test_empresa_sin_suscripcion_da_402():
     assert evaluar_acceso(None, "traspasos", ahora=AHORA)[0] == 402
 
 
@@ -109,8 +114,8 @@ def cliente():
     app.dependency_overrides.clear()
 
 
-def test_encargado_con_plan_basico_no_ve_sugerencias_de_traspaso(cliente):
-    encargado = {"id": uuid4(), "permisos": ["traspasos.leer"], "sucursal_id": uuid4()}
+def test_encargado_con_plan_sin_traspasos_no_ve_sugerencias(cliente):
+    encargado = staff(permisos=["traspasos.leer"], sucursal_id=uuid4())
     conn = ConexionFalsa(
         {
             "FROM suscripcion su": _plan() | {"plan_nombre": "Basico"},
@@ -128,14 +133,30 @@ def test_encargado_con_plan_basico_no_ve_sugerencias_de_traspaso(cliente):
     assert "desde el plan Profesional" in respuesta.json()["detail"]
 
 
-def test_el_admin_de_la_plataforma_no_depende_del_plan(cliente):
-    admin = {"id": uuid4(), "permisos": ["traspasos.leer", "sucursales.actualizar"], "sucursal_id": None}
+def test_el_admin_de_empresa_con_un_plan_que_lo_incluye_pasa(cliente):
+    admin = staff(permisos=["traspasos.leer", "sucursales.actualizar"])
 
     async def _conn():
-        yield ConexionFalsa({})
+        yield ConexionFalsa({"FROM suscripcion su": _plan(traspasos=True)})
 
     app.dependency_overrides[get_connection] = _conn
     app.dependency_overrides[get_staff_actual] = lambda: admin
     respuesta = TestClient(app, raise_server_exceptions=False).get("/traspasos/sugerencias")
     assert respuesta.status_code == 200
     assert respuesta.json() == []
+
+
+def test_el_admin_de_empresa_tambien_depende_del_plan(cliente):
+    """Antes (tenant = sucursal) el ADMIN de la cadena saltaba el plan; ahora es el admin de UNA
+    empresa y su plan lo alcanza igual que a su personal."""
+    admin = staff(permisos=["traspasos.leer", "sucursales.actualizar"])
+
+    async def _conn():
+        yield ConexionFalsa(
+            {"FROM suscripcion su": _plan(vence_en=AHORA - timedelta(days=1))}
+        )
+
+    app.dependency_overrides[get_connection] = _conn
+    app.dependency_overrides[get_staff_actual] = lambda: admin
+    respuesta = TestClient(app, raise_server_exceptions=False).get("/traspasos/sugerencias")
+    assert respuesta.status_code == 402

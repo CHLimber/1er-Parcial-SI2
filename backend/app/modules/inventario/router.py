@@ -5,6 +5,8 @@ permiso inventario.actualizar ya estaba sembrado para ADMIN, ENCARGADO y ALMACEN
 ahora ningun endpoint lo disparaba: era la unica forma de corregir un kardex (append-only, ver
 CLAUDE.md) que la aplicacion no exponia. Este modulo no escribe cantidad_fisica/cantidad_reservada
 directamente en ningun momento -- todo pasa por fn_mover_inventario, igual que recepciones.
+
+Multi-tenant: la sucursal y la prenda tienen que ser de la empresa del usuario (404 si no).
 """
 
 from uuid import UUID
@@ -15,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.tenant import empresa_de, es_admin_empresa, exigir_sucursal, exigir_variantes
 from app.modules.inventario.schemas import (
     AjusteIn,
     AjusteOut,
@@ -29,9 +32,9 @@ puede_ajustar = requiere_permiso("inventario.actualizar")
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
-    """Mismo criterio que recepciones.py: un ADMIN (el que puede editar sucursales) ve y
-    ajusta todas; el resto solo la suya."""
-    if "sucursales.actualizar" in staff["permisos"]:
+    """Mismo criterio que recepciones.py: el ADMIN de la empresa ve y ajusta todas las de su
+    empresa; el resto solo la suya."""
+    if es_admin_empresa(staff):
         return None
     if staff["sucursal_id"] is None:
         raise HTTPException(
@@ -41,7 +44,9 @@ def _sucursal_visible(staff: dict) -> UUID | None:
     return staff["sucursal_id"]
 
 
-def _resolver_sucursal(sucursal_id: UUID | None, staff: dict) -> UUID:
+async def _resolver_sucursal(
+    conn: asyncpg.Connection, sucursal_id: UUID | None, staff: dict
+) -> UUID:
     limite = _sucursal_visible(staff)
     destino = sucursal_id or limite or staff["sucursal_id"]
     if destino is None:
@@ -52,6 +57,7 @@ def _resolver_sucursal(sucursal_id: UUID | None, staff: dict) -> UUID:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Esa sucursal no es la tuya"
         )
+    await exigir_sucursal(conn, destino, empresa_de(staff))
     return destino
 
 
@@ -64,7 +70,7 @@ async def buscar_variantes(
 ) -> list[VarianteBuscadaOut]:
     """Buscador para elegir que ajustar, con el saldo actual de la sucursal destino a la vista
     (mismo patron que recepciones.buscar_variantes)."""
-    destino = _resolver_sucursal(sucursal_id, staff)
+    destino = await _resolver_sucursal(conn, sucursal_id, staff)
 
     filas = await conn.fetch(
         """
@@ -80,7 +86,7 @@ async def buscar_variantes(
         JOIN color c     ON c.id = pv.color_id
         JOIN sucursal s  ON s.id = $2
         LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
-        WHERE pv.activa AND pr.activo
+        WHERE pv.activa AND pr.activo AND pr.empresa_id = s.empresa_id
           AND (pv.sku ILIKE '%' || $1 || '%'
                OR pv.codigo_barras ILIKE '%' || $1 || '%'
                OR pr.nombre ILIKE '%' || $1 || '%')
@@ -103,7 +109,8 @@ async def kardex_de_variante(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[MovimientoKardexOut]:
-    _resolver_sucursal(sucursal_id, staff)
+    await _resolver_sucursal(conn, sucursal_id, staff)
+    await exigir_variantes(conn, [variante_id], empresa_de(staff))
 
     filas = await conn.fetch(
         """
@@ -138,7 +145,8 @@ async def registrar_ajuste(
     saldo_anterior/saldo_nuevo como cantidad_fisica cruda, no como disponible (fisico -
     reservado) -- correcto para este caso, porque el numero que le importa a quien ajusta es el
     fisico que acaba de contar, no uno que reste lo reservado."""
-    _resolver_sucursal(body.sucursal_id, staff)
+    await _resolver_sucursal(conn, body.sucursal_id, staff)
+    await exigir_variantes(conn, [body.variante_id], empresa_de(staff))
 
     try:
         async with conn.transaction():

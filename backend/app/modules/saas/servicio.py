@@ -32,7 +32,7 @@ async def aplicar_pago(conn: asyncpg.Connection, pago_id: UUID, id_transaccion: 
         pago = await conn.fetchrow(
             """
             SELECT ps.id, ps.suscripcion_id, ps.plan_id, ps.meses, ps.estado::text AS estado,
-                   su.vence_en, su.sucursal_id
+                   su.vence_en, su.empresa_id
             FROM pago_suscripcion ps
             JOIN suscripcion su ON su.id = ps.suscripcion_id
             WHERE ps.id = $1
@@ -65,17 +65,20 @@ async def aplicar_pago(conn: asyncpg.Connection, pago_id: UUID, id_transaccion: 
             pago["plan_id"],
             hasta,
         )
-        # Aviso al personal con permiso de suscripcion de la sucursal (mismo canal que el resto)
+        # Aviso al personal de la empresa que puede gestionar la suscripcion (mismo canal que el
+        # resto de las notificaciones)
         await conn.execute(
             """
             INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje)
-            SELECT e.usuario_id, 'SUSCRIPCION', 'Suscripcion renovada',
+            SELECT u.id, 'SUSCRIPCION', 'Suscripcion renovada',
                    'El pago de la suscripcion se aprobo. Vigente hasta el '
                    || to_char($2::timestamptz, 'DD/MM/YYYY') || '.'
-              FROM empleado e
-             WHERE e.sucursal_id = $1 AND e.activo AND e.cargo = 'ENCARGADO'
+              FROM usuario u
+              JOIN rol_permiso rp ON rp.rol_id = u.rol_id
+              JOIN permiso p      ON p.id = rp.permiso_id AND p.codigo = 'suscripciones.actualizar'
+             WHERE u.empresa_id = $1 AND u.activo
             """,
-            pago["sucursal_id"],
+            pago["empresa_id"],
             hasta,
         )
     return True

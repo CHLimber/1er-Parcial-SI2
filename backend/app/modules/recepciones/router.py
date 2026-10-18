@@ -4,6 +4,10 @@ La recepcion nace en BORRADOR y se puede editar libremente; recien al pasarla a 
 trigger tg_confirmar_recepcion (db/02_logica.sql) llama a fn_mover_inventario con tipo ENTRADA
 por cada linea. Este modulo nunca escribe cantidad_fisica: se limita a mover el estado y deja
 que la base haga entrar el stock y escriba el kardex.
+
+Multi-tenant: la recepcion es de una sucursal, y la sucursal de una empresa. El ADMIN de la
+empresa ve las de todas sus sucursales; el resto solo la suya. Proveedor, coleccion y prendas
+tienen que ser de la misma empresa (404 si no).
 """
 
 from uuid import UUID, uuid4
@@ -14,6 +18,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.tenant import (
+    empresa_de,
+    es_admin_empresa,
+    exigir_fila,
+    exigir_sucursal,
+    exigir_variantes,
+    no_encontrado,
+)
 from app.modules.recepciones.schemas import (
     DetalleIn,
     DetalleOut,
@@ -50,8 +62,8 @@ LEFT JOIN usuario u     ON u.id = r.usuario_id
 
 
 def _sucursal_visible(staff: dict) -> UUID | None:
-    """Un ADMIN (el que puede editar sucursales) ve todas; el resto solo la suya."""
-    if "sucursales.actualizar" in staff["permisos"]:
+    """El ADMIN de la empresa ve todas las de su empresa (None); el resto solo la suya."""
+    if es_admin_empresa(staff):
         return None
     if staff["sucursal_id"] is None:
         raise HTTPException(
@@ -62,9 +74,11 @@ def _sucursal_visible(staff: dict) -> UUID | None:
 
 
 async def _obtener(conn: asyncpg.Connection, recepcion_id: UUID, staff: dict) -> RecepcionOut:
-    fila = await conn.fetchrow(SELECT_RECEPCION + "WHERE r.id = $1", recepcion_id)
+    fila = await conn.fetchrow(
+        SELECT_RECEPCION + "WHERE r.id = $1 AND s.empresa_id = $2", recepcion_id, empresa_de(staff)
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recepcion no encontrada")
+        raise no_encontrado("Recepcion no encontrada")
 
     limite = _sucursal_visible(staff)
     if limite is not None and fila["sucursal_id"] != limite:
@@ -140,7 +154,8 @@ async def listar_recepciones(
     filas = await conn.fetch(
         SELECT_RECEPCION
         + """
-        WHERE ($1::uuid IS NULL OR r.sucursal_id = $1)
+        WHERE s.empresa_id = $4
+          AND ($1::uuid IS NULL OR r.sucursal_id = $1)
           AND ($2::text IS NULL OR r.estado::text = $2)
           AND ($3::uuid IS NULL OR r.proveedor_id = $3)
         ORDER BY r.fecha DESC, r.numero DESC
@@ -148,6 +163,7 @@ async def listar_recepciones(
         limite,
         estado,
         proveedor_id,
+        empresa_de(staff),
     )
     return [RecepcionOut(**dict(fila)) for fila in filas]
 
@@ -168,6 +184,8 @@ async def buscar_variantes(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Indica la sucursal para consultar el stock actual",
         )
+    empresa_id = empresa_de(staff)
+    await exigir_sucursal(conn, destino, empresa_id)
 
     filas = await conn.fetch(
         """
@@ -179,7 +197,7 @@ async def buscar_variantes(
         JOIN talla t     ON t.id = pv.talla_id
         JOIN color c     ON c.id = pv.color_id
         LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
-        WHERE pv.activa AND pr.activo
+        WHERE pv.activa AND pr.activo AND pr.empresa_id = $3
           AND (pv.sku ILIKE '%' || $1 || '%'
                OR pv.codigo_barras ILIKE '%' || $1 || '%'
                OR pr.nombre ILIKE '%' || $1 || '%')
@@ -188,6 +206,7 @@ async def buscar_variantes(
         """,
         q,
         destino,
+        empresa_id,
     )
     return [VarianteBuscadaOut(**dict(fila)) for fila in filas]
 
@@ -244,9 +263,14 @@ async def crear_recepcion(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Solo podes registrar en tu sucursal"
         )
+    empresa_id = empresa_de(staff)
+    await exigir_sucursal(conn, sucursal_id, empresa_id)
+    await exigir_fila(conn, "coleccion", body.coleccion_id, empresa_id, "Coleccion no encontrada")
 
     proveedor = await conn.fetchrow(
-        "SELECT activo FROM proveedor WHERE id = $1", body.proveedor_id
+        "SELECT activo FROM proveedor WHERE id = $1 AND empresa_id = $2",
+        body.proveedor_id,
+        empresa_id,
     )
     if proveedor is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="El proveedor no existe")
@@ -303,6 +327,7 @@ async def agregar_linea(
     """Si la variante ya esta en el borrador se suma la cantidad en lugar de duplicar la linea:
     es lo que espera quien va contando bultos."""
     await _exigir_borrador(conn, recepcion_id, staff)
+    await exigir_variantes(conn, [body.variante_id], empresa_de(staff))
 
     variante = await conn.fetchval(
         "SELECT 1 FROM producto_variante WHERE id = $1 AND activa", body.variante_id

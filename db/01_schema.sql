@@ -3,9 +3,11 @@
 --  Esquema de base de datos  |  PostgreSQL 16
 --  Sistemas II - S2-2026  |  MSc. Ing. Angelica Garzon Cuellar
 --
---  Alcance: una empresa con multiples sucursales en Bolivia.
+--  Alcance (segundo parcial): plataforma SaaS multi-tenant. El TENANT es la EMPRESA
+--  contratante (tabla empresa); cada empresa tiene sus sucursales, personal, catalogo,
+--  proveedores, clientas, inventario, reservas y ventas, y no ve los de otra. Una sucursal
+--  NO es un tenant: pertenece a una sola empresa. Ver bloque 8 y backend/app/core/tenant.py.
 --  Moneda BOB e IVA 13% fijos en la aplicacion, no se parametrizan.
---  45 tablas en 7 bloques.
 -- =====================================================================
  
 -- ---------------------------------------------------------------------
@@ -55,23 +57,57 @@ CREATE TYPE estado_devolucion AS ENUM ('SOLICITADA','APROBADA','RECHAZADA');
 -- Segundo parcial (PENDIENTES 5.8): por que vuelve la prenda. TALLA/COLOR son cambios (la clienta
 -- se lleva otra variante de la misma prenda); el resto son devoluciones con reintegro.
 CREATE TYPE motivo_devolucion AS ENUM ('TALLA','COLOR','DEFECTO','NO_GUSTO','OTRO');
--- Bloque 8 (SaaS): estado de la suscripcion de un tenant (sucursal).
+-- Bloque 8 (SaaS): estado de la suscripcion de un tenant (empresa).
 CREATE TYPE estado_suscripcion AS ENUM ('PRUEBA','ACTIVA','VENCIDA','CANCELADA');
 CREATE TYPE tipo_notificacion AS ENUM ('RESERVA','VENTA','STOCK','PROMO','SUSCRIPCION');
 CREATE TYPE accion_auditoria  AS ENUM ('CREAR','ACTUALIZAR','ELIMINAR','LOGIN');
+-- Sincronizacion offline (PWA y Flutter): resultado de una operacion registrada sin conexion.
+-- 'registrada localmente' y 'enviada' viven solo en el cliente; el servidor decide estos tres.
+CREATE TYPE estado_operacion_sync AS ENUM ('CONFIRMADA','RECHAZADA','CONFLICTO');
+CREATE TYPE tipo_operacion_sync   AS ENUM ('VENTA','RESERVA');
  
  
+-- =====================================================================
+--  BLOQUE 0 - TENANT
+-- =====================================================================
+
+-- La empresa contratante del SaaS. Todo dato de negocio cuelga de una (directo con empresa_id,
+-- o a traves de su sucursal); la plataforma (SUPERADMIN) es la unica que ve todas.
+CREATE TABLE empresa (
+    id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug         VARCHAR(40)  NOT NULL UNIQUE,   -- identifica la tienda publica (?empresa=slug)
+    nombre       VARCHAR(120) NOT NULL,
+    razon_social VARCHAR(180) NOT NULL,
+    nit          VARCHAR(30)  NOT NULL,
+    email        VARCHAR(150),
+    telefono     VARCHAR(30),
+    activa       BOOLEAN      NOT NULL DEFAULT TRUE,
+    creada_en    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_empresa_slug CHECK (slug ~ '^[a-z0-9][a-z0-9-]{1,38}$')
+);
+COMMENT ON TABLE empresa IS
+    'Tenant del SaaS. Sus datos de facturacion (razon social, NIT) reemplazan a los que vivian '
+    'en configuracion cuando el sistema era de una sola cadena.';
+
+
 -- =====================================================================
 --  BLOQUE 1 - USUARIOS Y ACCESO
 -- =====================================================================
- 
+
 CREATE TABLE rol (
     id          SERIAL PRIMARY KEY,
-    nombre      VARCHAR(60)  NOT NULL UNIQUE,
+    -- NULL = rol del sistema, compartido por todas las empresas (no se edita); con valor = rol
+    -- propio que una empresa creo en CU13 y que solo ella ve.
+    empresa_id  UUID         REFERENCES empresa(id) ON DELETE CASCADE,
+    nombre      VARCHAR(60)  NOT NULL,
     descripcion VARCHAR(200),
-    es_sistema  BOOLEAN      NOT NULL DEFAULT FALSE
+    es_sistema  BOOLEAN      NOT NULL DEFAULT FALSE,
+    CONSTRAINT ck_rol_sistema CHECK (NOT es_sistema OR empresa_id IS NULL)
 );
-COMMENT ON TABLE rol IS 'ADMIN, ENCARGADO, CAJERO, VENDEDOR, ALMACEN (los del sistema; CU13 puede crear otros). Solo aplica a usuarios STAFF.';
+-- el nombre no se repite dentro de una empresa; los del sistema son unicos entre si
+CREATE UNIQUE INDEX ux_rol_nombre_empresa ON rol(empresa_id, nombre) WHERE empresa_id IS NOT NULL;
+CREATE UNIQUE INDEX ux_rol_nombre_sistema ON rol(nombre) WHERE empresa_id IS NULL;
+COMMENT ON TABLE rol IS 'SUPERADMIN (plataforma), ADMIN (de empresa), ENCARGADO, CAJERO, VENDEDOR, ALMACEN (los del sistema; CU13 puede crear otros por empresa). Solo aplica a usuarios STAFF.';
  
 CREATE TABLE permiso (
     id          SERIAL PRIMARY KEY,
@@ -96,6 +132,10 @@ CREATE TABLE usuario (
     foto_url         TEXT,
     tipo             tipo_usuario NOT NULL DEFAULT 'CLIENTE',
     rol_id           INT REFERENCES rol(id) ON DELETE SET NULL,
+    -- Tenant del personal. NULL para el SUPERADMIN de la plataforma y para las clientas: la
+    -- cuenta de una clienta es de la plataforma (puede comprar en cualquier tienda) y la cartera
+    -- de cada empresa vive en cliente_perfil_tenant.
+    empresa_id       UUID REFERENCES empresa(id),
     email_verificado BOOLEAN      NOT NULL DEFAULT FALSE,
     activo           BOOLEAN      NOT NULL DEFAULT TRUE,
     ultimo_acceso    TIMESTAMPTZ,
@@ -113,6 +153,7 @@ CREATE TABLE usuario (
     )
 );
 CREATE INDEX ix_usuario_tipo ON usuario(tipo) WHERE activo;
+CREATE INDEX ix_usuario_empresa ON usuario(empresa_id) WHERE empresa_id IS NOT NULL;
  
 CREATE TABLE talla (
     id     SERIAL      PRIMARY KEY,
@@ -175,6 +216,7 @@ CREATE INDEX ix_sesion_usuario ON sesion_token(usuario_id) WHERE NOT revocado;
  
 CREATE TABLE sucursal (
     id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id          UUID         NOT NULL REFERENCES empresa(id),
     codigo              VARCHAR(20)  NOT NULL UNIQUE,
     nombre              VARCHAR(120) NOT NULL,
     ciudad              ciudad_bo    NOT NULL,
@@ -187,6 +229,7 @@ CREATE TABLE sucursal (
     cantidad_vestidores INT          NOT NULL DEFAULT 0,
     activa              BOOLEAN      NOT NULL DEFAULT TRUE
 );
+CREATE INDEX ix_sucursal_empresa ON sucursal(empresa_id) WHERE activa;
  
 CREATE TABLE empleado (
     usuario_id    UUID           PRIMARY KEY REFERENCES usuario(id) ON DELETE CASCADE,
@@ -232,8 +275,12 @@ CREATE UNIQUE INDEX ux_sesion_caja_abierta ON sesion_caja(caja_id) WHERE estado 
 --  BLOQUE 3 - CATALOGO
 -- =====================================================================
  
+-- Todo el bloque es por tenant: cada empresa arma su propio catalogo (empresa_id NOT NULL).
+-- talla y color (bloque 1) son datos de referencia de la plataforma: la curva de tallas y la
+-- paleta son las mismas para cualquier tienda de ropa, asi que se comparten.
 CREATE TABLE proveedor (
     id       UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID       NOT NULL REFERENCES empresa(id),
     nombre   VARCHAR(150) NOT NULL,
     nit      VARCHAR(30),
     contacto VARCHAR(120),
@@ -244,23 +291,28 @@ CREATE TABLE proveedor (
  
 CREATE TABLE categoria (
     id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id         UUID        NOT NULL REFERENCES empresa(id),
     categoria_padre_id UUID        REFERENCES categoria(id) ON DELETE SET NULL,
     nombre             VARCHAR(80) NOT NULL,
-    slug               VARCHAR(80) NOT NULL UNIQUE,
+    slug               VARCHAR(80) NOT NULL,
     imagen_url         TEXT,
     orden              INT         NOT NULL DEFAULT 0,
     activa             BOOLEAN     NOT NULL DEFAULT TRUE,
-    CONSTRAINT ck_categoria_padre CHECK (categoria_padre_id <> id)
+    CONSTRAINT ck_categoria_padre CHECK (categoria_padre_id <> id),
+    UNIQUE (empresa_id, slug)
 );
  
 CREATE TABLE marca (
-    id       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    nombre   VARCHAR(80) NOT NULL UNIQUE,
-    logo_url TEXT
+    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id UUID        NOT NULL REFERENCES empresa(id),
+    nombre     VARCHAR(80) NOT NULL,
+    logo_url   TEXT,
+    UNIQUE (empresa_id, nombre)
 );
  
 CREATE TABLE temporada (
     id           UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id   UUID           NOT NULL REFERENCES empresa(id),
     nombre       VARCHAR(80)    NOT NULL,
     tipo         tipo_temporada NOT NULL,
     fecha_inicio DATE           NOT NULL,
@@ -271,6 +323,7 @@ CREATE TABLE temporada (
  
 CREATE TABLE coleccion (
     id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id   UUID         NOT NULL REFERENCES empresa(id),
     temporada_id UUID         NOT NULL REFERENCES temporada(id),
     proveedor_id UUID         REFERENCES proveedor(id),
     nombre       VARCHAR(120) NOT NULL,
@@ -282,14 +335,15 @@ CREATE TABLE coleccion (
  
 CREATE TABLE producto (
     id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id   UUID          NOT NULL REFERENCES empresa(id),
     categoria_id UUID          NOT NULL REFERENCES categoria(id),
     marca_id     UUID          REFERENCES marca(id),
     proveedor_id UUID          REFERENCES proveedor(id),
     temporada_id UUID          REFERENCES temporada(id),
     coleccion_id UUID          REFERENCES coleccion(id),
-    codigo       VARCHAR(40)   NOT NULL UNIQUE,
+    codigo       VARCHAR(40)   NOT NULL,
     nombre       VARCHAR(180)  NOT NULL,
-    slug         VARCHAR(180)  NOT NULL UNIQUE,
+    slug         VARCHAR(180)  NOT NULL,
     descripcion  TEXT,
     material     VARCHAR(120),
     genero       genero_prenda,
@@ -297,8 +351,11 @@ CREATE TABLE producto (
     activo       BOOLEAN       NOT NULL DEFAULT TRUE,
     destacado    BOOLEAN       NOT NULL DEFAULT FALSE,
     -- embedding  vector(768),   -- descomentar junto con la extension vector
-    creado_en    TIMESTAMPTZ   NOT NULL DEFAULT now()
+    creado_en    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    UNIQUE (empresa_id, codigo),
+    UNIQUE (empresa_id, slug)
 );
+CREATE INDEX ix_producto_empresa   ON producto(empresa_id) WHERE activo;
 CREATE INDEX ix_producto_categoria ON producto(categoria_id) WHERE activo;
 CREATE INDEX ix_producto_temporada ON producto(temporada_id) WHERE activo;
 CREATE INDEX ix_producto_busqueda  ON producto
@@ -340,8 +397,9 @@ COMMENT ON COLUMN producto_imagen.anclajes IS
  
 CREATE TABLE promocion (
     id            UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id    UUID              NOT NULL REFERENCES empresa(id),
     nombre        VARCHAR(120)      NOT NULL,
-    codigo_cupon  VARCHAR(40)       NOT NULL UNIQUE,
+    codigo_cupon  VARCHAR(40)       NOT NULL,
     tipo          tipo_promocion    NOT NULL,
     valor         NUMERIC(10,2)     NOT NULL CHECK (valor > 0),
     alcance       alcance_promocion NOT NULL DEFAULT 'TODO',
@@ -359,7 +417,8 @@ CREATE TABLE promocion (
         (alcance = 'CATEGORIA' AND categoria_id IS NOT NULL AND temporada_id IS NULL) OR
         (alcance = 'TEMPORADA' AND temporada_id IS NOT NULL AND categoria_id IS NULL)
     ),
-    CONSTRAINT ck_promo_porcentaje CHECK (tipo <> 'PORCENTAJE' OR valor <= 100)
+    CONSTRAINT ck_promo_porcentaje CHECK (tipo <> 'PORCENTAJE' OR valor <= 100),
+    UNIQUE (empresa_id, codigo_cupon)
 );
  
  
@@ -469,6 +528,7 @@ CREATE TABLE traspaso_detalle (
  
 CREATE TABLE reserva (
     id                UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    operacion_id      UUID           UNIQUE,  -- reserva registrada sin conexion (ver venta)
     usuario_id        UUID           NOT NULL REFERENCES usuario(id),
     sucursal_id       UUID           NOT NULL REFERENCES sucursal(id),
     codigo            VARCHAR(20)    NOT NULL UNIQUE,
@@ -565,6 +625,10 @@ CREATE TABLE venta (
     total             NUMERIC(12,2) NOT NULL CHECK (total >= 0),
     estado            estado_venta  NOT NULL DEFAULT 'PENDIENTE',
     registrada_por_id UUID          REFERENCES usuario(id),
+    -- Venta registrada sin conexion (PWA / Flutter): el UUID que genero el cliente. UNIQUE es la
+    -- ultima barrera de idempotencia (RN11): aunque dos reenvios lleguen a la vez, la base no
+    -- deja crear dos ventas para la misma operacion.
+    operacion_id      UUID          UNIQUE,
     -- una venta a domicilio necesita direccion; una en caja necesita sesion de caja, salvo que la
     -- venta nazca de una reserva atendida (CU08), donde el kardex de la reserva ya audita el cobro
     CONSTRAINT ck_venta_entrega CHECK (entrega <> 'DOMICILIO' OR direccion_id IS NOT NULL),
@@ -755,8 +819,8 @@ CREATE TABLE configuracion (
     actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE configuracion IS
-    'Datos de la tienda (razon social, NIT, logo) y parametros operativos como las horas '
-    'de vigencia de una reserva. Reemplaza a la tabla empresa del modelo multiempresa.';
+    'Parametros operativos de la plataforma (horas de vigencia de una reserva, plazos, tarifa '
+    'de delivery). Los datos de facturacion de cada tienda viven en empresa.';
  
 CREATE TABLE notificacion (
     id           UUID              PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -774,6 +838,9 @@ CREATE INDEX ix_notificacion_pendiente ON notificacion(usuario_id, fecha DESC) W
 CREATE TABLE auditoria (
     id             BIGSERIAL        PRIMARY KEY,
     usuario_id     UUID             REFERENCES usuario(id),
+    -- tenant del usuario que hizo la accion (NULL = plataforma o clienta); lo completa
+    -- registrar_auditoria para que cada empresa vea solo su bitacora
+    empresa_id     UUID             REFERENCES empresa(id),
     entidad        VARCHAR(60)      NOT NULL,
     entidad_id     VARCHAR(60)      NOT NULL,
     accion         accion_auditoria NOT NULL,
@@ -783,18 +850,16 @@ CREATE TABLE auditoria (
     fecha          TIMESTAMPTZ      NOT NULL DEFAULT now()
 );
 CREATE INDEX ix_auditoria_entidad ON auditoria(entidad, entidad_id, fecha DESC);
+CREATE INDEX ix_auditoria_empresa ON auditoria(empresa_id, fecha DESC);
 
 
 -- =====================================================================
---  BLOQUE 8 - SAAS: PLANES, SUSCRIPCIONES Y PERFIL DE CLIENTES POR TENANT
---  (Segundo parcial, PENDIENTES 5.4 a 5.7)
+--  BLOQUE 8 - SAAS: PLANES, SUSCRIPCIONES, CARTERA POR TENANT Y SINCRONIZACION
 --
---  Tenant = sucursal. Cada sucursal paga su propia suscripcion a uno de los tres planes; el plan
---  decide que funciones de gestion puede usar (ver requiere_funcion_plan en
---  backend/app/core/deps.py) y cuanto personal/cajas admite. El catalogo es de la cadena (lo
---  provee la casa matriz) y lo comparten todos los tenants; los datos operativos (stock, ventas,
---  reservas, cajas, personal, devoluciones) ya estaban particionados por sucursal_id, y la
---  cartera de clientas de cada tenant vive en cliente_perfil_tenant.
+--  Tenant = empresa. Cada empresa tiene UNA suscripcion a un plan; el plan fija los topes
+--  (sucursales activas, personal, cajas; NULL = sin limite) y que funciones habilita (columnas
+--  booleanas que pide requiere_funcion_plan en backend/app/core/plan.py). Los topes y las
+--  funciones se editan desde el backend (PUT /saas/planes/{codigo}, SUPERADMIN) sin redesplegar.
 -- =====================================================================
 
 CREATE TABLE plan (
@@ -803,21 +868,25 @@ CREATE TABLE plan (
     nombre            VARCHAR(60)   NOT NULL,
     descripcion       VARCHAR(300),
     precio_mensual    NUMERIC(12,2) NOT NULL CHECK (precio_mensual >= 0),
-    max_empleados     INT,           -- NULL = sin limite
-    max_cajas         INT,           -- NULL = sin limite
+    max_sucursales    INT           CHECK (max_sucursales > 0),  -- NULL = sin limite
+    max_empleados     INT           CHECK (max_empleados > 0),
+    max_cajas         INT           CHECK (max_cajas > 0),
     -- Funciones habilitadas por plan (los codigos que pide requiere_funcion_plan)
-    perfiles_clientes BOOLEAN       NOT NULL DEFAULT FALSE,
-    traspasos         BOOLEAN       NOT NULL DEFAULT FALSE,
-    ia_reportes       BOOLEAN       NOT NULL DEFAULT FALSE,
+    perfiles_clientes BOOLEAN       NOT NULL DEFAULT TRUE,
+    traspasos         BOOLEAN       NOT NULL DEFAULT TRUE,
+    operacion_offline BOOLEAN       NOT NULL DEFAULT TRUE,
+    reportes          BOOLEAN       NOT NULL DEFAULT TRUE,   -- reportes convencionales
+    ia_reportes       BOOLEAN       NOT NULL DEFAULT FALSE,  -- reportes generativos con IA
+    analitica_ml      BOOLEAN       NOT NULL DEFAULT FALSE,  -- dashboard de machine learning
     orden             INT           NOT NULL DEFAULT 0,
     activo            BOOLEAN       NOT NULL DEFAULT TRUE
 );
 
--- Una suscripcion vigente por tenant: cambiar de plan o renovar actualiza esta fila; la historia
--- queda en pago_suscripcion.
+-- Una suscripcion vigente por empresa: cambiar de plan o renovar actualiza esta fila; la
+-- historia queda en pago_suscripcion.
 CREATE TABLE suscripcion (
     id             UUID               PRIMARY KEY DEFAULT gen_random_uuid(),
-    sucursal_id    UUID               NOT NULL UNIQUE REFERENCES sucursal(id) ON DELETE CASCADE,
+    empresa_id     UUID               NOT NULL UNIQUE REFERENCES empresa(id) ON DELETE CASCADE,
     plan_id        INT                NOT NULL REFERENCES plan(id),
     estado         estado_suscripcion NOT NULL DEFAULT 'PRUEBA',
     inicio         TIMESTAMPTZ        NOT NULL DEFAULT now(),
@@ -825,7 +894,7 @@ CREATE TABLE suscripcion (
     actualizado_en TIMESTAMPTZ        NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE suscripcion IS
-    'Suscripcion del tenant (sucursal). Vigente = estado PRUEBA/ACTIVA y vence_en > now(); '
+    'Suscripcion del tenant (empresa). Vigente = estado PRUEBA/ACTIVA y vence_en > now(); '
     'el backend la trata como VENCIDA aunque el estado no se haya actualizado todavia.';
 
 CREATE TABLE pago_suscripcion (
@@ -847,11 +916,11 @@ CREATE TABLE pago_suscripcion (
 );
 CREATE INDEX ix_pago_suscripcion ON pago_suscripcion(suscripcion_id, creado_en DESC);
 
--- Perfil de la clienta segun cada tenant: la administracion de la sucursal arma su propia
--- ficha (segmento, talla habitual, estilo, notas) sobre las clientas que compraron/reservaron
--- ahi o que dio de alta a mano. Distinto de perfil_cliente, que es lo que declara la clienta.
+-- Perfil de la clienta segun cada empresa: la administracion arma su propia ficha (segmento,
+-- talla habitual, estilo, notas) sobre las clientas que compraron/reservaron en sus sucursales
+-- o que dio de alta a mano. Distinto de perfil_cliente, que es lo que declara la clienta.
 CREATE TABLE cliente_perfil_tenant (
-    sucursal_id        UUID         NOT NULL REFERENCES sucursal(id) ON DELETE CASCADE,
+    empresa_id         UUID         NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
     usuario_id         UUID         NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
     segmento           VARCHAR(20)  NOT NULL DEFAULT 'NUEVA'
                            CHECK (segmento IN ('NUEVA','FRECUENTE','VIP','INACTIVA')),
@@ -862,5 +931,39 @@ CREATE TABLE cliente_perfil_tenant (
     notas              VARCHAR(500),
     actualizado_en     TIMESTAMPTZ  NOT NULL DEFAULT now(),
     actualizado_por_id UUID         REFERENCES usuario(id),
-    PRIMARY KEY (sucursal_id, usuario_id)
+    PRIMARY KEY (empresa_id, usuario_id)
 );
+
+-- Sincronizacion de operaciones offline (PWA / Flutter). Una fila por operacion que llego al
+-- servidor, con el UUID que genero el cliente como PK: si el mismo id vuelve a llegar (el
+-- cliente no recibio la respuesta y reintenta) se devuelve el resultado guardado y no se
+-- procesa de nuevo (RN11). Tambien es el log de sincronizacion (RNF10): cuantos intentos hubo,
+-- cuando y con que resultado, sin guardar datos de pago.
+CREATE TABLE operacion_sync (
+    id              UUID                  PRIMARY KEY,           -- generado en el cliente
+    empresa_id      UUID                  NOT NULL REFERENCES empresa(id),
+    -- NULL si la sucursal que mando el dispositivo no es de la empresa (quedo RECHAZADA)
+    sucursal_id     UUID                  REFERENCES sucursal(id),
+    usuario_id      UUID                  NOT NULL REFERENCES usuario(id),
+    tipo            tipo_operacion_sync   NOT NULL,
+    estado          estado_operacion_sync NOT NULL,
+    codigo_motivo   VARCHAR(40),          -- STOCK_INSUFICIENTE, PRECIO_CAMBIADO, ...
+    motivo          VARCHAR(300),         -- por que se rechazo o quedo en conflicto
+    payload         JSONB                 NOT NULL,              -- la operacion tal como llego
+    resultado       JSONB,                -- venta/reserva creada (id, numero, total)
+    registrada_en   TIMESTAMPTZ           NOT NULL,              -- hora del dispositivo
+    recibida_en     TIMESTAMPTZ           NOT NULL DEFAULT now(),
+    intentos        INT                   NOT NULL DEFAULT 1,
+    ultimo_intento  TIMESTAMPTZ           NOT NULL DEFAULT now(),
+    resuelta_por_id UUID                  REFERENCES usuario(id), -- quien cerro el conflicto
+    resuelta_en     TIMESTAMPTZ,
+    resolucion      VARCHAR(300)
+);
+CREATE INDEX ix_operacion_sync_empresa ON operacion_sync(empresa_id, recibida_en DESC);
+CREATE INDEX ix_operacion_sync_abiertas ON operacion_sync(empresa_id)
+    WHERE estado = 'CONFLICTO' AND resuelta_en IS NULL;
+COMMENT ON TABLE operacion_sync IS
+    'Operaciones offline recibidas (idempotencia por id del cliente) y log de sincronizacion. '
+    'CONFIRMADA = se creo la venta/reserva; RECHAZADA = no se puede aplicar nunca (suscripcion '
+    'vencida, sucursal ajena, prenda de otra empresa); CONFLICTO = los datos locales quedaron '
+    'viejos (stock, precio, prenda inactiva) y alguien del personal decide que hacer.';

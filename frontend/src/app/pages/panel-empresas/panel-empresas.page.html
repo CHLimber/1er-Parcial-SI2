@@ -1,0 +1,306 @@
+<app-panel-shell
+  titulo="Empresas de la plataforma"
+  bajada="Cada empresa contratante es un tenant independiente: sus sucursales, personal, catálogo, clientas y ventas no se cruzan con las de otra. Desde acá se registran, se les asigna plan y se configuran los planes."
+>
+  <div class="solapas">
+    <button type="button" class="solapa" [class.solapa--activa]="solapa === 'empresas'" (click)="solapa = 'empresas'">
+      Empresas
+    </button>
+    <button type="button" class="solapa" [class.solapa--activa]="solapa === 'planes'" (click)="solapa = 'planes'">
+      Planes
+    </button>
+  </div>
+
+  @if (aviso()) {
+    <p class="exito">{{ aviso() }}</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  @if (solapa === 'empresas') {
+    <div class="barra">
+      <span class="barra__espacio"></span>
+      @if (auth.tienePermiso('empresas.crear')) {
+        <button type="button" class="boton" (click)="creando = !creando">
+          {{ creando ? 'Cancelar' : 'Registrar empresa' }}
+        </button>
+      }
+    </div>
+
+    @if (creando) {
+      <section class="panel">
+        <h2 class="panel__titulo">Nueva empresa</h2>
+        <form class="formulario" (ngSubmit)="registrar()">
+          <div class="rejilla">
+            <div class="campo">
+              <label for="e-nombre">Nombre comercial</label>
+              <input id="e-nombre" name="nombre" [(ngModel)]="nueva.nombre" required />
+            </div>
+            <div class="campo">
+              <label for="e-slug">Identificador de la tienda</label>
+              <input id="e-slug" name="slug" [(ngModel)]="nueva.slug" required pattern="[a-z0-9][a-z0-9-]{1,38}" placeholder="mi-tienda" />
+              <span class="campo__ayuda">La vitrina queda en ?empresa={{ nueva.slug || 'mi-tienda' }}</span>
+            </div>
+            <div class="campo">
+              <label for="e-razon">Razón social</label>
+              <input id="e-razon" name="razon" [(ngModel)]="nueva.razon_social" required />
+            </div>
+            <div class="campo">
+              <label for="e-nit">NIT</label>
+              <input id="e-nit" name="nit" [(ngModel)]="nueva.nit" required />
+            </div>
+            <div class="campo">
+              <label for="e-email">Email de contacto</label>
+              <input id="e-email" name="email" type="email" [(ngModel)]="nueva.email" />
+            </div>
+            <div class="campo">
+              <label for="e-plan">Plan</label>
+              <select id="e-plan" name="plan" [(ngModel)]="nueva.plan_codigo">
+                @for (p of planes(); track p.codigo) {
+                  <option [value]="p.codigo">{{ p.nombre }}</option>
+                }
+              </select>
+            </div>
+            <div class="campo">
+              <label for="e-prueba">Días de prueba</label>
+              <input id="e-prueba" name="prueba" type="number" min="1" max="90" [(ngModel)]="nueva.dias_prueba" />
+            </div>
+          </div>
+
+          <h3 class="subtitulo">Administrador de la empresa</h3>
+          <div class="rejilla">
+            <div class="campo">
+              <label for="a-email">Email</label>
+              <input id="a-email" name="a-email" type="email" [(ngModel)]="nueva.administrador.email" required />
+            </div>
+            <div class="campo">
+              <label for="a-nombre">Nombre</label>
+              <input id="a-nombre" name="a-nombre" [(ngModel)]="nueva.administrador.nombre" required />
+            </div>
+            <div class="campo">
+              <label for="a-apellido">Apellido</label>
+              <input id="a-apellido" name="a-apellido" [(ngModel)]="nueva.administrador.apellido" required />
+            </div>
+            <div class="campo">
+              <label for="a-pass">Contraseña inicial</label>
+              <input id="a-pass" name="a-pass" type="password" [(ngModel)]="nueva.administrador.password" required />
+              <span class="campo__ayuda">8+ caracteres con mayúscula, minúscula, número y símbolo</span>
+            </div>
+          </div>
+
+          <label class="campo__casilla">
+            <input type="checkbox" name="con-sucursal" [(ngModel)]="conSucursal" />
+            Crear también su primera sucursal (con una caja y el administrador asignado)
+          </label>
+          @if (conSucursal && nueva.sucursal) {
+            <div class="rejilla">
+              <div class="campo">
+                <label for="s-codigo">Código</label>
+                <input id="s-codigo" name="s-codigo" [(ngModel)]="nueva.sucursal.codigo" required placeholder="XX-01" />
+              </div>
+              <div class="campo">
+                <label for="s-nombre">Nombre</label>
+                <input id="s-nombre" name="s-nombre" [(ngModel)]="nueva.sucursal.nombre" required />
+              </div>
+              <div class="campo">
+                <label for="s-ciudad">Ciudad</label>
+                <select id="s-ciudad" name="s-ciudad" [(ngModel)]="nueva.sucursal.ciudad">
+                  @for (c of ciudades; track c) {
+                    <option [value]="c">{{ c.replace('_', ' ') }}</option>
+                  }
+                </select>
+              </div>
+              <div class="campo">
+                <label for="s-dir">Dirección</label>
+                <input id="s-dir" name="s-dir" [(ngModel)]="nueva.sucursal.direccion" required />
+              </div>
+            </div>
+          }
+          <div class="acciones">
+            <button type="submit" class="boton" [disabled]="ocupado()">Registrar empresa</button>
+          </div>
+        </form>
+      </section>
+    }
+
+    <div class="columnas">
+      <section class="panel">
+        @if (cargando()) {
+          <p class="estado">Cargando empresas…</p>
+        } @else {
+          <div class="tabla-envoltorio">
+            <table class="tabla">
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Plan</th>
+                  <th>Suscripción</th>
+                  <th class="tabla__numero">Sucursales</th>
+                  <th class="tabla__numero">Personal</th>
+                  <th>Estado</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (e of empresas(); track e.id) {
+                  <tr [attr.data-inactivo]="!e.activa">
+                    <td>
+                      <strong>{{ e.nombre }}</strong>
+                      <div class="secundario mono">{{ e.slug }} · NIT {{ e.nit }}</div>
+                    </td>
+                    <td>{{ e.suscripcion?.plan?.nombre ?? '—' }}</td>
+                    <td>
+                      @if (e.suscripcion; as s) {
+                        <span class="badge" [class.badge--ok]="s.vigente" [class.badge--baja]="!s.vigente">
+                          {{ s.vigente ? (s.estado === 'PRUEBA' ? 'En prueba' : 'Al día') : 'Vencida' }}
+                        </span>
+                        <div class="secundario">hasta {{ fecha(s.vence_en) }}</div>
+                      } @else {
+                        —
+                      }
+                    </td>
+                    <td class="tabla__numero">
+                      {{ e.suscripcion?.uso?.sucursales ?? 0 }} / {{ tope(e.suscripcion?.plan?.max_sucursales) }}
+                    </td>
+                    <td class="tabla__numero">{{ e.suscripcion?.uso?.empleados ?? 0 }}</td>
+                    <td>
+                      <span class="badge" [class.badge--ok]="e.activa" [class.badge--baja]="!e.activa">
+                        {{ e.activa ? 'Activa' : 'Suspendida' }}
+                      </span>
+                    </td>
+                    <td class="tabla__acciones">
+                      <button type="button" class="boton boton--chico boton--secundario" (click)="elegir(e)">Gestionar</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      @if (elegida(); as e) {
+        <section class="panel">
+          <h2 class="panel__titulo">{{ e.nombre }}</h2>
+          <p class="secundario">
+            {{ e.razon_social }} · administración: {{ e.administradores.join(', ') || 'sin administrador activo' }}
+          </p>
+
+          @if (auth.tienePermiso('empresas.actualizar')) {
+            <h3 class="subtitulo">Asignar o cambiar plan</h3>
+            <div class="rejilla">
+              <div class="campo">
+                <label for="p-plan">Plan</label>
+                <select id="p-plan" name="p-plan" [(ngModel)]="planAsignado">
+                  @for (p of planes(); track p.codigo) {
+                    <option [value]="p.codigo">{{ p.nombre }} (hasta {{ tope(p.max_sucursales) }} sucursales)</option>
+                  }
+                </select>
+              </div>
+              <div class="campo">
+                <label for="p-estado">Estado</label>
+                <select id="p-estado" name="p-estado" [(ngModel)]="estadoAsignado">
+                  <option value="PRUEBA">En prueba</option>
+                  <option value="ACTIVA">Activa</option>
+                  <option value="VENCIDA">Vencida</option>
+                  <option value="CANCELADA">Cancelada</option>
+                </select>
+              </div>
+              <div class="campo">
+                <label for="p-vence">Vence el</label>
+                <input id="p-vence" name="p-vence" type="date" [(ngModel)]="venceAsignado" />
+              </div>
+            </div>
+            <div class="acciones">
+              <button type="button" class="boton" [disabled]="ocupado() || !venceAsignado" (click)="asignarPlan(e)">
+                Guardar plan
+              </button>
+            </div>
+
+            <h3 class="subtitulo">Renovar (pago recibido fuera del sistema)</h3>
+            <div class="rejilla">
+              <div class="campo">
+                <label for="r-meses">Meses</label>
+                <select id="r-meses" name="r-meses" [(ngModel)]="mesesRenovar">
+                  @for (m of [1, 3, 6, 12]; track m) {
+                    <option [ngValue]="m">{{ m }}</option>
+                  }
+                </select>
+              </div>
+              <div class="campo">
+                <label for="r-metodo">Medio</label>
+                <select id="r-metodo" name="r-metodo" [(ngModel)]="metodoRenovar">
+                  <option value="TRANSFERENCIA">Transferencia</option>
+                  <option value="EFECTIVO">Efectivo</option>
+                </select>
+              </div>
+            </div>
+            <div class="acciones">
+              <button type="button" class="boton boton--secundario" [disabled]="ocupado()" (click)="renovar(e)">
+                Registrar renovación del plan elegido
+              </button>
+              <button type="button" class="boton" [class.boton--peligro]="e.activa" [disabled]="ocupado()" (click)="cambiarEstado(e)">
+                {{ e.activa ? 'Suspender empresa' : 'Reactivar empresa' }}
+              </button>
+            </div>
+          }
+        </section>
+      }
+    </div>
+  }
+
+  @if (solapa === 'planes') {
+    <p class="secundario">
+      Los topes y las funciones son datos del backend: un cambio rige en el request siguiente para
+      todas las empresas del plan. Dejá un tope vacío para "sin límite".
+    </p>
+    <div class="planes">
+      @for (p of planes(); track p.codigo) {
+        @if (edicion[p.codigo]; as plan) {
+          <section class="panel">
+            <h2 class="panel__titulo">{{ p.codigo }}</h2>
+            <div class="campo">
+              <label [for]="'n-' + p.codigo">Nombre</label>
+              <input [id]="'n-' + p.codigo" [name]="'n-' + p.codigo" [(ngModel)]="plan.nombre" />
+            </div>
+            <div class="campo">
+              <label [for]="'pr-' + p.codigo">Precio mensual (Bs)</label>
+              <input [id]="'pr-' + p.codigo" type="number" min="0" [name]="'pr-' + p.codigo" [(ngModel)]="plan.precio_mensual" />
+            </div>
+            <div class="rejilla">
+              <div class="campo">
+                <label [for]="'ms-' + p.codigo">Sucursales</label>
+                <input [id]="'ms-' + p.codigo" type="number" min="1" [name]="'ms-' + p.codigo"
+                  [ngModel]="plan.max_sucursales" (ngModelChange)="plan.max_sucursales = numeroONulo($event)" />
+              </div>
+              <div class="campo">
+                <label [for]="'me-' + p.codigo">Personal</label>
+                <input [id]="'me-' + p.codigo" type="number" min="1" [name]="'me-' + p.codigo"
+                  [ngModel]="plan.max_empleados" (ngModelChange)="plan.max_empleados = numeroONulo($event)" />
+              </div>
+              <div class="campo">
+                <label [for]="'mc-' + p.codigo">Cajas</label>
+                <input [id]="'mc-' + p.codigo" type="number" min="1" [name]="'mc-' + p.codigo"
+                  [ngModel]="plan.max_cajas" (ngModelChange)="plan.max_cajas = numeroONulo($event)" />
+              </div>
+            </div>
+            <div class="funciones">
+              <label class="campo__casilla"><input type="checkbox" [name]="'f1' + p.codigo" [(ngModel)]="plan.operacion_offline" /> Operación sin conexión</label>
+              <label class="campo__casilla"><input type="checkbox" [name]="'f2' + p.codigo" [(ngModel)]="plan.reportes" /> Reportes convencionales</label>
+              <label class="campo__casilla"><input type="checkbox" [name]="'f3' + p.codigo" [(ngModel)]="plan.perfiles_clientes" /> Cartera de clientas</label>
+              <label class="campo__casilla"><input type="checkbox" [name]="'f4' + p.codigo" [(ngModel)]="plan.traspasos" /> Traspasos</label>
+              <label class="campo__casilla"><input type="checkbox" [name]="'f5' + p.codigo" [(ngModel)]="plan.ia_reportes" /> Reportes con IA</label>
+              <label class="campo__casilla"><input type="checkbox" [name]="'f6' + p.codigo" [(ngModel)]="plan.analitica_ml" /> Analítica ML</label>
+            </div>
+            @if (auth.tienePermiso('planes.actualizar')) {
+              <div class="acciones">
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="guardarPlan(p.codigo)">Guardar plan</button>
+              </div>
+            }
+          </section>
+        }
+      }
+    </div>
+  }
+</app-panel-shell>

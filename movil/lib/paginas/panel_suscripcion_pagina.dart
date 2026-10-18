@@ -8,8 +8,8 @@ import '../core/saas/saas_service.dart';
 import '../core/tema.dart';
 import 'mis_reservas_pagina.dart' show fechaLegible;
 
-/// Suscripcion del tenant (Segundo parcial, PENDIENTES 5.4-5.6), espejo de `panel-suscripcion`
-/// de la web: plan, estado, uso contra los topes y los tres planes. Pagar abre el Checkout de
+/// Suscripcion de la empresa (tenant), espejo de `panel-suscripcion` de la web: plan, estado,
+/// uso contra los topes (sucursales, personal, cajas) y los planes. Pagar abre el Checkout de
 /// Stripe en el navegador; al volver se refresca (el webhook aplica el pago).
 class PanelSuscripcionPagina extends StatefulWidget {
   const PanelSuscripcionPagina({super.key});
@@ -19,9 +19,9 @@ class PanelSuscripcionPagina extends StatefulWidget {
 }
 
 class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with WidgetsBindingObserver {
-  List<SuscripcionOut>? _tenants;
   List<PlanOut> _planes = [];
   SuscripcionOut? _actual;
+  bool _cargando = true;
   String? _error;
   int _meses = 1;
   bool _pagando = false;
@@ -51,17 +51,20 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
   Future<void> _cargar() async {
     setState(() => _error = null);
     try {
-      final resultados = await Future.wait([saasService.suscripciones(), saasService.planes()]);
+      final resultados = await Future.wait([saasService.suscripcion(), saasService.planes()]);
       if (!mounted) return;
-      final tenants = resultados[0] as List<SuscripcionOut>;
       setState(() {
-        _tenants = tenants;
+        _actual = resultados[0] as SuscripcionOut;
         _planes = resultados[1] as List<PlanOut>;
-        _actual = tenants.where((t) => t.sucursalId == _actual?.sucursalId).firstOrNull ??
-            (tenants.isEmpty ? null : tenants.first);
+        _cargando = false;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = interpretarError(error));
+      if (mounted) {
+        setState(() {
+          _error = interpretarError(error);
+          _cargando = false;
+        });
+      }
     }
   }
 
@@ -69,7 +72,7 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
     final actual = _actual;
     if (actual == null) return;
     try {
-      final url = await saasService.iniciarPago(plan.codigo, _meses, actual.sucursalId);
+      final url = await saasService.iniciarPago(plan.codigo, _meses);
       _pagando = true;
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (error) {
@@ -81,7 +84,6 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
 
   @override
   Widget build(BuildContext context) {
-    final tenants = _tenants;
     final actual = _actual;
     return Scaffold(
       appBar: AppBar(
@@ -92,18 +94,8 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
         children: [
           if (_error != null) MensajeError(_error!, alReintentar: _cargar),
-          if (tenants == null && _error == null)
+          if (_cargando)
             const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
-          if (tenants != null && tenants.length > 1)
-            DropdownButtonFormField<String>(
-              initialValue: actual?.sucursalId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Tenant (sucursal)'),
-              items: tenants
-                  .map((t) => DropdownMenuItem(value: t.sucursalId, child: Text('${t.sucursal} · ${t.plan.nombre}')))
-                  .toList(),
-              onChanged: (id) => setState(() => _actual = tenants.firstWhere((t) => t.sucursalId == id)),
-            ),
           if (actual != null) ...[
             const SizedBox(height: 12),
             TarjetaPanel(
@@ -113,7 +105,7 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
                   Row(
                     children: [
                       Expanded(
-                        child: Text(actual.sucursal, style: const TextStyle(fontWeight: FontWeight.w800)),
+                        child: Text(actual.empresa, style: const TextStyle(fontWeight: FontWeight.w800)),
                       ),
                       BadgeEstado(
                         actual.vigente ? (actual.estado == 'PRUEBA' ? 'EN PRUEBA' : 'AL DIA') : 'VENCIDA',
@@ -125,13 +117,16 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
                   FilaDato('Plan', actual.plan.nombre),
                   FilaDato(actual.vigente ? 'Vence' : 'Vencio', fechaLegible(actual.venceEn.toLocal())),
                   if (actual.vigente) FilaDato('Dias restantes', '${actual.diasRestantes}'),
+                  FilaDato('Desde', fechaLegible(actual.inicio.toLocal())),
+                  FilaDato('Sucursales', '${actual.sucursales} / ${_tope(actual.plan.maxSucursales)}'),
                   FilaDato('Personal', '${actual.empleados} / ${_tope(actual.plan.maxEmpleados)}'),
                   FilaDato('Cajas', '${actual.cajas} / ${_tope(actual.plan.maxCajas)}'),
                   if (!actual.vigente)
                     const Padding(
                       padding: EdgeInsets.only(top: 6),
                       child: Text(
-                        'Vencida: perfil de clientas, traspasos y reportes con IA quedan bloqueados.',
+                        'Vencida: las funciones del plan quedan bloqueadas y las operaciones offline '
+                        'registradas despues del vencimiento se rechazan al sincronizar.',
                         style: TextStyle(color: Paleta.rojo, fontSize: 12.5),
                       ),
                     ),
@@ -167,9 +162,11 @@ class _PanelSuscripcionPaginaState extends State<PanelSuscripcionPagina> with Wi
                         Text(plan.descripcion!, style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave)),
                       const SizedBox(height: 6),
                       Text(
-                        'Personal ${_tope(plan.maxEmpleados)} · cajas ${_tope(plan.maxCajas)}\n'
-                        '${plan.perfilesClientes ? '✓' : '✗'} perfil de clientas · '
-                        '${plan.traspasos ? '✓' : '✗'} traspasos · ${plan.iaReportes ? '✓' : '✗'} reportes con IA',
+                        'Sucursales ${_tope(plan.maxSucursales)} · personal ${_tope(plan.maxEmpleados)} · '
+                        'cajas ${_tope(plan.maxCajas)}\n'
+                        '${plan.operacionOffline ? '✓' : '✗'} operacion offline · '
+                        '${plan.reportes ? '✓' : '✗'} reportes · ${plan.iaReportes ? '✓' : '✗'} reportes con IA · '
+                        '${plan.analiticaMl ? '✓' : '✗'} analitica ML',
                         style: const TextStyle(fontSize: 12.5),
                       ),
                       const SizedBox(height: 8),

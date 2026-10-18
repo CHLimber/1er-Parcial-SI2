@@ -151,3 +151,43 @@ BEGIN
     END LOOP;
 END;
 $$;
+
+-- ---------------------------------------------------------------------
+-- Clientas demo (Modulo G, segmentacion): las ventas POS del historial no tienen clienta
+-- identificada, asi que la segmentacion de la cartera real no tendria con que trabajar. Se crean
+-- 40 cuentas CLIENTE (clienta01..40@demo.bo, password demo1234) y se les atribuye ~45% de los
+-- tickets del historial con una distribucion desigual (pocas compran mucho, muchas poco, algunas
+-- dejaron de venir hace semanas), de cada empresa por separado. Re-ejecutable: si ya existen las
+-- cuentas no hace nada.
+-- ---------------------------------------------------------------------
+DO $$
+DECLARE
+    v_peso NUMERIC;
+BEGIN
+    IF EXISTS (SELECT 1 FROM usuario WHERE email = 'clienta01@demo.bo') THEN
+        RETURN;
+    END IF;
+    PERFORM setseed(0.17);
+    INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado)
+    SELECT format('clienta%s@demo.bo', lpad(n::text, 2, '0')), crypt('demo1234', gen_salt('bf')),
+           (ARRAY['Ana','Sofia','Lucia','Valentina','Camila','Daniela','Mariana','Paola','Andrea','Carla'])[1 + (n % 10)],
+           (ARRAY['Rojas','Vargas','Mamani','Quispe','Flores','Gutierrez','Choque','Fernandez'])[1 + (n % 8)],
+           'CLIENTE', TRUE
+      FROM generate_series(1, 40) n;
+
+    -- reparto desigual: random()^2 concentra los tickets en las primeras clientas (pocas compran
+    -- mucho); las 8 ultimas (33-40) solo aparecen en ventas de hace mas de 40 dias (inactivas)
+    UPDATE venta v
+       SET usuario_id = (SELECT u.id FROM usuario u
+                          WHERE u.email = format('clienta%s@demo.bo', lpad(x.n::text, 2, '0')))
+      FROM (
+        SELECT v2.id AS venta_id,
+               CASE WHEN v2.fecha < now() - interval '40 days'
+                    THEN 1 + floor(40 * power(random(), 1.6))::int
+                    ELSE 1 + floor(32 * power(random(), 2))::int END AS n
+          FROM venta v2
+         WHERE v2.numero LIKE 'H-%' AND v2.usuario_id IS NULL AND random() < 0.45
+      ) x
+     WHERE v.id = x.venta_id;
+END;
+$$;

@@ -1,0 +1,29 @@
+.kpis-sync {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.ficha {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.ficha dt {
+  color: var(--ink-soft);
+}
+
+.ficha dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+@media (max-width: 30rem) {
+  .ficha {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,169 @@
+@startuml 23_modelo_dominio_multitenant
+' ICONIX - Modelo de dominio del SaaS multitenant (UML 2.5.1, clases sin operaciones).
+' Derivado de fashionstore/db/01_schema.sql al 18/10/2026. Reemplaza el paquete "SaaS
+' (tenant = sucursal)" del diagrama 09: ahora el tenant es la EMPRESA.
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor<<tenant>> #FCEFF2
+  BorderColor<<tenant>> #C1516B
+  BackgroundColor<<plataforma>> #EAF2FB
+  BorderColor<<plataforma>> #2A78D6
+  BackgroundColor<<sync>> #EEF7F1
+  BorderColor<<sync>> #3F7D5C
+}
+hide empty methods
+title FashionStore SaaS — Modelo de dominio multitenant (tenant = empresa)
+
+package "Plataforma SaaS" {
+  class Plataforma <<plataforma>> {
+    administra empresas, planes
+    y suscripciones
+    --
+    rol SUPERADMIN, sin empresa
+  }
+  class Plan <<plataforma>> {
+    codigo : BASICO | PROFESIONAL
+    precio_mensual : Decimal
+    max_sucursales : int [0..1]
+    max_empleados : int [0..1]
+    max_cajas : int [0..1]
+    operacion_offline : boolean
+    reportes : boolean
+    ia_reportes : boolean
+    analitica_ml : boolean
+    --
+    limites editables (PUT /saas/planes)
+  }
+}
+
+package "Tenant" {
+  class Empresa <<tenant>> {
+    slug : String {unique}
+    nombre : String
+    razon_social : String
+    nit : String
+    activa : boolean
+  }
+  class Suscripcion <<tenant>> {
+    estado : PRUEBA | ACTIVA | VENCIDA | CANCELADA
+    inicio : DateTime
+    vence_en : DateTime
+    /vigente : boolean
+  }
+  class PagoSuscripcion <<tenant>> {
+    meses : int
+    monto : Decimal
+    metodo : STRIPE | EFECTIVO | TRANSFERENCIA
+    periodo_desde / periodo_hasta
+  }
+  class Sucursal {
+    codigo : String {unique por empresa}
+    ciudad : ciudad_bo
+    activa : boolean
+  }
+  class Rol {
+    nombre : String
+    es_sistema : boolean
+    --
+    empresa NULL = rol del sistema
+  }
+  class Usuario {
+    email : String
+    tipo : CLIENTE | STAFF
+  }
+  class Empleado {
+    cargo : ENCARGADO | CAJERO | VENDEDOR | ALMACEN
+  }
+  class ClientePerfilTenant {
+    segmento : NUEVA | FRECUENTE | VIP | INACTIVA
+    talla_habitual, notas ...
+  }
+}
+
+package "Recursos comerciales (cada uno de UNA empresa)" {
+  class Producto {
+    codigo : String {unique por empresa}
+    nombre : String
+  }
+  class ProductoVariante {
+    sku, talla, color
+    precio : Decimal
+    activa : boolean
+  }
+  class "Categoria / Talla / Color\nTemporada / Proveedor\nPromocion" as Maestros
+  class Inventario {
+    cantidad_fisica : int
+    cantidad_reservada : int
+  }
+  class Venta {
+    numero : String
+    canal : WEB | MOVIL | POS
+    total : Decimal
+  }
+  class Reserva {
+    codigo : String
+    estado : estado_reserva
+  }
+}
+
+package "Sincronizacion offline" {
+  class OperacionSync <<sync>> {
+    id : UUID {generado en el cliente}
+    tipo : VENTA | RESERVA
+    registrada_en : DateTime
+    estado : CONFIRMADA | RECHAZADA | CONFLICTO
+    codigo_motivo : String [0..1]
+    payload : JSON
+    intentos : int
+    resuelta_en : DateTime [0..1]
+  }
+}
+
+Plataforma "1" -- "*" Empresa : registra >
+Plataforma "1" -- "*" Plan : configura >
+Empresa "1" -- "1" Suscripcion
+Suscripcion "*" --> "1" Plan : plan vigente
+Suscripcion "1" *-- "*" PagoSuscripcion
+Empresa "1" *-- "1..*" Sucursal : RN02
+Empresa "1" *-- "*" Usuario : personal
+Empresa "0..1" -- "*" Rol : roles propios
+Usuario "*" --> "1" Rol
+Usuario "1" -- "0..1" Empleado
+Empleado "*" --> "1" Sucursal
+Empresa "1" *-- "*" ClientePerfilTenant : cartera
+ClientePerfilTenant "*" --> "1" Usuario : clienta de la plataforma
+
+Empresa "1" *-- "*" Producto
+Empresa "1" *-- "*" Maestros
+Producto "1" *-- "*" ProductoVariante
+Sucursal "1" -- "*" Inventario
+Inventario "*" --> "1" ProductoVariante
+Sucursal "1" -- "*" Venta
+Sucursal "1" -- "*" Reserva
+
+OperacionSync "*" --> "1" Empresa
+OperacionSync "*" --> "1" Sucursal
+OperacionSync "*" --> "1" Usuario : responsable (RN10)
+OperacionSync "0..1" --> "0..1" Venta : genero
+OperacionSync "0..1" --> "0..1" Reserva : genero
+
+legend bottom
+  <b>Reglas</b>
+  RN01: toda entidad de negocio es de UNA empresa.
+  El backend filtra siempre por la empresa del token
+  (lo ajeno responde 404) y fn_mover_inventario
+  rechaza mover stock de una prenda de otra empresa.
+
+  RN04: sucursales activas <= plan.max_sucursales.
+  RN05: reportes con IA y analitica ML solo si el
+  plan los incluye (403). RN06: vencida -> 402 en las
+  funciones del plan; lo registrado offline despues
+  del vencimiento se rechaza al sincronizar.
+
+  RN11: el id es la clave primaria. Reenviar el mismo
+  id devuelve el resultado guardado: no se crea otra
+  venta ni se descuenta stock dos veces.
+endlegend
+@enduml

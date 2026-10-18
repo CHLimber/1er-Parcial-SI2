@@ -1,3 +1,10 @@
+"""CU12 - Gestionar Sucursales (por empresa).
+
+Multi-tenant: una sucursal pertenece a una sola empresa (RN02) y cada consulta se recorta a la
+del usuario; una sucursal de otra empresa responde 404. Dar de alta o reactivar una sucursal
+respeta el tope de sucursales activas del plan (RN04, Basico 2 / Profesional 10, configurable).
+"""
+
 from uuid import UUID
 
 import asyncpg
@@ -7,6 +14,7 @@ from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
 from app.core.plan import exigir_limite
+from app.core.tenant import empresa_de, no_encontrado
 from app.modules.sucursales.admin_schemas import (
     CajaEstadoIn,
     CajaIn,
@@ -41,10 +49,14 @@ def _validar_horario(body: SucursalIn) -> None:
         )
 
 
-async def _obtener(conn: asyncpg.Connection, sucursal_id: UUID) -> SucursalAdminOut:
-    fila = await conn.fetchrow(SELECT_SUCURSAL + "WHERE s.id = $1", sucursal_id)
+async def _obtener(
+    conn: asyncpg.Connection, sucursal_id: UUID, empresa_id: UUID
+) -> SucursalAdminOut:
+    fila = await conn.fetchrow(
+        SELECT_SUCURSAL + "WHERE s.id = $1 AND s.empresa_id = $2", sucursal_id, empresa_id
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sucursal no encontrada")
+        raise no_encontrado("Sucursal no encontrada")
     return SucursalAdminOut(**dict(fila))
 
 
@@ -71,14 +83,16 @@ async def listar_ciudades(
 async def listar_sucursales_admin(
     activa: bool | None = Query(default=None),
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> list[SucursalAdminOut]:
     """CU12 - Gestionar Sucursales. A diferencia de GET /sucursales (publico), este listado
     incluye las sucursales dadas de baja."""
     filas = await conn.fetch(
         SELECT_SUCURSAL
-        + "WHERE ($1::boolean IS NULL OR s.activa = $1) ORDER BY s.activa DESC, s.nombre",
+        + """WHERE s.empresa_id = $2 AND ($1::boolean IS NULL OR s.activa = $1)
+             ORDER BY s.activa DESC, s.nombre""",
         activa,
+        empresa_de(staff),
     )
     return [SucursalAdminOut(**dict(fila)) for fila in filas]
 
@@ -90,13 +104,17 @@ async def crear_sucursal(
     staff: dict = Depends(puede_crear),
 ) -> SucursalAdminOut:
     _validar_horario(body)
+    empresa_id = empresa_de(staff)
+    # RN04: el plan de la empresa limita cuantas sucursales activas puede tener
+    await exigir_limite(conn, empresa_id, "sucursales")
     try:
         async with conn.transaction():
             nuevo_id = await conn.fetchval(
                 """
-                INSERT INTO sucursal (codigo, nombre, ciudad, direccion, telefono, latitud, longitud,
-                                      hora_apertura, hora_cierre, cantidad_vestidores)
-                VALUES ($1, $2, $3::ciudad_bo, $4, $5, $6, $7, $8, $9, $10)
+                INSERT INTO sucursal (empresa_id, codigo, nombre, ciudad, direccion, telefono,
+                                      latitud, longitud, hora_apertura, hora_cierre,
+                                      cantidad_vestidores)
+                VALUES ($11, $1, $2, $3::ciudad_bo, $4, $5, $6, $7, $8, $9, $10)
                 RETURNING id
                 """,
                 body.codigo.upper(),
@@ -109,16 +127,7 @@ async def crear_sucursal(
                 body.hora_apertura,
                 body.hora_cierre,
                 body.cantidad_vestidores,
-            )
-            # SaaS (PENDIENTES 5.6): cada sucursal es un tenant; nace con 14 dias de prueba del
-            # plan mas bajo y despues elige/paga su plan desde Mi suscripcion.
-            await conn.execute(
-                """
-                INSERT INTO suscripcion (sucursal_id, plan_id, estado, vence_en)
-                SELECT $1, id, 'PRUEBA', now() + interval '14 days'
-                  FROM plan WHERE activo ORDER BY orden LIMIT 1
-                """,
-                nuevo_id,
+                empresa_id,
             )
             await registrar_auditoria(
                 conn,
@@ -135,16 +144,16 @@ async def crear_sucursal(
     except asyncpg.InvalidTextRepresentationError:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ciudad invalida")
 
-    return await _obtener(conn, nuevo_id)
+    return await _obtener(conn, nuevo_id, empresa_id)
 
 
 @router.get("/{sucursal_id}", response_model=SucursalAdminOut)
 async def obtener_sucursal(
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> SucursalAdminOut:
-    return await _obtener(conn, sucursal_id)
+    return await _obtener(conn, sucursal_id, empresa_de(staff))
 
 
 @router.put("/{sucursal_id}", response_model=SucursalAdminOut)
@@ -155,7 +164,8 @@ async def actualizar_sucursal(
     staff: dict = Depends(puede_actualizar),
 ) -> SucursalAdminOut:
     _validar_horario(body)
-    antes = await _obtener(conn, sucursal_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener(conn, sucursal_id, empresa_id)
 
     try:
         async with conn.transaction():
@@ -195,7 +205,7 @@ async def actualizar_sucursal(
     except asyncpg.InvalidTextRepresentationError:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ciudad invalida")
 
-    return await _obtener(conn, sucursal_id)
+    return await _obtener(conn, sucursal_id, empresa_id)
 
 
 @router.patch("/{sucursal_id}/estado", response_model=SucursalAdminOut)
@@ -206,8 +216,13 @@ async def cambiar_estado_sucursal(
     staff: dict = Depends(puede_cambiar_estado),
 ) -> SucursalAdminOut:
     """Baja logica. Se bloquea si queda una caja abierta o reservas en curso: cerrar la sucursal
-    con stock comprometido dejaria el inventario inconsistente."""
-    antes = await _obtener(conn, sucursal_id)
+    con stock comprometido dejaria el inventario inconsistente. Reactivar respeta el tope de
+    sucursales activas del plan."""
+    empresa_id = empresa_de(staff)
+    antes = await _obtener(conn, sucursal_id, empresa_id)
+
+    if body.activa and not antes.activa:
+        await exigir_limite(conn, empresa_id, "sucursales")
 
     if not body.activa:
         caja_abierta = await conn.fetchval(
@@ -249,7 +264,7 @@ async def cambiar_estado_sucursal(
             datos_antes={"activa": antes.activa},
             datos_despues={"activa": body.activa},
         )
-    return await _obtener(conn, sucursal_id)
+    return await _obtener(conn, sucursal_id, empresa_id)
 
 
 # ---------------------------------------------------------------------
@@ -265,10 +280,15 @@ FROM caja c
 """
 
 
-async def _obtener_caja(conn: asyncpg.Connection, caja_id: UUID) -> CajaOut:
-    fila = await conn.fetchrow(SELECT_CAJA + "WHERE c.id = $1", caja_id)
+async def _obtener_caja(conn: asyncpg.Connection, caja_id: UUID, empresa_id: UUID) -> CajaOut:
+    fila = await conn.fetchrow(
+        SELECT_CAJA
+        + "WHERE c.id = $1 AND EXISTS (SELECT 1 FROM sucursal s WHERE s.id = c.sucursal_id AND s.empresa_id = $2)",
+        caja_id,
+        empresa_id,
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caja no encontrada")
+        raise no_encontrado("Caja no encontrada")
     return CajaOut(**dict(fila))
 
 
@@ -279,7 +299,10 @@ async def cambiar_estado_caja(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_cambiar_estado),
 ) -> CajaOut:
-    caja = await _obtener_caja(conn, caja_id)
+    empresa_id = empresa_de(staff)
+    caja = await _obtener_caja(conn, caja_id, empresa_id)
+    if body.activa and not caja.activa:
+        await exigir_limite(conn, empresa_id, "cajas")
     if not body.activa and caja.sesion_abierta:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -297,15 +320,16 @@ async def cambiar_estado_caja(
             datos_antes={"activa": caja.activa},
             datos_despues={"activa": body.activa},
         )
-    return await _obtener_caja(conn, caja_id)
+    return await _obtener_caja(conn, caja_id, empresa_id)
 
 
 @router.get("/{sucursal_id}/cajas", response_model=list[CajaOut])
 async def listar_cajas(
     sucursal_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> list[CajaOut]:
+    await _obtener(conn, sucursal_id, empresa_de(staff))
     filas = await conn.fetch(SELECT_CAJA + "WHERE c.sucursal_id = $1 ORDER BY c.codigo", sucursal_id)
     return [CajaOut(**dict(fila)) for fila in filas]
 
@@ -317,9 +341,10 @@ async def crear_caja(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> CajaOut:
-    await _obtener(conn, sucursal_id)
-    # SaaS (PENDIENTES 5.4): el plan de la sucursal limita cuantas cajas puede tener
-    await exigir_limite(conn, sucursal_id, "cajas")
+    empresa_id = empresa_de(staff)
+    await _obtener(conn, sucursal_id, empresa_id)
+    # SaaS: el plan de la empresa limita cuantas cajas puede tener
+    await exigir_limite(conn, empresa_id, "cajas")
     try:
         async with conn.transaction():
             nueva_id = await conn.fetchval(
@@ -341,4 +366,4 @@ async def crear_caja(
             status_code=status.HTTP_409_CONFLICT,
             detail="Esa sucursal ya tiene una caja con ese codigo",
         )
-    return await _obtener_caja(conn, nueva_id)
+    return await _obtener_caja(conn, nueva_id, empresa_id)

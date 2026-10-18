@@ -1,0 +1,250 @@
+<app-panel-shell
+  titulo="Vender sin conexión"
+  bajada="Ventas de contado y reservas que funcionan con o sin internet. Todo queda guardado en este equipo y se sincroniza solo cuando vuelve la red."
+>
+  <section class="estado-sync" [class.estado-sync--offline]="!conexion.enLinea()">
+    <div>
+      <strong>{{ conexion.enLinea() ? 'En línea' : 'Sin conexión' }}</strong>
+      @if (sync.paquete(); as p) {
+        · {{ p.sucursal.nombre }} · catálogo del {{ fecha(sync.paqueteDe()) }}
+      } @else {
+        · todavía no se descargó el catálogo de la sucursal
+      }
+    </div>
+    <div class="estado-sync__contadores">
+      <span class="badge" [class.badge--alerta]="sync.pendientes() > 0">{{ sync.pendientes() }} pendiente(s)</span>
+      @if (sync.enConflicto() > 0) {
+        <span class="badge badge--baja">{{ sync.enConflicto() }} en conflicto</span>
+      }
+    </div>
+    <div class="acciones">
+      <button type="button" class="boton boton--secundario" [disabled]="ocupado() || !conexion.enLinea()" (click)="descargar()">
+        {{ sync.paquete() ? 'Actualizar catálogo' : 'Descargar catálogo' }}
+      </button>
+      <button type="button" class="boton" [disabled]="ocupado() || sync.sincronizando() || !conexion.enLinea() || sync.pendientes() === 0" (click)="sincronizar()">
+        {{ sync.sincronizando() ? 'Sincronizando…' : 'Sincronizar ahora' }}
+      </button>
+    </div>
+  </section>
+
+  @if (sinOffline) {
+    <p class="aviso">Tu plan no incluye la operación sin conexión: el servidor va a rechazar lo que se registre acá.</p>
+  }
+  @if (desactualizado()) {
+    <p class="aviso">
+      Los precios y existencias que ves son del {{ fecha(sync.paqueteDe()) }} y pueden haber cambiado: si el servidor
+      encuentra diferencias, la operación queda en conflicto para que la revises.
+    </p>
+  }
+  @if (sync.ultimoResultado(); as r) {
+    <p class="secundario">{{ r }}</p>
+  }
+  @if (aviso()) {
+    <p class="exito">{{ aviso() }}</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <div class="solapas">
+    @if (puedeVender) {
+      <button type="button" class="solapa" [class.solapa--activa]="solapa === 'vender'" (click)="solapa = 'vender'">Venta de contado</button>
+    }
+    @if (puedeReservar) {
+      <button type="button" class="solapa" [class.solapa--activa]="solapa === 'reservar'" (click)="solapa = 'reservar'">Reserva</button>
+    }
+    <button type="button" class="solapa" [class.solapa--activa]="solapa === 'operaciones'" (click)="solapa = 'operaciones'">
+      Operaciones ({{ sync.operaciones().length }})
+    </button>
+  </div>
+
+  @if (solapa !== 'operaciones') {
+    @if (!sync.paquete()) {
+      <p class="estado">Descargá el catálogo (con conexión) para poder operar sin red.</p>
+    } @else {
+      <div class="columnas">
+        <section class="panel">
+          <div class="campo">
+            <label for="buscar">Buscar prenda</label>
+            <input id="buscar" type="search" placeholder="Nombre, código o SKU" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" />
+          </div>
+          <ul class="catalogo">
+            @for (p of productos(); track p.id) {
+              <li class="catalogo__item">
+                <div>
+                  <strong>{{ p.nombre }}</strong>
+                  <span class="secundario"> · {{ p.categoria }}</span>
+                </div>
+                <div class="variantes">
+                  @for (v of p.variantes; track v.id) {
+                    <button type="button" class="variante" [disabled]="v.disponible === 0" (click)="agregar(p, v)"
+                      [title]="v.sku">
+                      <span class="punto" [style.background]="v.codigo_hex"></span>
+                      {{ v.talla }} · {{ v.color }} · Bs {{ v.precio.toFixed(2) }}
+                      <span class="variante__stock">({{ v.disponible }})</span>
+                    </button>
+                  }
+                </div>
+              </li>
+            } @empty {
+              <li class="estado">Ninguna prenda coincide.</li>
+            }
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel__titulo">{{ solapa === 'vender' ? 'Venta' : 'Reserva' }}</h2>
+          @if (carrito().length === 0) {
+            <p class="estado">Tocá una talla/color para agregarla.</p>
+          } @else {
+            <table class="tabla">
+              <tbody>
+                @for (l of carrito(); track l.variante_id) {
+                  <tr>
+                    <td>{{ l.producto }} <div class="secundario">{{ l.variante.talla }} · {{ l.variante.color }}</div></td>
+                    <td class="tabla__numero cantidad">
+                      <button type="button" class="boton boton--chico boton--secundario" (click)="cambiarCantidad(l, -1)">−</button>
+                      {{ l.cantidad }}
+                      <button type="button" class="boton boton--chico boton--secundario" (click)="cambiarCantidad(l, 1)">+</button>
+                    </td>
+                    @if (solapa === 'vender') {
+                      <td class="tabla__numero">Bs {{ (l.variante.precio * l.cantidad).toFixed(2) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+
+          @if (solapa === 'vender') {
+            <p class="total">Total con IVA: <strong>Bs {{ total().toFixed(2) }}</strong></p>
+            <div class="rejilla">
+              <div class="campo">
+                <label for="recibido">Efectivo recibido (Bs)</label>
+                <input id="recibido" type="number" min="0" step="0.5" [(ngModel)]="montoRecibido" />
+                @if (vuelto() !== null) {
+                  <span class="campo__ayuda">Vuelto: Bs {{ vuelto()!.toFixed(2) }}</span>
+                }
+              </div>
+              <div class="campo">
+                <label for="cliente-v">Clienta (opcional)</label>
+                <input id="cliente-v" list="clientas" [(ngModel)]="clienteVenta" placeholder="email" />
+              </div>
+            </div>
+            <p class="secundario">Sin conexión solo se cobra en efectivo. La venta queda pendiente hasta que el servidor la acepte.</p>
+            <div class="acciones">
+              <button type="button" class="boton" [disabled]="ocupado() || carrito().length === 0" (click)="registrarVenta()">
+                Registrar venta en efectivo
+              </button>
+            </div>
+          } @else {
+            <div class="rejilla">
+              <div class="campo">
+                <label for="cliente-r">Clienta</label>
+                <input id="cliente-r" list="clientas" [(ngModel)]="clienteReserva" placeholder="email de la clienta" />
+              </div>
+              <div class="campo">
+                <label for="fecha">Día de visita</label>
+                <input id="fecha" type="date" [(ngModel)]="fechaVisita" />
+              </div>
+              <div class="campo">
+                <label for="hora">Hora</label>
+                <input id="hora" type="time" [(ngModel)]="horaVisita" />
+              </div>
+            </div>
+            <div class="campo">
+              <label for="obs">Observaciones</label>
+              <input id="obs" [(ngModel)]="observaciones" />
+            </div>
+            <div class="acciones">
+              <button type="button" class="boton" [disabled]="ocupado() || carrito().length === 0" (click)="registrarReserva()">
+                Registrar reserva
+              </button>
+            </div>
+          }
+          <datalist id="clientas">
+            @for (c of sync.paquete()?.clientes ?? []; track c.id) {
+              <option [value]="c.email">{{ c.nombre }}</option>
+            }
+          </datalist>
+        </section>
+      </div>
+    }
+  }
+
+  @if (solapa === 'operaciones') {
+    <section class="panel">
+      <div class="barra">
+        <span class="secundario">Estas operaciones viven en este equipo hasta que las archives, aunque cierres el navegador.</span>
+        <span class="barra__espacio"></span>
+        <button type="button" class="boton boton--secundario" (click)="archivar()">Archivar las cerradas</button>
+      </div>
+      @if (sync.operaciones().length === 0) {
+        <p class="estado">Todavía no registraste operaciones en este equipo.</p>
+      } @else {
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Registrada</th>
+                <th>Operación</th>
+                <th class="tabla__numero">Total</th>
+                <th>Estado</th>
+                <th>Detalle</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (o of sync.operaciones(); track o.id) {
+                <tr>
+                  <td>{{ fecha(o.op.registrada_en) }} <div class="secundario mono">{{ o.id.slice(0, 8) }}</div></td>
+                  <td>{{ o.descripcion }}</td>
+                  <td class="tabla__numero">{{ o.total ? 'Bs ' + o.total.toFixed(2) : '—' }}</td>
+                  <td>
+                    <span class="badge"
+                      [class.badge--ok]="o.estado === 'CONFIRMADA'"
+                      [class.badge--alerta]="o.estado === 'REGISTRADA' || o.estado === 'ENVIADA'"
+                      [class.badge--baja]="o.estado === 'RECHAZADA' || o.estado === 'CONFLICTO'">
+                      {{ etiquetas[o.estado] }}
+                    </span>
+                    @if (o.intentos_envio > 1) {
+                      <div class="secundario">{{ o.intentos_envio }} envíos</div>
+                    }
+                  </td>
+                  <td>
+                    @if (numeroDe(o); as numero) {
+                      <span class="mono">{{ numero }}</span>
+                    }
+                    @if (o.respuesta?.motivo; as motivo) {
+                      <div [class.error]="o.estado !== 'CONFIRMADA'">{{ motivo }}</div>
+                    }
+                    @if (o.respuesta?.resolucion; as r) {
+                      <div class="secundario">{{ r }}</div>
+                    }
+                    @if (o.error_red) {
+                      <div class="secundario">{{ o.error_red }}</div>
+                    }
+                  </td>
+                  <td class="tabla__acciones">
+                    @if (o.estado === 'CONFLICTO' && !o.respuesta?.resuelta_en) {
+                      <button type="button" class="boton boton--chico" [disabled]="ocupado() || !conexion.enLinea()" (click)="resolver(o, 'REINTENTAR')">Reintentar</button>
+                      @if (gestionaConflictos && o.respuesta?.codigo_motivo === 'PRECIO_CAMBIADO') {
+                        <button type="button" class="boton boton--chico boton--secundario" [disabled]="ocupado()" (click)="resolver(o, 'ACEPTAR_PRECIO_ACTUAL')">Aceptar precio actual</button>
+                      }
+                      @if (gestionaConflictos) {
+                        <button type="button" class="boton boton--chico boton--peligro" [disabled]="ocupado()" (click)="resolver(o, 'DESCARTAR')">Descartar</button>
+                      }
+                    }
+                    @if (o.estado !== 'REGISTRADA') {
+                      <button type="button" class="boton boton--chico boton--secundario" [disabled]="ocupado() || !conexion.enLinea()" (click)="refrescar(o)">Actualizar</button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+</app-panel-shell>

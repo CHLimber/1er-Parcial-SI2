@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings, verificar_jwt_secret
 from app.core.db import connect_pool, disconnect_pool
 from app.core.jobs import job_expirar_reservas
+from app.modules.analitica.router import router as analitica_router
 from app.modules.asistente.router import router as asistente_router
 from app.modules.auditoria.router import router as auditoria_router
 from app.modules.caja.router import router as caja_router
@@ -31,6 +32,7 @@ from app.modules.recomendaciones.router import router as recomendaciones_router
 from app.modules.reportes.router import router as reportes_router
 from app.modules.reservas.router import router as reservas_router
 from app.modules.saas.router import router as saas_router
+from app.modules.sincronizacion.router import router as sincronizacion_router
 from app.modules.sucursales.admin_router import router as sucursales_admin_router
 from app.modules.sucursales.router import router as sucursales_router
 from app.modules.traspasos.router import router as traspasos_router
@@ -53,7 +55,7 @@ async def lifespan(app: FastAPI):
     await disconnect_pool()
 
 
-app = FastAPI(title="FashionStore API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="FashionStore SaaS API", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -124,6 +126,8 @@ app.include_router(devoluciones_router)
 app.include_router(traspasos_router)
 app.include_router(saas_router)
 app.include_router(clientes_router)
+app.include_router(sincronizacion_router)
+app.include_router(analitica_router)
 
 
 @app.get("/health")

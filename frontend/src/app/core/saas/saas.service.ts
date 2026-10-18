@@ -4,15 +4,21 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import {
+  AsignarPlanIn,
   CheckoutSuscripcionIn,
   CheckoutSuscripcionOut,
+  EmpresaDatosIn,
+  EmpresaIn,
+  EmpresaOut,
   PagoManualIn,
   PagoSuscripcionOut,
+  PlanIn,
   PlanOut,
   SuscripcionOut,
+  TiendaOut,
 } from './saas.models';
 
-/** SaaS (Segundo parcial, PENDIENTES 5.4-5.6): planes y suscripcion de cada tenant (sucursal). */
+/** SaaS multi-tenant: planes, suscripcion de cada empresa y administracion de la plataforma. */
 @Injectable({ providedIn: 'root' })
 export class SaasService {
   private readonly http = inject(HttpClient);
@@ -22,20 +28,21 @@ export class SaasService {
     return this.http.get<PlanOut[]>(`${this.base}/planes`);
   }
 
-  miSuscripcion(sucursalId?: string | null): Observable<SuscripcionOut> {
+  /** Publico: tiendas activas para el selector de la vitrina. */
+  tiendas(): Observable<TiendaOut[]> {
+    return this.http.get<TiendaOut[]>(`${this.base}/tiendas`);
+  }
+
+  /** La de mi empresa; la plataforma pasa `empresaId`. */
+  miSuscripcion(empresaId?: string | null): Observable<SuscripcionOut> {
     let params = new HttpParams();
-    if (sucursalId) params = params.set('sucursal_id', sucursalId);
+    if (empresaId) params = params.set('empresa_id', empresaId);
     return this.http.get<SuscripcionOut>(`${this.base}/suscripcion`, { params });
   }
 
-  /** Todos los tenants para el ADMIN de la plataforma; el propio para el resto. */
-  suscripciones(): Observable<SuscripcionOut[]> {
-    return this.http.get<SuscripcionOut[]>(`${this.base}/suscripciones`);
-  }
-
-  pagos(sucursalId?: string | null): Observable<PagoSuscripcionOut[]> {
+  pagos(empresaId?: string | null): Observable<PagoSuscripcionOut[]> {
     let params = new HttpParams();
-    if (sucursalId) params = params.set('sucursal_id', sucursalId);
+    if (empresaId) params = params.set('empresa_id', empresaId);
     return this.http.get<PagoSuscripcionOut[]>(`${this.base}/pagos`, { params });
   }
 
@@ -51,7 +58,33 @@ export class SaasService {
     });
   }
 
-  pagoManual(sucursalId: string, datos: PagoManualIn): Observable<SuscripcionOut> {
-    return this.http.post<SuscripcionOut>(`${this.base}/suscripciones/${sucursalId}/pago-manual`, datos);
+  // --- plataforma (SUPERADMIN) ---------------------------------------------------------------
+
+  empresas(): Observable<EmpresaOut[]> {
+    return this.http.get<EmpresaOut[]>(`${this.base}/empresas`);
+  }
+
+  registrarEmpresa(datos: EmpresaIn): Observable<EmpresaOut> {
+    return this.http.post<EmpresaOut>(`${this.base}/empresas`, datos);
+  }
+
+  editarEmpresa(id: string, datos: EmpresaDatosIn): Observable<EmpresaOut> {
+    return this.http.put<EmpresaOut>(`${this.base}/empresas/${id}`, datos);
+  }
+
+  cambiarEstadoEmpresa(id: string, activa: boolean): Observable<EmpresaOut> {
+    return this.http.patch<EmpresaOut>(`${this.base}/empresas/${id}/estado`, { activa });
+  }
+
+  asignarPlan(id: string, datos: AsignarPlanIn): Observable<SuscripcionOut> {
+    return this.http.put<SuscripcionOut>(`${this.base}/empresas/${id}/plan`, datos);
+  }
+
+  pagoManual(empresaId: string, datos: PagoManualIn): Observable<SuscripcionOut> {
+    return this.http.post<SuscripcionOut>(`${this.base}/suscripciones/${empresaId}/pago-manual`, datos);
+  }
+
+  configurarPlan(codigo: string, datos: PlanIn): Observable<PlanOut> {
+    return this.http.put<PlanOut>(`${this.base}/planes/${codigo}`, datos);
   }
 }

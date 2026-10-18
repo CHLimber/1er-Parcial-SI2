@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario, obtener_permisos
+from app.core.plan import funciones_habilitadas, plan_de_empresa
 from app.core.security import create_access_token, hash_password, verify_password
 from app.modules.usuarios.schemas import (
     CambiarPasswordRequest,
@@ -32,6 +33,26 @@ async def _politica_intentos(conn: asyncpg.Connection) -> tuple[int, int]:
     max_intentos = int(valores.get("login_max_intentos", _MAX_INTENTOS_DEFECTO))
     bloqueo_minutos = int(valores.get("login_bloqueo_minutos", _BLOQUEO_MINUTOS_DEFECTO))
     return max_intentos, bloqueo_minutos
+
+
+async def _armar_usuario(conn: asyncpg.Connection, fila: asyncpg.Record) -> UsuarioOut:
+    """UsuarioOut con permisos y datos del tenant (empresa y plan)."""
+    plan = await plan_de_empresa(conn, fila["empresa_id"]) if fila["empresa_id"] else None
+    return UsuarioOut(
+        id=fila["id"],
+        email=fila["email"],
+        nombre=fila["nombre"],
+        apellido=fila["apellido"],
+        tipo=fila["tipo"],
+        rol=fila["rol"],
+        cargo=fila["cargo"],
+        permisos=await obtener_permisos(conn, fila["id"]),
+        empresa_id=fila["empresa_id"],
+        empresa=fila["empresa"],
+        empresa_slug=fila["empresa_slug"],
+        plan=plan["plan_nombre"] if plan else None,
+        funciones_plan=funciones_habilitadas(plan),
+    )
 
 
 @router.post("/registro", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -94,10 +115,13 @@ async def login(
     row = await conn.fetchrow(
         """
         SELECT u.id, u.email, u.password_hash, u.nombre, u.apellido, u.tipo,
-               u.activo, u.intentos_fallidos, u.bloqueado_hasta, r.nombre AS rol, e.cargo
+               u.activo, u.intentos_fallidos, u.bloqueado_hasta, r.nombre AS rol, e.cargo,
+               u.empresa_id, em.nombre AS empresa, em.slug AS empresa_slug,
+               em.activa AS empresa_activa
         FROM usuario u
         LEFT JOIN rol r      ON r.id = u.rol_id
         LEFT JOIN empleado e ON e.usuario_id = u.id AND e.activo
+        LEFT JOIN empresa em ON em.id = u.empresa_id
         WHERE u.email = $1
         """,
         body.email,
@@ -156,6 +180,12 @@ async def login(
             ),
         )
 
+    if row["empresa_id"] is not None and not row["empresa_activa"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu empresa esta suspendida en la plataforma: contacta a soporte",
+        )
+
     await conn.execute(
         "UPDATE usuario SET ultimo_acceso = now(), intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1",
         row["id"],
@@ -168,16 +198,7 @@ async def login(
         accion="LOGIN",
     )
 
-    usuario = UsuarioOut(
-        id=row["id"],
-        email=row["email"],
-        nombre=row["nombre"],
-        apellido=row["apellido"],
-        tipo=row["tipo"],
-        rol=row["rol"],
-        cargo=row["cargo"],
-        permisos=await obtener_permisos(conn, row["id"]),
-    )
+    usuario = await _armar_usuario(conn, row)
     token = create_access_token(subject=str(row["id"]), extra_claims={"tipo": row["tipo"]})
     return TokenResponse(access_token=token, usuario=usuario)
 
@@ -191,10 +212,12 @@ async def usuario_actual(
     permisos del usuario (CU13), el frontend se entera al recargar."""
     fila = await conn.fetchrow(
         """
-        SELECT u.id, u.email, u.nombre, u.apellido, u.tipo, r.nombre AS rol, e.cargo
+        SELECT u.id, u.email, u.nombre, u.apellido, u.tipo, r.nombre AS rol, e.cargo,
+               u.empresa_id, em.nombre AS empresa, em.slug AS empresa_slug
         FROM usuario u
         LEFT JOIN rol r      ON r.id = u.rol_id
         LEFT JOIN empleado e ON e.usuario_id = u.id AND e.activo
+        LEFT JOIN empresa em ON em.id = u.empresa_id
         WHERE u.id = $1
         """,
         usuario["id"],
@@ -202,16 +225,7 @@ async def usuario_actual(
     if fila is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
-    return UsuarioOut(
-        id=fila["id"],
-        email=fila["email"],
-        nombre=fila["nombre"],
-        apellido=fila["apellido"],
-        tipo=fila["tipo"],
-        rol=fila["rol"],
-        cargo=fila["cargo"],
-        permisos=await obtener_permisos(conn, fila["id"]),
-    )
+    return await _armar_usuario(conn, fila)
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)

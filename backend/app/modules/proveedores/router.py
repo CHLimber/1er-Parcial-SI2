@@ -1,3 +1,6 @@
+"""CU11 - Gestionar Proveedores. Cada empresa tiene los suyos (proveedor.empresa_id): un
+proveedor de otra empresa responde 404, y el nombre solo se valida unico dentro de la empresa."""
+
 from uuid import UUID
 
 import asyncpg
@@ -6,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.tenant import empresa_de, no_encontrado
 from app.modules.proveedores.schemas import EstadoIn, ProveedorIn, ProveedorOut
 
 router = APIRouter(prefix="/proveedores", tags=["proveedores"])
@@ -24,10 +28,12 @@ FROM proveedor pr
 """
 
 
-async def _obtener(conn: asyncpg.Connection, proveedor_id: UUID) -> ProveedorOut:
-    fila = await conn.fetchrow(SELECT_PROVEEDOR + "WHERE pr.id = $1", proveedor_id)
+async def _obtener(conn: asyncpg.Connection, proveedor_id: UUID, empresa_id: UUID) -> ProveedorOut:
+    fila = await conn.fetchrow(
+        SELECT_PROVEEDOR + "WHERE pr.id = $1 AND pr.empresa_id = $2", proveedor_id, empresa_id
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proveedor no encontrado")
+        raise no_encontrado("Proveedor no encontrado")
     return ProveedorOut(**dict(fila))
 
 
@@ -36,13 +42,13 @@ async def listar_proveedores(
     q: str | None = Query(default=None, description="Busca por nombre, NIT o contacto"),
     activo: bool | None = Query(default=None),
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> list[ProveedorOut]:
     """CU11 - Gestionar Proveedores: listado con busqueda."""
     filas = await conn.fetch(
         SELECT_PROVEEDOR
         + """
-        WHERE ($1::text IS NULL OR pr.nombre ILIKE '%' || $1 || '%'
+        WHERE pr.empresa_id = $3 AND ($1::text IS NULL OR pr.nombre ILIKE '%' || $1 || '%'
                                 OR pr.nit ILIKE '%' || $1 || '%'
                                 OR pr.contacto ILIKE '%' || $1 || '%')
           AND ($2::boolean IS NULL OR pr.activo = $2)
@@ -50,6 +56,7 @@ async def listar_proveedores(
         """,
         q,
         activo,
+        empresa_de(staff),
     )
     return [ProveedorOut(**dict(fila)) for fila in filas]
 
@@ -58,9 +65,9 @@ async def listar_proveedores(
 async def obtener_proveedor(
     proveedor_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
-    _staff: dict = Depends(puede_ver),
+    staff: dict = Depends(puede_ver),
 ) -> ProveedorOut:
-    return await _obtener(conn, proveedor_id)
+    return await _obtener(conn, proveedor_id, empresa_de(staff))
 
 
 @router.post("", response_model=ProveedorOut, status_code=status.HTTP_201_CREATED)
@@ -69,8 +76,11 @@ async def crear_proveedor(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> ProveedorOut:
+    empresa_id = empresa_de(staff)
     duplicado = await conn.fetchval(
-        "SELECT 1 FROM proveedor WHERE lower(nombre) = lower($1)", body.nombre
+        "SELECT 1 FROM proveedor WHERE lower(nombre) = lower($1) AND empresa_id = $2",
+        body.nombre,
+        empresa_id,
     )
     if duplicado:
         raise HTTPException(
@@ -80,8 +90,8 @@ async def crear_proveedor(
     async with conn.transaction():
         nuevo_id = await conn.fetchval(
             """
-            INSERT INTO proveedor (nombre, nit, contacto, email, telefono)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO proveedor (nombre, nit, contacto, email, telefono, empresa_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
             """,
             body.nombre,
@@ -89,6 +99,7 @@ async def crear_proveedor(
             body.contacto,
             body.email,
             body.telefono,
+            empresa_id,
         )
         await registrar_auditoria(
             conn,
@@ -98,7 +109,7 @@ async def crear_proveedor(
             accion="CREAR",
             datos_despues=body.model_dump(mode="json"),
         )
-    return await _obtener(conn, nuevo_id)
+    return await _obtener(conn, nuevo_id, empresa_id)
 
 
 @router.put("/{proveedor_id}", response_model=ProveedorOut)
@@ -108,12 +119,14 @@ async def actualizar_proveedor(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_actualizar),
 ) -> ProveedorOut:
-    antes = await _obtener(conn, proveedor_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener(conn, proveedor_id, empresa_id)
 
     duplicado = await conn.fetchval(
-        "SELECT 1 FROM proveedor WHERE lower(nombre) = lower($1) AND id <> $2",
+        "SELECT 1 FROM proveedor WHERE lower(nombre) = lower($1) AND id <> $2 AND empresa_id = $3",
         body.nombre,
         proveedor_id,
+        empresa_id,
     )
     if duplicado:
         raise HTTPException(
@@ -143,7 +156,7 @@ async def actualizar_proveedor(
             datos_antes=antes.model_dump(mode="json"),
             datos_despues=body.model_dump(mode="json"),
         )
-    return await _obtener(conn, proveedor_id)
+    return await _obtener(conn, proveedor_id, empresa_id)
 
 
 @router.patch("/{proveedor_id}/estado", response_model=ProveedorOut)
@@ -155,7 +168,8 @@ async def cambiar_estado_proveedor(
 ) -> ProveedorOut:
     """Baja logica: el proveedor queda referenciado por productos y recepciones historicas,
     asi que nunca se borra fisicamente."""
-    antes = await _obtener(conn, proveedor_id)
+    empresa_id = empresa_de(staff)
+    antes = await _obtener(conn, proveedor_id, empresa_id)
 
     async with conn.transaction():
         await conn.execute("UPDATE proveedor SET activo = $2 WHERE id = $1", proveedor_id, body.activo)
@@ -168,4 +182,4 @@ async def cambiar_estado_proveedor(
             datos_antes={"activo": antes.activo},
             datos_despues={"activo": body.activo},
         )
-    return await _obtener(conn, proveedor_id)
+    return await _obtener(conn, proveedor_id, empresa_id)

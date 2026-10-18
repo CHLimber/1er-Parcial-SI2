@@ -1,0 +1,110 @@
+@startuml 27_modelo_datos_sqlite_movil
+' Diseno: base local SQLite de la app movil (version 2), lib/core/offline/base_local.dart.
+' Cubre la seccion 7.2 de la especificacion (tablas de persistencia local).
+!pragma layout smetana
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+hide empty methods
+hide circle
+skinparam class {
+  BackgroundColor<<paquete>> #EAF2FB
+  BorderColor<<paquete>> #2A78D6
+  BackgroundColor<<operacion>> #FCEFF2
+  BorderColor<<operacion>> #C1516B
+  BackgroundColor<<cache>> #F4F4F4
+}
+title App movil — Base local SQLite (fashionstore_local.db, version 2)
+
+package "Paquete offline (GET /sync/catalogo) — se reemplaza entero al descargar" {
+  class sucursal_local <<paquete>> {
+    id : TEXT <<PK>>
+    empresa_id : TEXT
+    empresa, codigo, nombre : TEXT
+    hora_apertura, hora_cierre : TEXT
+    sesion_caja_id : TEXT
+    iva_tasa : REAL
+    usuario_id : TEXT
+    generado_en : TEXT
+  }
+  class producto_local <<paquete>> {
+    id : TEXT <<PK>>
+    sucursal_id : TEXT <<FK>>
+    codigo, nombre, slug, categoria : TEXT
+    imagen_url : TEXT
+    precio_base : REAL
+  }
+  class variante_local <<paquete>> {
+    id : TEXT <<PK>>
+    producto_id : TEXT <<FK>>
+    sku, talla, color, codigo_hex : TEXT
+    precio : REAL
+    disponible : INTEGER {>= 0}
+  }
+  class cliente_local <<paquete>> {
+    id, sucursal_id : TEXT <<PK>>
+    nombre, email : TEXT
+    telefono : TEXT
+  }
+}
+
+package "Operaciones offline — nunca se borran por enviarse (RN12)" {
+  class operacion <<operacion>> {
+    {field} id : TEXT <<PK>> (UUID v4)
+    tipo : VENTA | RESERVA
+    empresa_id, sucursal_id, usuario_id : TEXT
+    {field} registrada_en : TEXT (UTC)
+    estado : REGISTRADA | ENVIADA |
+      CONFIRMADA | RECHAZADA | CONFLICTO
+    descripcion : TEXT
+    total : REAL
+    metodo_pago : EFECTIVO [0..1]
+    monto_recibido, sesion_caja_id,
+    cliente_email : [0..1]
+    fecha_visita, hora_visita,
+    {field} observaciones : [0..1] (reserva)
+    intentos_envio : INTEGER
+    ultimo_envio, error_red : TEXT
+  }
+  class operacion_detalle <<operacion>> {
+    operacion_id, variante_id : TEXT <<PK>>
+    cantidad : INTEGER {> 0}
+    precio_unitario : REAL
+    descripcion : TEXT
+  }
+  class resultado_sync <<operacion>> {
+    operacion_id : TEXT <<PK, FK>>
+    estado : CONFIRMADA | RECHAZADA | CONFLICTO
+    codigo_motivo, motivo : TEXT
+    {field} resultado : TEXT (JSON: numero de venta...)
+    duplicada : INTEGER
+    intentos : INTEGER
+    recibida_en, resuelta_en, resolucion
+  }
+}
+
+package "Lectura offline de la clienta (desde el primer parcial)" {
+  class respuesta <<cache>> {
+    {field} ruta : TEXT <<PK>> (tienda|url)
+    {field} cuerpo : TEXT (JSON)
+    guardado_en : TEXT
+  }
+  class pendiente <<cache>> {
+    id : INTEGER <<PK>>
+    metodo, ruta, cuerpo, descripcion
+  }
+}
+
+sucursal_local "1" *-- "*" producto_local : ON DELETE CASCADE
+producto_local "1" *-- "*" variante_local : ON DELETE CASCADE
+sucursal_local "1" *-- "*" cliente_local : ON DELETE CASCADE
+operacion "1" *-- "1..*" operacion_detalle : ON DELETE CASCADE
+operacion "1" *-- "0..1" resultado_sync : ON DELETE CASCADE
+operacion_detalle ..> variante_local : variante_id\n(sin FK: foto del precio usado)
+
+note bottom of operacion
+  Una sola tabla para venta y reserva (los campos del otro
+  tipo quedan NULL) en vez de cuatro tablas casi iguales.
+  Al cerrar sesion se borran `respuesta`, `pendiente` y el
+  paquete; las operaciones quedan, filtradas por usuario_id.
+end note
+@enduml

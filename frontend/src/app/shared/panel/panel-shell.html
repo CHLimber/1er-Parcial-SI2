@@ -1,5 +1,10 @@
 <header class="cabecera">
-  <a class="cabecera__marca" [routerLink]="inicio()">FashionStore · Gestión</a>
+  <a class="cabecera__marca" [routerLink]="inicio()">
+    {{ auth.usuario()?.empresa ?? 'Plataforma SaaS' }} · Gestión
+    @if (auth.usuario()?.plan; as plan) {
+      <span class="cabecera__plan">Plan {{ plan }}</span>
+    }
+  </a>
 
   <div class="cabecera__acciones">
     @if (auth.usuario(); as u) {

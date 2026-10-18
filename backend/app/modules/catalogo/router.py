@@ -5,6 +5,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.db import get_connection
+from app.core.tenant import empresa_publica
 from app.modules.catalogo.schemas import (
     CategoriaOut,
     ColorOut,
@@ -25,13 +26,24 @@ def _parsear_anclajes(valor: str | None) -> dict[str, Any] | None:
     asi que llega como texto y se parsea a mano, igual que auditoria."""
     return json.loads(valor) if valor is not None else None
 
+# Multi-tenant: la vitrina es de UNA empresa por request (app/core/tenant.py::empresa_publica,
+# header X-Empresa o ?empresa=slug). Un slug de producto puede repetirse entre empresas, por eso
+# el detalle tambien se busca por (empresa, slug).
 router = APIRouter(prefix="/catalogo", tags=["catalogo"])
 
 
 @router.get("/filtros", response_model=FiltrosOut)
-async def obtener_filtros(conn: asyncpg.Connection = Depends(get_connection)) -> FiltrosOut:
+async def obtener_filtros(
+    conn: asyncpg.Connection = Depends(get_connection),
+    empresa_id=Depends(empresa_publica),
+) -> FiltrosOut:
     categorias = await conn.fetch(
-        "SELECT id, nombre, slug, categoria_padre_id FROM categoria WHERE activa ORDER BY orden, nombre"
+        """
+        SELECT id, nombre, slug, categoria_padre_id FROM categoria
+         WHERE activa AND empresa_id = $1
+         ORDER BY orden, nombre
+        """,
+        empresa_id,
     )
     tallas = await conn.fetch("SELECT id, codigo, tipo FROM talla ORDER BY tipo, orden")
     colores = await conn.fetch(
@@ -39,12 +51,18 @@ async def obtener_filtros(conn: asyncpg.Connection = Depends(get_connection)) ->
         SELECT DISTINCT c.id, c.nombre, c.codigo_hex
         FROM color c
         JOIN producto_variante pv ON pv.color_id = c.id AND pv.activa
-        JOIN producto p ON p.id = pv.producto_id AND p.activo
+        JOIN producto p ON p.id = pv.producto_id AND p.activo AND p.empresa_id = $1
         ORDER BY c.nombre
-        """
+        """,
+        empresa_id,
     )
     temporadas = await conn.fetch(
-        "SELECT id, nombre, tipo FROM temporada WHERE activa ORDER BY fecha_inicio DESC"
+        """
+        SELECT id, nombre, tipo FROM temporada
+         WHERE activa AND empresa_id = $1
+         ORDER BY fecha_inicio DESC
+        """,
+        empresa_id,
     )
     return FiltrosOut(
         categorias=[CategoriaOut(**dict(fila)) for fila in categorias],
@@ -57,6 +75,7 @@ async def obtener_filtros(conn: asyncpg.Connection = Depends(get_connection)) ->
 @router.get("/productos", response_model=list[ProductoOut])
 async def listar_productos(
     conn: asyncpg.Connection = Depends(get_connection),
+    empresa_id=Depends(empresa_publica),
     categoria_slug: str | None = Query(default=None),
     q: str | None = Query(default=None, description="Busqueda por nombre"),
     temporada_id: str | None = Query(default=None),
@@ -98,7 +117,7 @@ async def listar_productos(
             JOIN inventario i ON i.variante_id = pv.id
             WHERE pv.producto_id = p.id AND pv.activa
         ) stock_agg ON true
-        WHERE p.activo
+        WHERE p.activo AND p.empresa_id = $8
           AND ($1::text IS NULL OR c.slug = $1)
           AND ($2::text IS NULL OR p.nombre ILIKE '%' || $2 || '%')
           AND ($3::uuid IS NULL OR p.temporada_id = $3)
@@ -121,13 +140,16 @@ async def listar_productos(
         color_id,
         limit,
         offset,
+        empresa_id,
     )
     return [ProductoOut(**dict(fila)) for fila in filas]
 
 
 @router.get("/productos/{slug}", response_model=ProductoDetalleOut)
 async def obtener_producto(
-    slug: str, conn: asyncpg.Connection = Depends(get_connection)
+    slug: str,
+    conn: asyncpg.Connection = Depends(get_connection),
+    empresa_id=Depends(empresa_publica),
 ) -> ProductoDetalleOut:
     producto = await conn.fetchrow(
         """
@@ -145,9 +167,10 @@ async def obtener_producto(
             ORDER BY pi.es_principal DESC, pi.orden
             LIMIT 1
         ) img ON true
-        WHERE p.slug = $1 AND p.activo
+        WHERE p.slug = $1 AND p.activo AND p.empresa_id = $2
         """,
         slug,
+        empresa_id,
     )
     if producto is None:
         raise HTTPException(status_code=404, detail="Producto no encontrado")

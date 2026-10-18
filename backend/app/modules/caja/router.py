@@ -242,10 +242,12 @@ async def buscar_variante(
         JOIN color c    ON c.id = pv.color_id
         LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
         WHERE pv.activa AND (pv.sku ILIKE $1 OR pv.codigo_barras ILIKE $1)
+          AND p.empresa_id = $3  -- multi-tenant: solo el catalogo de la empresa de la caja
         LIMIT 1
         """,
         codigo.strip(),
         cajero["sucursal_id"],
+        cajero["empresa_id"],
     )
     if fila is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontro esa prenda")

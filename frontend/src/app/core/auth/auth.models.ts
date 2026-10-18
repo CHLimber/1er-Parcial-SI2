@@ -32,6 +32,13 @@ export interface UsuarioOut {
   cargo: string | null;
   /** Codigos de permiso del rol (CU13). Vacio para clientes. */
   permisos: string[];
+  /** Multi-tenant: empresa del personal (null = clienta o plataforma), su plan y las funciones
+   * del plan que hoy puede usar (vacia si la suscripcion vencio). Solo arman la UI. */
+  empresa_id?: string | null;
+  empresa?: string | null;
+  empresa_slug?: string | null;
+  plan?: string | null;
+  funciones_plan?: string[];
 }
 
 export interface TokenResponse {

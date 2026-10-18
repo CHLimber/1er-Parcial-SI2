@@ -931,6 +931,9 @@ class _PestanaIa extends StatefulWidget {
 }
 
 class _PestanaIaState extends State<_PestanaIa> {
+  /// RN05: los reportes generativos son del plan Profesional. El backend igual responde 403.
+  bool get _incluidoEnPlan => context.read<AuthService>().tieneFuncion('ia_reportes');
+
   final _mensajes = <_MensajeVistaIa>[];
   final _borrador = TextEditingController();
   final _scroll = ScrollController();
@@ -1043,7 +1046,22 @@ class _PestanaIaState extends State<_PestanaIa> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    if (!_incluidoEnPlan) {
+      final plan = context.read<AuthService>().usuario?.plan ?? '';
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: EstadoVacio(
+          icono: Icons.lock_outline,
+          mensaje: 'Tu plan $plan no incluye los reportes generativos con IA: estan disponibles '
+              'desde el plan Profesional. Los reportes convencionales siguen disponibles.',
+        ),
+      );
+    }
+    return _contenido(context);
+  }
+
+  Widget _contenido(BuildContext context) => Column(
         children: [
           Expanded(
             child: ListView.builder(

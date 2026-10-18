@@ -22,6 +22,9 @@ Estados y quien actua (ADMIN puede todo, en cualquier sucursal):
 
 Este modulo nunca escribe inventario: cambia traspaso.estado y el trigger tg_traspaso_stock
 (db/02_logica.sql) llama a fn_mover_inventario, firmando el kardex con actualizado_por_id.
+
+Multi-tenant: un traspaso es siempre entre dos sucursales de la MISMA empresa (las dos se
+validan contra la empresa del usuario) y las prendas tienen que ser de su catalogo.
 """
 
 from uuid import UUID, uuid4
@@ -33,6 +36,13 @@ from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
 from app.core.plan import requiere_funcion_plan
+from app.core.tenant import (
+    empresa_de,
+    es_admin_empresa,
+    exigir_sucursal,
+    exigir_variantes,
+    no_encontrado,
+)
 from app.modules.traspasos.schemas import (
     DetalleTraspasoOut,
     MovimientoTraspasoOut,
@@ -81,8 +91,8 @@ LEFT JOIN usuario ur ON ur.id = t.usuario_recibe_id
 
 
 def _es_admin(staff: dict) -> bool:
-    """Mismo criterio que recepciones: ADMIN es el que puede editar sucursales."""
-    return "sucursales.actualizar" in staff["permisos"]
+    """Mismo criterio que recepciones: el ADMIN de la empresa ve todas sus sucursales."""
+    return es_admin_empresa(staff)
 
 
 def _mi_sucursal(staff: dict) -> UUID | None:
@@ -128,9 +138,11 @@ def _armar(fila: asyncpg.Record, staff: dict) -> TraspasoOut:
 
 
 async def _obtener(conn: asyncpg.Connection, traspaso_id: UUID, staff: dict) -> TraspasoOut:
-    fila = await conn.fetchrow(SELECT_TRASPASO + "WHERE t.id = $1", traspaso_id)
+    fila = await conn.fetchrow(
+        SELECT_TRASPASO + "WHERE t.id = $1 AND so.empresa_id = $2", traspaso_id, empresa_de(staff)
+    )
     if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Traspaso no encontrado")
+        raise no_encontrado("Traspaso no encontrado")
     traspaso = _armar(fila, staff)
     _exigir_lado(staff, traspaso, "cualquiera")
     return traspaso
@@ -247,12 +259,14 @@ async def listar_traspasos(
                OR ($3::text IS DISTINCT FROM 'ENTRANTES' AND t.sucursal_origen_id = $1)
                OR ($3::text IS DISTINCT FROM 'SALIENTES' AND t.sucursal_destino_id = $1))
           AND ($2::text IS NULL OR t.estado::text = $2)
+          AND so.empresa_id = $4
         ORDER BY t.fecha_solicitud DESC
         LIMIT 200
         """,
         mia,
         estado,
         direccion,
+        empresa_de(staff),
     )
     return [_armar(fila, staff) for fila in filas]
 
@@ -272,6 +286,9 @@ async def buscar_variantes(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Indica la sucursal de origen"
         )
+    empresa_id = empresa_de(staff)
+    await exigir_sucursal(conn, origen, empresa_id)
+    await exigir_sucursal(conn, destino_id, empresa_id)
     filas = await conn.fetch(
         """
         SELECT pv.id, pv.sku, pr.nombre AS producto, ta.codigo AS talla,
@@ -284,7 +301,7 @@ async def buscar_variantes(
         JOIN color c     ON c.id = pv.color_id
         LEFT JOIN inventario io  ON io.variante_id = pv.id AND io.sucursal_id = $2
         LEFT JOIN inventario ide ON ide.variante_id = pv.id AND ide.sucursal_id = $3
-        WHERE pv.activa AND pr.activo
+        WHERE pv.activa AND pr.activo AND pr.empresa_id = $4
           AND (pv.sku ILIKE '%' || $1 || '%'
                OR pv.codigo_barras ILIKE '%' || $1 || '%'
                OR pr.nombre ILIKE '%' || $1 || '%')
@@ -294,6 +311,7 @@ async def buscar_variantes(
         q.strip(),
         origen,
         destino_id,
+        empresa_id,
     )
     return [VarianteTraspasoOut(**dict(fila)) for fila in filas]
 
@@ -317,7 +335,7 @@ demanda AS (
            COALESCE(ve.anteriores, 0)::int AS anteriores,
            COALESCE(ve.recientes, 0)::numeric / $1 AS ritmo
     FROM inventario i
-    JOIN sucursal s ON s.id = i.sucursal_id AND s.activa
+    JOIN sucursal s ON s.id = i.sucursal_id AND s.activa AND s.empresa_id = $5
     LEFT JOIN ventas ve ON ve.sucursal_id = i.sucursal_id AND ve.variante_id = i.variante_id
 ),
 necesidad AS (
@@ -393,7 +411,9 @@ async def sugerir_traspasos(
     falta (sin pasarse de lo que sobra). No sugiere lo que ya viaja en un traspaso abierto hacia
     ese destino. Un ENCARGADO ve las sugerencias donde su sucursal es origen o destino.
     """
-    filas = await conn.fetch(SQL_SUGERENCIAS, dias, horizonte, _mi_sucursal(staff), limite)
+    filas = await conn.fetch(
+        SQL_SUGERENCIAS, dias, horizonte, _mi_sucursal(staff), limite, empresa_de(staff)
+    )
     return [SugerenciaTraspasoOut(**dict(fila)) for fila in filas]
 
 
@@ -457,9 +477,11 @@ async def crear_traspaso(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="El origen y el destino tienen que ser sucursales distintas",
         )
+    empresa_id = empresa_de(staff)
     activas = await conn.fetchval(
-        "SELECT COUNT(*) FROM sucursal WHERE id = ANY($1::uuid[]) AND activa",
+        "SELECT COUNT(*) FROM sucursal WHERE id = ANY($1::uuid[]) AND activa AND empresa_id = $2",
         [origen, body.sucursal_destino_id],
+        empresa_id,
     )
     if activas != 2:
         raise HTTPException(
@@ -470,6 +492,7 @@ async def crear_traspaso(
     pedidas: dict[UUID, int] = {}
     for linea in body.lineas:
         pedidas[linea.variante_id] = pedidas.get(linea.variante_id, 0) + linea.cantidad
+    await exigir_variantes(conn, list(pedidas), empresa_id)
 
     filas = await conn.fetch(
         """

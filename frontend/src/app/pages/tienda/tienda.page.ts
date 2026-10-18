@@ -8,6 +8,9 @@ import { CatalogoService } from '../../core/catalogo/catalogo.service';
 import { FiltrosOut, ProductoOut } from '../../core/catalogo/catalogo.models';
 import { ProductoRecomendadoOut } from '../../core/recomendaciones/recomendaciones.models';
 import { RecomendacionesService } from '../../core/recomendaciones/recomendaciones.service';
+import { TiendaOut } from '../../core/saas/saas.models';
+import { SaasService } from '../../core/saas/saas.service';
+import { elegirTienda, tiendaActual } from '../../core/tenant/tienda';
 import { ReservaCarritoService } from '../../core/reservas/reserva-carrito.service';
 import { ProductoCard } from '../../shared/catalogo/producto-card';
 import { CampanaNotificaciones } from '../../shared/notificaciones/campana-notificaciones';
@@ -26,6 +29,15 @@ export class TiendaPage implements OnInit, OnDestroy {
   private readonly reservaCarrito = inject(ReservaCarritoService);
   private readonly carritoService = inject(CarritoService);
   private readonly recomendacionesServicio = inject(RecomendacionesService);
+  private readonly saas = inject(SaasService);
+
+  /** Multi-tenant: tiendas de la plataforma para el selector de la clienta (el personal mira
+   * siempre la de su empresa, el backend se la impone por el token). */
+  protected readonly tiendas = signal<TiendaOut[]>([]);
+  protected readonly tienda = tiendaActual;
+  protected readonly nombreTienda = computed(
+    () => this.auth.usuario()?.empresa ?? this.tiendas().find((t) => t.slug === this.tienda())?.nombre ?? 'FashionStore',
+  );
 
   protected readonly usuario = this.auth.usuario;
   protected readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
@@ -89,6 +101,27 @@ export class TiendaPage implements OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    if (!this.esStaff()) {
+      this.saas.tiendas().subscribe({ next: (t) => this.tiendas.set(t), error: () => this.tiendas.set([]) });
+    }
+    this.cargarTienda();
+  }
+
+  /** Cambiar de tienda: lo armado para la anterior (prendas a reservar, filtros) no vale en la
+   * nueva, porque el catalogo es de cada empresa. */
+  protected cambiarTienda(slug: string): void {
+    if (slug === this.tienda()) return;
+    elegirTienda(slug);
+    this.reservaCarrito.limpiar();
+    this.categoriaSlug = '';
+    this.q = '';
+    this.tallaId = null;
+    this.colorId = null;
+    this.temporadaId = '';
+    this.cargarTienda();
+  }
+
+  private cargarTienda(): void {
     this.catalogo.obtenerFiltros().subscribe({
       next: (filtros) => this.filtros.set(filtros),
       error: () => this.filtros.set(null),

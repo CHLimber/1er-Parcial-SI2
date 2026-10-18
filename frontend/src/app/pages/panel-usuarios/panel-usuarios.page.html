@@ -1,6 +1,6 @@
 <app-panel-shell
   titulo="Usuarios y roles"
-  bajada="El personal de la cadena y qué puede hacer cada rol. Los permisos que asignes acá son los que la API exige en cada endpoint."
+  bajada="El personal de tu empresa y qué puede hacer cada rol. Los permisos que asignes acá son los que la API exige en cada endpoint."
 >
   <div class="solapas">
     <button
@@ -326,15 +326,21 @@
           <div class="rejilla">
             <div class="campo">
               <label for="rol-nombre">Nombre</label>
-              <input id="rol-nombre" type="text" formControlName="nombre" [readOnly]="!puedeGestionarRoles" />
+              <input id="rol-nombre" type="text" formControlName="nombre" [readOnly]="!rolEditable()" />
             </div>
             <div class="campo">
               <label for="rol-descripcion">Descripción</label>
-              <input id="rol-descripcion" type="text" formControlName="descripcion" [readOnly]="!puedeGestionarRoles" />
+              <input id="rol-descripcion" type="text" formControlName="descripcion" [readOnly]="!rolEditable()" />
             </div>
           </div>
 
-          @if (puedeGestionarRoles) {
+          @if (rolSeleccionado()?.es_sistema) {
+            <p class="aviso">
+              Rol del sistema: lo comparten todas las empresas de la plataforma y no se modifica. Para
+              un conjunto de permisos distinto, creá un rol propio de tu empresa.
+            </p>
+          }
+          @if (rolEditable()) {
             <div class="acciones">
               <button type="submit" class="boton" [disabled]="guardandoRol()">
                 {{ rolSeleccionado() ? 'Guardar cambios' : 'Crear rol' }}
@@ -379,7 +385,7 @@
                             <input
                               type="checkbox"
                               [checked]="estaMarcado(celda.id)"
-                              [disabled]="!puedeGestionarRoles"
+                              [disabled]="!rolEditable()"
                               (change)="alternarPermiso(celda.id)"
                             />
                           </label>
@@ -401,7 +407,7 @@
             <p class="exito">{{ avisoRol() }}</p>
           }
 
-          @if (puedeGestionarRoles) {
+          @if (rolEditable()) {
             <div class="acciones">
               <button type="button" class="boton" [disabled]="guardandoRol()" (click)="guardarPermisos()">
                 {{ guardandoRol() ? 'Guardando…' : 'Guardar permisos' }}

@@ -7,6 +7,7 @@ import 'core/carrito/carrito_service.dart';
 import 'core/notificaciones/notificaciones_service.dart';
 import 'core/offline/conexion_service.dart';
 import 'core/reservas/reserva_carrito_service.dart';
+import 'core/sincronizacion/sincronizacion_service.dart';
 import 'core/tema.dart';
 import 'rutas.dart';
 
@@ -23,6 +24,18 @@ Future<void> main() async {
   final conexion = ConexionService()..despuesDeSincronizar(() => unawaited(carrito.refrescar()));
   // PENDIENTES 2.19.3: escucha a auth y hace polling del contador solo mientras hay sesion.
   final notificaciones = NotificacionesService(auth);
+  // Modulos C y D: venta y reserva sin conexion en SQLite; se recarga al cambiar de usuario
+  final sincronizacion = SincronizacionService(
+    usuarioActual: () => auth.usuario?.id,
+    conexion: conexion,
+  );
+  String? usuarioAnterior = auth.usuario?.id;
+  auth.addListener(() {
+    if (auth.usuario?.id == usuarioAnterior) return;
+    usuarioAnterior = auth.usuario?.id;
+    unawaited(sincronizacion.cargarLocal().then((_) => sincronizacion.sincronizar()));
+  });
+  unawaited(sincronizacion.cargarLocal().then((_) => sincronizacion.sincronizar()));
   if (auth.estaAutenticado) {
     // el contador del carrito se refresca sin bloquear el arranque
     unawaited(carrito.refrescar());
@@ -36,6 +49,7 @@ Future<void> main() async {
         ChangeNotifierProvider.value(value: carrito),
         ChangeNotifierProvider.value(value: notificaciones),
         ChangeNotifierProvider.value(value: conexion),
+        ChangeNotifierProvider.value(value: sincronizacion),
       ],
       child: AppFashionStore(auth: auth),
     ),

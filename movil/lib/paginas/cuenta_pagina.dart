@@ -7,6 +7,7 @@ import '../core/auth/auth_service.dart';
 import '../core/carrito/carrito_service.dart';
 import '../core/config.dart';
 import '../core/errores.dart';
+import '../core/sincronizacion/sincronizacion_service.dart';
 import '../core/tema.dart';
 import 'notificaciones_pagina.dart' show BotonNotificaciones;
 
@@ -165,6 +166,15 @@ class _CuentaPaginaState extends State<CuentaPagina> {
                 titulo: 'Atender reservas',
                 detalle: 'CU08 · Cola de vestidores de la sucursal',
                 alTocar: () => context.push('/atender-reservas'),
+              ),
+            if (auth.tienePermiso([permisoCaja, permisoAtenderReservas]))
+              _Acceso(
+                icono: Icons.cloud_off_outlined,
+                titulo: 'Vender sin conexion',
+                detalle: context.watch<SincronizacionService>().pendientes > 0
+                    ? '${context.watch<SincronizacionService>().pendientes} operacion(es) por sincronizar'
+                    : 'Venta de contado y reservas offline, con sincronizacion',
+                alTocar: () => context.push('/offline'),
               ),
             _Acceso(
               icono: Icons.dashboard_outlined,

@@ -1,6 +1,16 @@
 <div class="pagina">
   <header class="cabecera">
-    <span class="cabecera__marca">FashionStore</span>
+    <span class="cabecera__marca">{{ nombreTienda() }}</span>
+    @if (!esStaff() && tiendas().length > 1) {
+      <!-- Multi-tenant: la clienta elige que tienda de la plataforma mira (cada empresa tiene su
+           catalogo, stock y precios). Tambien se llega con ?empresa=slug. -->
+      <select class="cabecera__tienda" aria-label="Tienda" [value]="tienda()"
+        (change)="cambiarTienda($any($event.target).value)">
+        @for (t of tiendas(); track t.slug) {
+          <option [value]="t.slug" [selected]="t.slug === tienda()">{{ t.nombre }}</option>
+        }
+      </select>
+    }
 
     <!-- Campana (PENDIENTES 2.19.3): afuera del menu plegable para que se vea tambien en telefono. -->
     <app-campana-notificaciones class="cabecera__campana" />

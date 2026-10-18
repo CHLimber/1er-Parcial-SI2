@@ -11,9 +11,9 @@ from fastapi.testclient import TestClient
 from app.core.db import get_connection
 from app.main import app
 from app.modules.devoluciones import router as devoluciones_router
-from tests.conexion_falsa import ConexionFalsa
+from tests.conexion_falsa import ConexionFalsa, staff
 
-ADMIN = {"id": uuid4(), "permisos": ["sucursales.actualizar"], "sucursal_id": None}
+ADMIN = staff(permisos=["sucursales.actualizar"])
 
 
 @pytest.fixture

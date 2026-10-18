@@ -1,0 +1,54 @@
+.kpis {
+  margin-bottom: 1rem;
+}
+
+.hallazgos {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.subtitulo {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin: 0.75rem 0 0.4rem;
+}
+
+.ejemplos {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.sube {
+  color: #1b7f5a;
+}
+
+.baja {
+  color: var(--flame-dark);
+}
+
+.destacada td {
+  font-weight: 600;
+  background: var(--paper);
+}
+
+.campo-chico {
+  width: 6rem;
+}
+
+.tabla--densa td,
+.tabla--densa th {
+  font-size: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  white-space: nowrap;
+}
+
+.columnas > section,
+.columnas > div {
+  flex: 1 1 24rem;
+  min-width: 0;
+}

@@ -99,6 +99,14 @@ export const routes: Routes = [
     canActivate: [authGuard, permisoGuard(PERMISO_ATENDER_RESERVAS)],
   },
 
+  {
+    // Operacion sin conexion del personal (PWA): ventas de contado y reservas con sincronizacion
+    path: 'offline',
+    loadComponent: () =>
+      import('./pages/venta-offline/venta-offline.page').then((m) => m.VentaOfflinePage),
+    canActivate: [authGuard, permisoGuard(PERMISO_CAJA, PERMISO_ATENDER_RESERVAS)],
+  },
+
   // Panel de gestion (CU09 a CU13). Cada pantalla exige el mismo permiso que su endpoint.
   {
     path: 'panel',
@@ -221,6 +229,29 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/panel-suscripcion/panel-suscripcion.page').then((m) => m.PanelSuscripcionPage),
         canActivate: [permisoGuard('suscripciones.leer', 'suscripciones.actualizar')],
+      },
+      {
+        // Modulo G: dashboard de machine learning (plan Profesional; el backend da 403 si no)
+        path: 'analitica',
+        loadComponent: () =>
+          import('./pages/panel-analitica/panel-analitica.page').then((m) => m.PanelAnaliticaPage),
+        canActivate: [permisoGuard('analitica.leer')],
+      },
+      {
+        // Modulo D: log de operaciones offline recibidas y resolucion de conflictos (CU20/CU21)
+        path: 'sincronizacion',
+        loadComponent: () =>
+          import('./pages/panel-sincronizacion/panel-sincronizacion.page').then(
+            (m) => m.PanelSincronizacionPage,
+          ),
+        canActivate: [permisoGuard('sincronizacion.leer', 'sincronizacion.actualizar')],
+      },
+      {
+        // Plataforma SaaS: empresas contratantes y configuracion de planes
+        path: 'empresas',
+        loadComponent: () =>
+          import('./pages/panel-empresas/panel-empresas.page').then((m) => m.PanelEmpresasPage),
+        canActivate: [permisoGuard('empresas.leer')],
       },
       {
         path: 'auditoria',

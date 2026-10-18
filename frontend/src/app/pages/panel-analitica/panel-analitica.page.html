@@ -1,0 +1,309 @@
+<app-panel-shell
+  titulo="Analítica ML"
+  bajada="Modelos entrenados con datos sintéticos y aplicados a las ventas reales de tu empresa: pronóstico de demanda, segmentos de clientas y días atípicos."
+>
+  @if (!incluidoEnPlan) {
+    <!-- el backend igual responde 403: aca solo se evita pedir un dashboard que no va a llegar -->
+    <section class="panel">
+      <h2 class="panel__titulo">Analítica con machine learning</h2>
+      <p class="aviso">
+        Tu plan {{ auth.usuario()?.plan ?? '' }} no incluye la analítica con machine learning: está disponible
+        desde el plan Profesional. Los reportes convencionales siguen disponibles en Reportes.
+      </p>
+    </section>
+  } @else {
+    <div class="barra">
+      @if (eligeSucursal) {
+        <div class="campo">
+          <label for="sucursal">Sucursal</label>
+          <select id="sucursal" [(ngModel)]="sucursalId" name="sucursal" (change)="cargar()">
+            <option value="">Todas las de la empresa</option>
+            @for (s of sucursales(); track s.id) {
+              <option [value]="s.id">{{ s.nombre }}</option>
+            }
+          </select>
+        </div>
+      }
+      <div class="campo">
+        <label for="horizonte">Horizonte</label>
+        <select id="horizonte" [(ngModel)]="horizonte" name="horizonte" (change)="cargar()">
+          <option [ngValue]="7">7 días</option>
+          <option [ngValue]="14">14 días</option>
+          <option [ngValue]="30">30 días</option>
+        </select>
+      </div>
+      <span class="barra__espacio"></span>
+      @if (puedeEntrenar) {
+        <div class="campo">
+          <label for="semilla">Semilla</label>
+          <input id="semilla" type="number" min="0" max="10000" [(ngModel)]="semilla" name="semilla" class="campo-chico" />
+        </div>
+        <button type="button" class="boton boton--secundario" [disabled]="entrenando()" (click)="reentrenar()">
+          {{ entrenando() ? 'Entrenando…' : 'Reentrenar modelos' }}
+        </button>
+      }
+    </div>
+
+    @if (error()) {
+      <p class="error" role="alert">{{ error() }}</p>
+    }
+    @if (aviso()) {
+      <p class="exito">{{ aviso() }}</p>
+    }
+
+    @if (cargando() && !datos()) {
+      <p class="estado">Aplicando los modelos a tus ventas…</p>
+    }
+
+    @if (datos(); as d) {
+      <div class="kpis">
+        <div class="kpi">
+          <span class="kpi__etiqueta">Unidades pronosticadas</span>
+          <span class="kpi__valor">{{ d.indicadores.unidades_pronosticadas | number: '1.0-0' }}</span>
+          <span class="kpi__detalle">próximos {{ d.horizonte }} días</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi__etiqueta">Últimos {{ d.horizonte }} días</span>
+          <span class="kpi__valor">{{ d.indicadores.unidades_ultimos_dias | number: '1.0-0' }}</span>
+          <span class="kpi__detalle">variación {{ variacion(d.indicadores.variacion_pct) }}</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi__etiqueta">Clientas segmentadas</span>
+          <span class="kpi__valor">{{ d.indicadores.clientas_segmentadas }}</span>
+          <span class="kpi__detalle">{{ d.segmentos.length }} segmento(s) con KMeans</span>
+        </div>
+        <div class="kpi" [class.kpi--alerta]="d.indicadores.dias_atipicos > 0">
+          <span class="kpi__etiqueta">Días atípicos (90 días)</span>
+          <span class="kpi__valor">{{ d.indicadores.dias_atipicos }}</span>
+          <span class="kpi__detalle">IsolationForest por sucursal</span>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h2 class="panel__titulo">Hallazgos</h2>
+        @if (d.hallazgos.length === 0) {
+          <p class="estado">Todavía no hay suficientes ventas para sacar conclusiones.</p>
+        } @else {
+          <ul class="hallazgos">
+            @for (h of d.hallazgos; track h) {
+              <li>{{ h }}</li>
+            }
+          </ul>
+        }
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__titulo">Pronóstico de demanda por tipo de prenda (supervisado)</h2>
+        <div class="grafico"><canvas #graficoPronostico></canvas></div>
+        <div class="tabla-envoltorio">
+          <table class="tabla">
+            <thead>
+              <tr>
+                <th>Sucursal</th>
+                <th>Tipo</th>
+                <th class="tabla__numero">Últimos {{ d.horizonte }} días</th>
+                <th class="tabla__numero">Pronóstico</th>
+                <th class="tabla__numero">Variación</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of d.pronostico_por_sucursal; track p.sucursal + p.tipo) {
+                <tr>
+                  <td>{{ p.sucursal }}</td>
+                  <td>{{ p.tipo }}</td>
+                  <td class="tabla__numero">{{ p.real_ultimos_dias | number: '1.0-1' }}</td>
+                  <td class="tabla__numero">{{ p.pronostico | number: '1.0-1' }}</td>
+                  <td class="tabla__numero" [class.sube]="(p.variacion_pct ?? 0) > 5" [class.baja]="(p.variacion_pct ?? 0) < -5">
+                    {{ variacion(p.variacion_pct) }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="columnas">
+        <section class="panel">
+          <h2 class="panel__titulo">Segmentos de clientas (no supervisado)</h2>
+          @if (d.segmentos.length === 0) {
+            <p class="estado">No hay compras de clientas para segmentar.</p>
+          } @else {
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Segmento</th>
+                    <th class="tabla__numero">Clientas</th>
+                    <th class="tabla__numero">Monto 90 d</th>
+                    <th class="tabla__numero">Compras 90 d</th>
+                    <th class="tabla__numero">Días sin comprar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (s of d.segmentos; track s.segmento) {
+                    <tr>
+                      <td>
+                        <strong>{{ s.segmento }}</strong>
+                        <span class="ejemplos">{{ nombresEjemplo(s) }}</span>
+                      </td>
+                      <td class="tabla__numero">{{ s.clientas }}</td>
+                      <td class="tabla__numero">Bs {{ s.monto_promedio | number: '1.0-0' }}</td>
+                      <td class="tabla__numero">{{ s.compras_promedio | number: '1.0-1' }}</td>
+                      <td class="tabla__numero">{{ s.recencia_promedio | number: '1.0-0' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+
+        <section class="panel">
+          <h2 class="panel__titulo">Días atípicos en ventas (no supervisado)</h2>
+          @if (d.anomalias.length === 0) {
+            <p class="estado">Sin días atípicos detectados (hacen falta al menos 20 días con ventas).</p>
+          } @else {
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Día</th>
+                    <th>Sucursal</th>
+                    <th>Tipo</th>
+                    <th class="tabla__numero">Total</th>
+                    <th class="tabla__numero">Mediana</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (a of d.anomalias; track a.dia + a.sucursal) {
+                    <tr>
+                      <td class="mono">{{ a.dia }}</td>
+                      <td>{{ a.sucursal }}</td>
+                      <td>
+                        <span class="badge" [class.badge--ok]="a.tipo === 'PICO'" [class.badge--baja]="a.tipo === 'CAIDA'">
+                          {{ a.tipo === 'PICO' ? 'Pico' : 'Caída' }}
+                        </span>
+                      </td>
+                      <td class="tabla__numero">Bs {{ a.total | number: '1.0-0' }}</td>
+                      <td class="tabla__numero">Bs {{ a.mediana_sucursal | number: '1.0-0' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2 class="panel__titulo">Evaluación de los modelos</h2>
+        <p class="campo__ayuda">
+          Entrenados el {{ d.modelo.entrenado_en.slice(0, 16).replace('T', ' ') }} con
+          {{ d.modelo.demanda.filas | number }} filas sintéticas de demanda ({{ d.modelo.demanda.periodo[0] }} a
+          {{ d.modelo.demanda.periodo[1] }}) y {{ d.modelo.clientes.filas | number }} clientas sintéticas, semilla
+          {{ d.modelo.semilla }}. Partición temporal: {{ d.modelo.demanda.filas_entrenamiento | number }} filas para
+          entrenar y {{ d.modelo.demanda.filas_prueba | number }} (últimos 90 días) para evaluar.
+        </p>
+        <div class="columnas">
+          <div>
+            <h3 class="subtitulo">Demanda: comparación contra referencias</h3>
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Modelo</th>
+                    <th class="tabla__numero">MAE</th>
+                    <th class="tabla__numero">RMSE</th>
+                    <th class="tabla__numero">R²</th>
+                    <th class="tabla__numero">MAPE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (m of metricas(d); track m.clave) {
+                    <tr [class.destacada]="m.clave === 'random_forest'">
+                      <td>{{ nombreModelo[m.clave] }}</td>
+                      <td class="tabla__numero">{{ m.mae }}</td>
+                      <td class="tabla__numero">{{ m.rmse }}</td>
+                      <td class="tabla__numero">{{ m.r2 }}</td>
+                      <td class="tabla__numero">{{ m.mape }}%</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="campo__ayuda">
+              Validación cruzada temporal (MAE por corte): {{ d.modelo.demanda.cv_mae.join(' · ') }}
+            </p>
+            <h3 class="subtitulo">Segmentación: elección de k por silueta</h3>
+            <div class="tabla-envoltorio">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th class="tabla__numero">k</th>
+                    <th class="tabla__numero">Silueta</th>
+                    <th class="tabla__numero">Inercia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (e of d.modelo.clientes.evaluacion_k; track e.k) {
+                    <tr [class.destacada]="e.k === d.modelo.clientes.k">
+                      <td class="tabla__numero">{{ e.k }}</td>
+                      <td class="tabla__numero">{{ e.silueta }}</td>
+                      <td class="tabla__numero">{{ e.inercia | number: '1.0-0' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            <p class="campo__ayuda">
+              Elegido k = {{ d.modelo.clientes.k }} (silueta {{ d.modelo.clientes.silueta }}); índice de Rand
+              ajustado contra los perfiles con que se generaron los datos: {{ d.modelo.clientes.ari_vs_perfiles }}.
+            </p>
+          </div>
+          <div>
+            <h3 class="subtitulo">Variables más importantes (Random Forest)</h3>
+            <div class="grafico"><canvas #graficoImportancias></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel__titulo">Datos sintéticos de entrenamiento</h2>
+        <div class="barra">
+          <div class="campo">
+            <label for="tipo-muestra">Conjunto</label>
+            <select id="tipo-muestra" [(ngModel)]="tipoMuestra" name="tipoMuestra" (change)="muestra.set(null)">
+              <option value="demanda">Demanda diaria</option>
+              <option value="clientes">Clientas</option>
+            </select>
+          </div>
+          <button type="button" class="boton boton--secundario" (click)="verMuestra()">Ver muestra</button>
+          <button type="button" class="boton boton--secundario" (click)="descargarCsv()">Descargar CSV</button>
+        </div>
+        @if (muestra(); as m) {
+          <div class="tabla-envoltorio">
+            <table class="tabla tabla--densa">
+              <thead>
+                <tr>
+                  @for (c of m.columnas; track c) {
+                    <th>{{ c }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (f of m.filas; track $index) {
+                  <tr>
+                    @for (v of f; track $index) {
+                      <td class="mono">{{ v }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+    }
+  }
+</app-panel-shell>

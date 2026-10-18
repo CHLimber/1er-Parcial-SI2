@@ -8,6 +8,10 @@ bitacora es del sistema completo -- usuarios, roles, catalogo, sucursales, prove
 recepciones -- y `auditoria` no tiene `sucursal_id` para acotar, asi que no se le da a
 ENCARGADO ni a ningun otro rol.
 
+Multi-tenant: cada fila lleva el empresa_id del usuario que hizo la accion (lo completa
+app/core/auditoria.py). El ADMIN de una empresa ve solo la bitacora de su empresa; la cuenta de
+la plataforma (SUPERADMIN, sin empresa) ve la de todas y puede filtrar por una con ?empresa_id.
+
 asyncpg no tiene un codec de jsonb configurado (ver app/core/db.py), asi que las columnas
 `datos_antes`/`datos_despues` llegan como texto JSON y se parsean a mano en `_fila_a_esquema`.
 """
@@ -59,6 +63,7 @@ async def listar_auditoria(
     accion: str | None = Query(default=None, pattern="^(CREAR|ACTUALIZAR|ELIMINAR|LOGIN)$"),
     desde: date | None = Query(default=None),
     hasta: date | None = Query(default=None),
+    empresa_id: UUID | None = Query(default=None, description="Solo la plataforma la elige"),
     pagina: int = Query(default=1, ge=1),
     tamanio_pagina: int = Query(default=20, ge=1, le=100),
     conn: asyncpg.Connection = Depends(get_connection),
@@ -81,8 +86,11 @@ async def listar_auditoria(
           AND ($4::accion_auditoria IS NULL OR a.accion = $4)
           AND ($5::timestamptz IS NULL OR a.fecha >= $5)
           AND ($6::timestamptz IS NULL OR a.fecha <= $6)
+          AND ($7::uuid IS NULL OR a.empresa_id = $7)
     """
-    parametros = [usuario_id, entidad, entidad_id, accion, desde_dt, hasta_dt]
+    # la empresa del usuario manda; solo la plataforma (sin empresa) puede elegir otra
+    alcance = staff["empresa_id"] if staff["empresa_id"] is not None else empresa_id
+    parametros = [usuario_id, entidad, entidad_id, accion, desde_dt, hasta_dt, alcance]
 
     total = await conn.fetchval(
         f"SELECT COUNT(*) FROM auditoria a {filtros}",
@@ -119,5 +127,9 @@ async def listar_entidades(
     staff: dict = Depends(puede_ver),
 ) -> list[str]:
     """Valores distintos de `entidad` ya registrados, para armar el filtro en el panel."""
-    filas = await conn.fetch("SELECT DISTINCT entidad FROM auditoria ORDER BY entidad")
+    filas = await conn.fetch(
+        """SELECT DISTINCT entidad FROM auditoria
+            WHERE ($1::uuid IS NULL OR empresa_id = $1) ORDER BY entidad""",
+        staff["empresa_id"],
+    )
     return [fila["entidad"] for fila in filas]

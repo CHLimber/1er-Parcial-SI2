@@ -21,3 +21,6 @@ movil/.flutter-plugin-dependencies
 .idea/
 .DS_Store
 Thumbs.db
+
+# Modulo G: modelos entrenados (se regeneran solos con datos sinteticos)
+backend/modelos_ml/

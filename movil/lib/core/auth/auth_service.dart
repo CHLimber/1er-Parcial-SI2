@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api.dart';
 import 'auth_models.dart';
 import '../offline/base_local.dart';
+import '../tenant/tienda.dart';
 
 /// CU07 y CU08 se autorizan por permiso (PENDIENTES 3.1), los mismos codigos que exigen
 /// `get_cajero_actual` / `get_encargado_actual` en el backend.
@@ -34,8 +35,14 @@ class AuthService extends ChangeNotifier {
   /// CU13: la UI se arma con los permisos del rol, no con su nombre. Basta con tener uno.
   bool tienePermiso(List<String> codigos) => codigos.any(permisos.contains);
 
+  /// Funcion del plan de la empresa (ia_reportes, analitica_ml, operacion_offline...).
+  bool tieneFuncion(String funcion) => _usuario?.funcionesPlan.contains(funcion) ?? false;
+
   Future<void> inicializar() async {
     api.obtenerToken = () => _token;
+    // el personal opera siempre su empresa; la clienta, la tienda que esta mirando
+    api.obtenerEmpresa = () => _usuario?.empresaSlug ?? tiendaActual.value;
+    await cargarTienda();
     api.alExpirarSesion = () {
       if (estaAutenticado) cerrarSesion();
     };

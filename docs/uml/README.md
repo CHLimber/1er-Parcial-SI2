@@ -24,8 +24,15 @@ Cada `.puml` es un diagrama; su PNG ya renderizado está en `png/`.
 | `17_secuencia_cambio_talla.puml`, `18_secuencia_pago_suscripcion.puml` | Secuencia | Diseño de CU25 y CU22 |
 | `19_clases_diseno.puml` | Clases de diseño | Backend, web y móvil del Segundo parcial |
 | `20`-`22_c4_*.puml` | C4 | Contexto, contenedores y componentes de la API |
+| `23_modelo_dominio_multitenant.puml` | Clases (dominio) | SaaS con tenant = empresa (reemplaza el paquete SaaS del 09) |
+| `24_casos_de_uso_multitenant.puml` | Casos de uso | CU01-CU28 de la especificacion multitenant |
+| `25_robustez_sincronizacion.puml` | Robustez / comunicacion | Venta offline, sincronizacion y conflictos |
+| `26_secuencia_sincronizar.puml` | Secuencia | CU19 con idempotencia y flujos alternos |
+| `27_modelo_datos_sqlite_movil.puml` | Clases (datos) | Base local SQLite del movil, version 2 |
+| `28_robustez_analitica_ml.puml` | Robustez / comunicacion | Entrenamiento y dashboard de ML |
 
-Narrativas de casos de uso y explicacion ICONIX/C4: `ICONIX_SEGUNDO_PARCIAL.md`.
+Narrativas de casos de uso y explicacion ICONIX/C4: `ICONIX_SEGUNDO_PARCIAL.md` y, para el SaaS
+multitenant por empresa (diagramas 23-28), `ICONIX_SAAS_MULTITENANT.md`.
 
 ## 1. Estados de la reserva
 
