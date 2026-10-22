@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""
 
-    # CU18 - asistente de chat (app/modules/asistente/). Sin ANTHROPIC_API_KEY el endpoint
+    # CU18 - asistente de chat (app/modules/relacion_con_la_clienta/asistente/). Sin ANTHROPIC_API_KEY el endpoint
     # devuelve 503 en vez de fallar todo el arranque del backend.
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5"
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # frontend la elige con el header X-Empresa (o ?empresa=slug); sin ninguno se usa esta.
     empresa_por_defecto: str = "fashionstore"
 
-    # Modulo G (app/modules/analitica/): donde se guardan los modelos entrenados (joblib).
+    # Modulo G (app/modules/inteligencia_de_negocio/analitica/): donde se guardan los modelos entrenados (joblib).
     modelos_dir: str = "modelos_ml"
 
     @property

@@ -1,13 +1,16 @@
 """Tests unitarios de la politica de contrasenas (CU02/CU13), sin base de datos.
 
-app/modules/usuarios/politica_password.py es la unica fuente de verdad de las 5 reglas; el
+app/modules/acceso_y_organizacion/usuarios/politica_password.py es la unica fuente de verdad de las 5 reglas; el
 frontend y el movil las espejan a mano (ver comentario en el propio archivo). Estos tests
 fijan el contrato para que si alguien afloja o rompe una regla aca, se note en el CI local.
 """
 
 import pytest
 
-from app.modules.usuarios.politica_password import REGLAS_PASSWORD, validar_password
+from app.modules.acceso_y_organizacion.usuarios.politica_password import (
+    REGLAS_PASSWORD,
+    validar_password,
+)
 
 
 def test_password_valida_no_lanza():

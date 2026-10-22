@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario
 from app.main import app
-from app.modules.ventas import router as ventas_router
+from app.modules.operacion_comercial.ventas import router as ventas_router
 from tests.conexion_falsa import EMPRESA, ConexionFalsa
 
 SUBTOTAL = Decimal("200.00")

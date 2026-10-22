@@ -2,7 +2,7 @@
 
 Modelos UML 2.5 en PlantUML para los flujos de trabajo del PUDS (Análisis y Diseño). Se
 armaron **leyendo el código real** del 24/09/2026 (`fashionstore/db/01_schema.sql`,
-`db/02_logica.sql`, `backend/app/modules/reservas|pagos|caja|ventas`, `app/core/jobs.py`,
+`db/02_logica.sql`, `backend/app/modules/operacion_comercial/reservas|pagos|caja|ventas`, `app/core/jobs.py`,
 `app/core/mutex.py` y la app Flutter), no la documentación, así que los nombres de estados,
 endpoints y mensajes coinciden con lo que hace el sistema.
 
@@ -19,17 +19,23 @@ Cada `.puml` es un diagrama; su PNG ya renderizado está en `png/`.
 | `07_casos_de_uso.puml` | Casos de uso | Actores finales y casos de uso del sistema |
 | `08_clases_dominio.puml` | Clases | Modelo de dominio de inventario, reservas, ventas y pagos |
 | `09_modelo_dominio_segundo_parcial.puml` | Clases (ICONIX dominio) | Segundo parcial: SaaS, cambio por talla, traspasos por demanda |
-| `10_casos_de_uso_segundo_parcial.puml` | Casos de uso | CU21-CU31 del Segundo parcial |
+| `10_casos_de_uso_segundo_parcial.puml` | Casos de uso | Segundo parcial, numeración del 14/10 (CU21-CU31, histórica) |
 | `11`-`16_robustez_*.puml` | Robustez / comunicación | Un diagrama por CU clave (mensajes numerados) |
-| `17_secuencia_cambio_talla.puml`, `18_secuencia_pago_suscripcion.puml` | Secuencia | Diseño de CU25 y CU22 |
+| `17_secuencia_cambio_talla.puml`, `18_secuencia_pago_suscripcion.puml` | Secuencia | Diseño de CU16 (cambio por talla) y CU05 (renovar con Stripe) |
 | `19_clases_diseno.puml` | Clases de diseño | Backend, web y móvil del Segundo parcial |
 | `20`-`22_c4_*.puml` | C4 | Contexto, contenedores y componentes de la API |
 | `23_modelo_dominio_multitenant.puml` | Clases (dominio) | SaaS con tenant = empresa (reemplaza el paquete SaaS del 09) |
-| `24_casos_de_uso_multitenant.puml` | Casos de uso | CU01-CU28 de la especificacion multitenant |
+| `24_casos_de_uso_multitenant.puml` | Casos de uso | Numeración de la especificación multitenant (CU01-CU28, histórica) |
 | `25_robustez_sincronizacion.puml` | Robustez / comunicacion | Venta offline, sincronizacion y conflictos |
-| `26_secuencia_sincronizar.puml` | Secuencia | CU19 con idempotencia y flujos alternos |
+| `26_secuencia_sincronizar.puml` | Secuencia | CU22 Sincronizar, con idempotencia y flujos alternos |
 | `27_modelo_datos_sqlite_movil.puml` | Clases (datos) | Base local SQLite del movil, version 2 |
 | `28_robustez_analitica_ml.puml` | Robustez / comunicacion | Entrenamiento y dashboard de ML |
+
+**Numeración de casos de uso:** el catálogo vigente del Segundo parcial es CU01-CU29 y está en
+`../PARCIALES.md` (sección 1.2). Las narrativas ICONIX ya lo usan. Los diagramas `10` a `19` y
+`24` a `28` todavía muestran numeraciones anteriores (CU21-CU31 o la de la especificación); la
+equivalencia está en la sección 6 de ese archivo. Los diagramas `01` a `08` son del primer
+parcial y usan su numeración (CU01-CU20 del `ducumentacion.docx`).
 
 Narrativas de casos de uso y explicacion ICONIX/C4: `ICONIX_SEGUNDO_PARCIAL.md` y, para el SaaS
 multitenant por empresa (diagramas 23-28), `ICONIX_SAAS_MULTITENANT.md`.
@@ -141,9 +147,9 @@ aviso, y el Cajero verifica el depósito y lo aprueba o rechaza desde `/caja/pag
 **Actores secundarios:** Sistema de pagos (Stripe/QR), Servicio de IA (Claude API), Servicio de
 delivery externo y Servicio de ruteo (openrouteservice).
 
-Además de CU01–CU20, el diagrama incluye cancelar reserva, confirmar/rechazar reserva, informar
-pago QR, verificar pago en caja, consultar notificaciones y el consolidado de existencias
-(`v_existencias_consolidadas`, que extiende CU15). Las tareas automáticas (expiración y
+Además de CU01–CU20 (numeración del primer parcial), el diagrama incluye cancelar reserva,
+confirmar/rechazar reserva, informar pago QR, verificar pago en caja, consultar notificaciones y
+el consolidado de existencias (`v_existencias_consolidadas`, que extiende CU15). Las tareas automáticas (expiración y
 anulación a las 48 h) no se modelan como actor: están en una nota.
 
 ## 8. Clases de dominio

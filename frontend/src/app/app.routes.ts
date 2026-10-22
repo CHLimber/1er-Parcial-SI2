@@ -7,58 +7,58 @@ import {
   PERMISO_ATENDER_RESERVAS,
   PERMISO_CAJA,
   permisoGuard,
-} from './core/auth/auth.guard';
-import { AuthService } from './core/auth/auth.service';
+} from './core/acceso-y-organizacion/auth/auth.guard';
+import { AuthService } from './core/acceso-y-organizacion/auth/auth.service';
 import { primeraSeccionPanel } from './shared/panel/panel-shell';
 
 export const routes: Routes = [
   {
     path: 'login',
-    loadComponent: () => import('./pages/login/login.page').then((m) => m.LoginPage),
+    loadComponent: () => import('./pages/acceso-y-organizacion/login/login.page').then((m) => m.LoginPage),
     canActivate: [invitadoGuard],
   },
   {
     path: 'registro',
-    loadComponent: () => import('./pages/registro/registro.page').then((m) => m.RegistroPage),
+    loadComponent: () => import('./pages/acceso-y-organizacion/registro/registro.page').then((m) => m.RegistroPage),
     canActivate: [invitadoGuard],
   },
   {
     path: 'tienda',
-    loadComponent: () => import('./pages/tienda/tienda.page').then((m) => m.TiendaPage),
+    loadComponent: () => import('./pages/catalogo-e-inventario/tienda/tienda.page').then((m) => m.TiendaPage),
     canActivate: [authGuard],
   },
   {
     path: 'producto/:slug',
     loadComponent: () =>
-      import('./pages/producto-detalle/producto-detalle.page').then((m) => m.ProductoDetallePage),
+      import('./pages/catalogo-e-inventario/producto-detalle/producto-detalle.page').then((m) => m.ProductoDetallePage),
     canActivate: [authGuard],
   },
   {
     path: 'reservar',
-    loadComponent: () => import('./pages/reservar/reservar.page').then((m) => m.ReservarPage),
+    loadComponent: () => import('./pages/operacion-comercial/reservar/reservar.page').then((m) => m.ReservarPage),
     canActivate: [authGuard],
   },
   {
     path: 'mis-reservas',
     loadComponent: () =>
-      import('./pages/mis-reservas/mis-reservas.page').then((m) => m.MisReservasPage),
+      import('./pages/operacion-comercial/mis-reservas/mis-reservas.page').then((m) => m.MisReservasPage),
     canActivate: [authGuard],
   },
   {
     path: 'mis-compras',
     loadComponent: () =>
-      import('./pages/mis-compras/mis-compras.page').then((m) => m.MisComprasPage),
+      import('./pages/operacion-comercial/mis-compras/mis-compras.page').then((m) => m.MisComprasPage),
     canActivate: [authGuard],
   },
   {
     path: 'carrito',
-    loadComponent: () => import('./pages/carrito/carrito.page').then((m) => m.CarritoPage),
+    loadComponent: () => import('./pages/operacion-comercial/carrito/carrito.page').then((m) => m.CarritoPage),
     canActivate: [authGuard],
   },
   {
     path: 'mis-direcciones',
     loadComponent: () =>
-      import('./pages/mis-direcciones/mis-direcciones.page').then((m) => m.MisDireccionesPage),
+      import('./pages/operacion-comercial/mis-direcciones/mis-direcciones.page').then((m) => m.MisDireccionesPage),
     canActivate: [authGuard],
   },
   {
@@ -66,36 +66,36 @@ export const routes: Routes = [
     // otro). Se llega desde la cabecera de la tienda y desde panel-shell.
     path: 'cambiar-password',
     loadComponent: () =>
-      import('./pages/cambiar-password/cambiar-password.page').then(
+      import('./pages/acceso-y-organizacion/cambiar-password/cambiar-password.page').then(
         (m) => m.CambiarPasswordPage,
       ),
     canActivate: [authGuard],
   },
   {
     path: 'asistente',
-    loadComponent: () => import('./pages/asistente/asistente.page').then((m) => m.AsistentePage),
+    loadComponent: () => import('./pages/relacion-con-la-clienta/asistente/asistente.page').then((m) => m.AsistentePage),
     canActivate: [authGuard],
   },
   {
     path: 'pago-simulado/:ventaId',
     loadComponent: () =>
-      import('./pages/pago-simulado/pago-simulado.page').then((m) => m.PagoSimuladoPage),
+      import('./pages/operacion-comercial/pago-simulado/pago-simulado.page').then((m) => m.PagoSimuladoPage),
     canActivate: [authGuard],
   },
   {
     path: 'compra/:ventaId',
-    loadComponent: () => import('./pages/compra/compra.page').then((m) => m.CompraPage),
+    loadComponent: () => import('./pages/operacion-comercial/compra/compra.page').then((m) => m.CompraPage),
     canActivate: [authGuard],
   },
   {
     path: 'caja',
-    loadComponent: () => import('./pages/caja/caja.page').then((m) => m.CajaPage),
+    loadComponent: () => import('./pages/operacion-comercial/caja/caja.page').then((m) => m.CajaPage),
     canActivate: [authGuard, permisoGuard(PERMISO_CAJA)],
   },
   {
     path: 'atender-reservas',
     loadComponent: () =>
-      import('./pages/atender-reservas/atender-reservas.page').then((m) => m.AtenderReservasPage),
+      import('./pages/operacion-comercial/atender-reservas/atender-reservas.page').then((m) => m.AtenderReservasPage),
     canActivate: [authGuard, permisoGuard(PERMISO_ATENDER_RESERVAS)],
   },
 
@@ -103,7 +103,7 @@ export const routes: Routes = [
     // Operacion sin conexion del personal (PWA): ventas de contado y reservas con sincronizacion
     path: 'offline',
     loadComponent: () =>
-      import('./pages/venta-offline/venta-offline.page').then((m) => m.VentaOfflinePage),
+      import('./pages/operacion-sin-conexion/venta-offline/venta-offline.page').then((m) => m.VentaOfflinePage),
     canActivate: [authGuard, permisoGuard(PERMISO_CAJA, PERMISO_ATENDER_RESERVAS)],
   },
 
@@ -122,7 +122,7 @@ export const routes: Routes = [
       {
         path: 'catalogo',
         loadComponent: () =>
-          import('./pages/panel-catalogo/panel-catalogo.page').then((m) => m.PanelCatalogoPage),
+          import('./pages/catalogo-e-inventario/panel-catalogo/panel-catalogo.page').then((m) => m.PanelCatalogoPage),
         canActivate: [
           permisoGuard('catalogo.leer', 'catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
         ],
@@ -130,7 +130,7 @@ export const routes: Routes = [
       {
         path: 'recepciones',
         loadComponent: () =>
-          import('./pages/panel-recepciones/panel-recepciones.page').then(
+          import('./pages/catalogo-e-inventario/panel-recepciones/panel-recepciones.page').then(
             (m) => m.PanelRecepcionesPage,
           ),
         canActivate: [
@@ -145,7 +145,7 @@ export const routes: Routes = [
       {
         path: 'inventario',
         loadComponent: () =>
-          import('./pages/panel-inventario/panel-inventario.page').then(
+          import('./pages/catalogo-e-inventario/panel-inventario/panel-inventario.page').then(
             (m) => m.PanelInventarioPage,
           ),
         canActivate: [permisoGuard('inventario.leer', 'inventario.actualizar')],
@@ -153,7 +153,7 @@ export const routes: Routes = [
       {
         path: 'traspasos',
         loadComponent: () =>
-          import('./pages/panel-traspasos/panel-traspasos.page').then((m) => m.PanelTraspasosPage),
+          import('./pages/catalogo-e-inventario/panel-traspasos/panel-traspasos.page').then((m) => m.PanelTraspasosPage),
         canActivate: [
           permisoGuard('traspasos.leer', 'traspasos.crear', 'traspasos.actualizar', 'traspasos.eliminar'),
         ],
@@ -161,7 +161,7 @@ export const routes: Routes = [
       {
         path: 'devoluciones',
         loadComponent: () =>
-          import('./pages/panel-devoluciones/panel-devoluciones.page').then(
+          import('./pages/operacion-comercial/panel-devoluciones/panel-devoluciones.page').then(
             (m) => m.PanelDevolucionesPage,
           ),
         canActivate: [
@@ -171,7 +171,7 @@ export const routes: Routes = [
       {
         path: 'proveedores',
         loadComponent: () =>
-          import('./pages/panel-proveedores/panel-proveedores.page').then(
+          import('./pages/catalogo-e-inventario/panel-proveedores/panel-proveedores.page').then(
             (m) => m.PanelProveedoresPage,
           ),
         canActivate: [
@@ -186,7 +186,7 @@ export const routes: Routes = [
       {
         path: 'sucursales',
         loadComponent: () =>
-          import('./pages/panel-sucursales/panel-sucursales.page').then((m) => m.PanelSucursalesPage),
+          import('./pages/acceso-y-organizacion/panel-sucursales/panel-sucursales.page').then((m) => m.PanelSucursalesPage),
         canActivate: [
           permisoGuard(
             'sucursales.leer',
@@ -199,7 +199,7 @@ export const routes: Routes = [
       {
         path: 'usuarios',
         loadComponent: () =>
-          import('./pages/panel-usuarios/panel-usuarios.page').then((m) => m.PanelUsuariosPage),
+          import('./pages/acceso-y-organizacion/panel-usuarios/panel-usuarios.page').then((m) => m.PanelUsuariosPage),
         canActivate: [
           permisoGuard(
             'usuarios.leer',
@@ -213,35 +213,35 @@ export const routes: Routes = [
       {
         path: 'reportes',
         loadComponent: () =>
-          import('./pages/panel-reportes/panel-reportes.page').then((m) => m.PanelReportesPage),
+          import('./pages/inteligencia-de-negocio/panel-reportes/panel-reportes.page').then((m) => m.PanelReportesPage),
         canActivate: [permisoGuard('reportes.leer')],
       },
       {
         // Segundo parcial (PENDIENTES 5.7): cartera y perfil de clientas por tenant
         path: 'clientes',
         loadComponent: () =>
-          import('./pages/panel-clientes/panel-clientes.page').then((m) => m.PanelClientesPage),
+          import('./pages/relacion-con-la-clienta/panel-clientes/panel-clientes.page').then((m) => m.PanelClientesPage),
         canActivate: [permisoGuard('clientes.leer', 'clientes.actualizar')],
       },
       {
         // Segundo parcial (PENDIENTES 5.4-5.6): plan y pago de la suscripcion del tenant
         path: 'suscripcion',
         loadComponent: () =>
-          import('./pages/panel-suscripcion/panel-suscripcion.page').then((m) => m.PanelSuscripcionPage),
+          import('./pages/plataforma-saas/panel-suscripcion/panel-suscripcion.page').then((m) => m.PanelSuscripcionPage),
         canActivate: [permisoGuard('suscripciones.leer', 'suscripciones.actualizar')],
       },
       {
         // Modulo G: dashboard de machine learning (plan Profesional; el backend da 403 si no)
         path: 'analitica',
         loadComponent: () =>
-          import('./pages/panel-analitica/panel-analitica.page').then((m) => m.PanelAnaliticaPage),
+          import('./pages/inteligencia-de-negocio/panel-analitica/panel-analitica.page').then((m) => m.PanelAnaliticaPage),
         canActivate: [permisoGuard('analitica.leer')],
       },
       {
-        // Modulo D: log de operaciones offline recibidas y resolucion de conflictos (CU20/CU21)
+        // Modulo D: log de operaciones offline recibidas y resolucion de conflictos (CU24/CU23)
         path: 'sincronizacion',
         loadComponent: () =>
-          import('./pages/panel-sincronizacion/panel-sincronizacion.page').then(
+          import('./pages/operacion-sin-conexion/panel-sincronizacion/panel-sincronizacion.page').then(
             (m) => m.PanelSincronizacionPage,
           ),
         canActivate: [permisoGuard('sincronizacion.leer', 'sincronizacion.actualizar')],
@@ -250,13 +250,13 @@ export const routes: Routes = [
         // Plataforma SaaS: empresas contratantes y configuracion de planes
         path: 'empresas',
         loadComponent: () =>
-          import('./pages/panel-empresas/panel-empresas.page').then((m) => m.PanelEmpresasPage),
+          import('./pages/plataforma-saas/panel-empresas/panel-empresas.page').then((m) => m.PanelEmpresasPage),
         canActivate: [permisoGuard('empresas.leer')],
       },
       {
         path: 'auditoria',
         loadComponent: () =>
-          import('./pages/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),
+          import('./pages/acceso-y-organizacion/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),
         canActivate: [permisoGuard('auditoria.leer')],
       },
     ],

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fashionstore_movil/core/offline/base_local.dart';
+import 'package:fashionstore_movil/core/operacion_sin_conexion/offline/base_local.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Base local SQLite del Segundo parcial (PENDIENTES 5.3): cache de respuestas y cola de

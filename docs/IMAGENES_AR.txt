@@ -14,7 +14,7 @@
      formato_imagen (JPG/PNG/GLB/USDZ) y las columnas anclajes + escala_base
      en producto_imagen (db/01_schema.sql:310).
    - CU10 YA permite cargar imagenes con esos usos
-     (backend/app/modules/catalogo/admin_router.py:50 y el selector en
+     (backend/app/modules/catalogo_e_inventario/catalogo/admin_router.py:50 y el selector en
      frontend/src/app/pages/panel-catalogo/panel-catalogo.page.html:469), y
      desde CU16 tambien guarda anclajes/escala_base (ver punto 5.1).
    - MOVIL YA tiene los dos visores AR (producto_detalle_pagina.dart +
@@ -233,7 +233,7 @@
 -------------------------------------------------------------------------------
 
 [5.1] [HECHO 2026-09-18] CU10 no guardaba anclajes ni escala_base.
-      DONDE  : backend/app/modules/catalogo/admin_router.py
+      DONDE  : backend/app/modules/catalogo_e_inventario/catalogo/admin_router.py
                (`_crear_fila_imagen`, INSERT) y `_imagenes` (SELECT admin).
       ARREGLO: anclajes/escala_base sumados al INSERT/SELECT, a
                admin_schemas.py (ImagenIn/ImagenOut) y expuestos en publico

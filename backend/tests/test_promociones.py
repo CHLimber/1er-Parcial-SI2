@@ -1,4 +1,4 @@
-"""Tests unitarios de _validar_promocion (CU10, app/modules/catalogo/admin_router.py), sin
+"""Tests unitarios de _validar_promocion (CU10, app/modules/catalogo_e_inventario/catalogo/admin_router.py), sin
 base de datos: es la validacion que corta con un 422 legible antes de que llegue al cliente la
 excepcion cruda de un CHECK de Postgres (ck_promo_alcance/ck_promo_fechas)."""
 
@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.modules.catalogo.admin_router import _validar_promocion
-from app.modules.catalogo.admin_schemas import PromocionIn
+from app.modules.catalogo_e_inventario.catalogo.admin_router import _validar_promocion
+from app.modules.catalogo_e_inventario.catalogo.admin_schemas import PromocionIn
 
 HOY = date.today()
 MANIANA = HOY + timedelta(days=30)

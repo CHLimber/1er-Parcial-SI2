@@ -5,15 +5,17 @@ especificación cambia una decisión del documento anterior (`ICONIX_SEGUNDO_PAR
 tenant es la empresa contratante, no la sucursal**. Lo demás de ese documento sigue valiendo:
 cambio por talla, traspasos por demanda, pérdidas, reportes con IA y PWA.
 
-Los casos de uso usan **la numeración de la especificación** (CU01 a CU28). No es la misma que la
-de los casos de uso del proyecto. Los diagramas se escribieron leyendo el código del 18/10/2026.
+Las narrativas usan el **catálogo vigente CU01-CU29** de `../PARCIALES.md`. Se escribieron con la
+numeración de la especificación (CU01 a CU28); la equivalencia está en la sección 6.5 de ese
+archivo. El diagrama `24` todavía muestra la numeración de la especificación. Los diagramas se
+escribieron leyendo el código del 18/10/2026.
 
 | Etapa ICONIX | Artefacto | Archivo |
 |---|---|---|
 | Análisis de requisitos | Modelo de dominio multitenant | `23_modelo_dominio_multitenant.puml` |
 | Análisis de requisitos | Casos de uso y narrativas | `24_casos_de_uso_multitenant.puml` y sección 2 |
 | Análisis preliminar | Robustez (= comunicación) | `25_robustez_sincronizacion.puml`, `28_robustez_analitica_ml.puml` |
-| Diseño | Secuencia de CU19 | `26_secuencia_sincronizar.puml` |
+| Diseño | Secuencia de CU22 | `26_secuencia_sincronizar.puml` |
 | Diseño | Base local SQLite del móvil | `27_modelo_datos_sqlite_movil.puml` |
 
 Para regenerar los PNG (Java 8 o superior y `plantuml.jar`):
@@ -68,7 +70,7 @@ de una empresa a otra, que tienen que dar 404.
 
 ## 2. Narrativas
 
-### CU01 Registrar empresa
+### CU01 Gestionar empresas (registrar)
 
 - **Actor:** Administrador de plataforma.
 - **Curso básico:**
@@ -87,7 +89,7 @@ de una empresa a otra, que tienen que dar 404.
 - **Alterno A1:** la empresa usa más sucursales de las que admite el plan nuevo. El sistema
   responde 409 con el uso actual y el tope.
 
-### CU05 Configurar límites de plan
+### CU03 Configurar planes y límites
 
 - **Actor:** Administrador de plataforma.
 - **Curso básico:** el Administrador edita los topes y las funciones de un plan. El sistema
@@ -95,7 +97,7 @@ de una empresa a otra, que tienen que dar 404.
 - **Alterno A1:** bajar un tope por debajo del uso de una empresa no le borra nada. Solo le
   impide agregar más.
 
-### CU13 Descargar catálogo para uso offline
+### CU17 Descargar datos para operar sin conexión
 
 - **Actor:** Empleado.
 - **Curso básico:**
@@ -108,13 +110,13 @@ de una empresa a otra, que tienen que dar 404.
      existencia.
 - **Alterno A1:** no hay red y nunca se descargó. El sistema avisa que hay que conectarse una vez.
 
-### CU14 Consultar catálogo offline
+### CU18 Consultar catálogo sin conexión
 
 - **Curso básico:** el sistema muestra productos, precios, tallas, colores y existencia conocida.
   Si no hay red, o si el paquete tiene más de 2 horas, avisa que la información puede estar
   desactualizada (RF20).
 
-### CU16 Registrar venta de contado (online/offline)
+### CU20 Registrar venta de contado sin conexión
 
 - **Actor:** Empleado con permiso de caja.
 - **Curso básico:**
@@ -123,16 +125,21 @@ de una empresa a otra, que tienen que dar 404.
      sucursal, el responsable, la fecha y hora (UTC), el detalle con el precio usado, el total
      con IVA y la forma de pago EFECTIVO (RN07, RN10).
   3. El sistema descuenta la existencia local y muestra «Solo en este equipo».
-  4. Si hay red, el sistema la manda enseguida (CU19).
+  4. Si hay red, el sistema la manda enseguida (CU22).
 - **Regla 9.2:** cobrar el efectivo no confirma la venta. Queda pendiente hasta que el servidor
   la acepte (RN08).
 
-### CU15 Registrar reserva (online/offline)
+### CU19 Registrar reserva sin conexión
 
-Es igual que CU16, con la clienta de la cartera local, la fecha y la hora de visita. No tiene
+Es igual que CU20, con la clienta de la cartera local, la fecha y la hora de visita. No tiene
 total. La reserva compromete stock recién cuando el servidor la confirma.
 
-### CU18 Consultar operaciones pendientes / CU20 Consultar resultado
+- **Alterno A1, diferencia con CU12:** la reserva que registra el personal **nace CONFIRMADA**
+  en el servidor (`sincronizacion/servicio.py`, inserción en `reserva`). No espera la
+  confirmación del encargado, como la reserva de la clienta (CU12, que nace PENDIENTE), y pasa
+  directo a la atención en el vestidor.
+
+### CU21 Consultar operaciones locales y su estado
 
 - **Curso básico:** el sistema lista las operaciones del usuario. Cada una muestra su estado:
   - «Solo en este equipo»;
@@ -141,9 +148,9 @@ total. La reserva compromete stock recién cuando el servidor la confirma.
   - Rechazada o En conflicto, con el código y el motivo.
 - **Alterno A1:** el usuario archiva las cerradas. Solo se quitan del equipo las confirmadas y
   las rechazadas (RN12). En el servidor quedan siempre: el encargado las ve en
-  `/panel/sincronizacion`.
+  `/panel/sincronizacion` (CU24 Supervisar la sincronización de la sucursal).
 
-### CU19 Sincronizar operaciones pendientes
+### CU22 Sincronizar operaciones pendientes
 
 Ver la secuencia `26` y la robustez `25`.
 
@@ -169,7 +176,7 @@ Ver la secuencia `26` y la robustez `25`.
 - **Postcondición:** ninguna operación se pierde. Cada una queda con su estado y su resultado, y
   el servidor deja el log en `operacion_sync` (RNF10, sin datos de pago).
 
-### CU21 Resolver conflicto de sincronización (extiende CU19)
+### CU23 Resolver conflicto de sincronización (extiende CU22)
 
 - **Actores:** Empleado (solo reintentar lo propio) o Encargado / Administrador de empresa.
 - **Curso básico:** el actor abre la operación en conflicto y elige una acción:
@@ -180,9 +187,9 @@ Ver la secuencia `26` y la robustez `25`.
   - **Descartar:** la operación queda `RECHAZADA` con una nota, por ejemplo «se devolvió el
     efectivo».
 
-### CU22 Solicitar reporte en lenguaje natural
+### CU26 Solicitar reporte en lenguaje natural
 
-Es la narrativa CU30 del documento anterior, con este cambio: el plan que exige ahora es
+Es la narrativa CU26 de `ICONIX_SEGUNDO_PARCIAL.md`, con este cambio: el plan que exige ahora es
 **Profesional**.
 
 - **Alterno A1:** plan Básico. El sistema responde 403 y la UI muestra el aviso, en la web y en
@@ -190,11 +197,11 @@ Es la narrativa CU30 del documento anterior, con este cambio: el plan que exige 
 - **Seguridad (10.4):** Claude no escribe SQL. Solo llama herramientas de un catálogo cerrado,
   con parámetros validados, y el filtro de empresa lo fuerza el backend.
 
-### CU26 Consultar dashboard analítico / CU27 Entrenar modelos ML
+### CU28 Consultar dashboard analítico / CU29 Entrenar y evaluar modelos de ML
 
 Ver la robustez `28`.
 
-- **CU27:**
+- **CU29:**
   1. El sistema genera datos sintéticos con una semilla: demanda diaria por sucursal y tipo de
      prenda, y clientas con perfiles.
   2. Entrena un Random Forest de demanda y lo compara con una regresión lineal y con el
@@ -202,7 +209,7 @@ Ver la robustez `28`.
      MAE, RMSE, R² y MAPE.
   3. Entrena KMeans de clientas, eligiendo k por silueta y midiendo el ARI contra los perfiles.
   4. Guarda los modelos.
-- **CU26:** el sistema aplica los modelos a las ventas reales de la empresa:
+- **CU28:** el sistema aplica los modelos a las ventas reales de la empresa:
   - el pronóstico por sucursal y tipo;
   - los segmentos de la cartera;
   - los días atípicos con IsolationForest.

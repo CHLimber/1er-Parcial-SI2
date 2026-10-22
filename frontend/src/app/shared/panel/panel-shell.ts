@@ -1,8 +1,8 @@
 import { Component, OnInit, computed, inject, input } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
-import { AuthService } from '../../core/auth/auth.service';
-import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/auth/auth.guard';
+import { AuthService } from '../../core/acceso-y-organizacion/auth/auth.service';
+import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/acceso-y-organizacion/auth/auth.guard';
 import { CampanaNotificaciones } from '../notificaciones/campana-notificaciones';
 
 interface EntradaNav {

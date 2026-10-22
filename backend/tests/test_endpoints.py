@@ -52,7 +52,7 @@ def test_endpoint_protegido_con_token_invalido_devuelve_401(client):
 
 def test_asistente_chat_sin_anthropic_api_key_devuelve_503(client):
     # conftest.py fija ANTHROPIC_API_KEY="" (variable de entorno de prueba, nunca la real):
-    # _cliente_ia() en app/modules/asistente/router.py responde 503 antes de tocar la base o
+    # _cliente_ia() en app/modules/relacion_con_la_clienta/asistente/router.py responde 503 antes de tocar la base o
     # de llamar a la API de Claude.
     app.dependency_overrides[get_current_usuario] = lambda: {"id": "cliente-de-prueba", "tipo": "CLIENTE"}
     try:

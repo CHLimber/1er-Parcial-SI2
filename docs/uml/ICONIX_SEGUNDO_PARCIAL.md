@@ -7,6 +7,11 @@ de pérdidas. Todos los diagramas están en esta carpeta (fuente PlantUML) y en 
 Se escribieron leyendo el código real del 14/10/2026, así que los nombres coinciden con el
 sistema.
 
+> **Numeración:** las narrativas usan el **catálogo vigente CU01-CU29** de `../PARCIALES.md`. Se
+> escribieron con la numeración del diagrama `10` (CU21-CU31), que el diagrama todavía muestra;
+> la equivalencia está en la sección 6.5 de ese archivo. Varias asumen tenant = sucursal: la
+> sección 3 de `PARCIALES.md` dice cuáles hay que actualizar.
+
 | Etapa ICONIX | Artefacto | Archivo |
 |---|---|---|
 | Análisis de requisitos | Modelo de dominio | `09_modelo_dominio_segundo_parcial.puml` |
@@ -43,7 +48,7 @@ matriz; así los traspasos y los reportes de varias sucursales siguen funcionand
 Formato ICONIX: curso básico en voz activa y cursos alternos, con los nombres de los objetos del
 dominio.
 
-### CU21 Consultar plan y suscripción del tenant
+### CU04 Consultar suscripción y plan contratado
 
 - **Actor:** Encargado (administración del tenant); el Administrador ve todos los tenants.
 - **Curso básico:** el Encargado abre «Suscripción». El sistema muestra el `Plan` de su
@@ -55,7 +60,7 @@ dominio.
 - **Alterno A2:** el actor es el Administrador. El sistema lista todos los tenants y le deja
   elegir uno.
 
-### CU22 Pagar o cambiar el plan de la suscripción
+### CU05 Renovar suscripción (pago con Stripe)
 
 - **Actor:** Encargado. Sistema externo: Stripe.
 - **Curso básico:** el Encargado elige un plan y la cantidad de meses (1, 3, 6 o 12). El sistema
@@ -70,7 +75,7 @@ dominio.
 - **Alterno A3:** llegan el webhook y la verificación. El segundo no hace nada, porque el pago
   ya no está PENDIENTE (idempotencia).
 
-### CU23 Registrar pago manual de una suscripción
+### CU05 Renovar suscripción, curso alterno: pago manual simulado
 
 - **Actor:** Administrador de la plataforma.
 - **Curso básico:** el Administrador elige el tenant, el plan, los meses y el medio
@@ -78,7 +83,7 @@ dominio.
   registro en la bitácora.
 - **Alterno A1:** un Encargado intenta registrarlo. El sistema responde 403.
 
-### CU24 Gestionar el perfil de las clientas del tenant
+### CU08 Gestionar clientas de la empresa
 
 - **Actor:** Encargado; el Vendedor solo consulta.
 - **Precondición:** el plan incluye «perfil de clientas» y la suscripción está vigente.
@@ -93,7 +98,7 @@ dominio.
 - **Alterno A2:** el plan es Básico. El sistema responde 403 e indica desde qué plan está
   incluido. Si la suscripción venció, responde 402.
 
-### CU25 Registrar cambio de prenda por talla
+### CU16 Gestionar cambios de prenda: registrar el cambio por talla
 
 - **Actor:** Encargado o Cajero.
 - **Curso básico:** el Encargado busca la `Venta` por número y elige el motivo «Cambio por
@@ -112,14 +117,14 @@ dominio.
 - **Continuación:** al aprobarla, el trigger reingresa el stock. La prenda nueva se cobra en caja
   y se vincula como venta del cambio.
 
-### CU26 Imprimir nota de devolución (extiende CU25)
+### CU16 Gestionar cambios de prenda, paso: imprimir nota de devolución
 
 - **Curso básico:** desde la devolución, el Encargado pide «Imprimir nota». El sistema arma el
   comprobante con razón social, NIT, sucursal, número NDV, venta, clienta, motivo, condiciones
   verificadas, plazo aplicado, prendas devueltas y lo que se lleva a cambio, monto y firmas, y
   abre la impresión (o «Guardar como PDF»).
 
-### CU27 Consultar prendas con cambio solicitado en el mes
+### CU16 Gestionar cambios de prenda, paso: consultar los cambios del mes
 
 - **Actor:** Encargado (su sucursal) o Administrador (toda la cadena).
 - **Curso básico:** el Encargado abre «Cambios del mes» y elige el mes. El sistema agrupa las
@@ -128,7 +133,7 @@ dominio.
   en qué sucursales.
 - **Alterno A1:** «incluir otros motivos» suma también defectos, «no le gustó», etc.
 
-### CU28 Traspasar inventario hacia donde crece la demanda
+### CU11 Sugerir traspasos según la demanda (extiende CU10)
 
 - **Actor:** Encargado del origen o Administrador.
 - **Precondición:** el plan incluye «traspasos» y está vigente.
@@ -144,7 +149,7 @@ dominio.
 - **Alterno A2:** un Encargado intenta crear desde una sucursal que no es la suya. El sistema
   responde 403.
 
-### CU29 Consultar pérdidas por sucursal (tema del parcial)
+### CU25 Consultar pérdidas por sucursal (tema del parcial)
 
 - **Actor:** Encargado o Administrador.
 - **Curso básico:** el Encargado elige «Pérdidas por sucursal» y el período. El sistema calcula
@@ -156,7 +161,7 @@ dominio.
 
   Muestra el total ordenado de mayor a menor y permite exportarlo a PDF o Excel.
 
-### CU30 Consultar reportes con IA de varias sucursales
+### CU26 Solicitar reporte en lenguaje natural (versión de varias sucursales)
 
 - **Actor:** Encargado o Administrador. Sistema externo: Claude API.
 - **Precondición:** plan Premium vigente (el Administrador siempre puede).
@@ -168,7 +173,11 @@ dominio.
 - **Alterno A1:** plan sin IA. El sistema responde 403 «incluido desde el plan Premium».
 - **Alterno A2:** falta `ANTHROPIC_API_KEY`. El sistema responde 503.
 
-### CU31 Usar la tienda sin conexión (PWA web y app móvil)
+### Requisito sin número: usar la tienda sin conexión (PWA web y app móvil)
+
+No es un caso de uso del catálogo vigente: es el comportamiento offline de lectura que piden los
+requisitos 5.2 y 5.3 del examen (ver la sección 2 de `PARCIALES.md`). Se conserva la narrativa
+porque describe ese comportamiento.
 
 - **Actor:** Clienta.
 - **Curso básico:** la Clienta abre la tienda sin red. El service worker sirve la app y el
@@ -196,12 +205,12 @@ Los mensajes están numerados, así el mismo diagrama se lee como diagrama de co
 
 | Diagrama | Caso de uso |
 |---|---|
-| 11 | CU25 cambio por talla (+ CU26 nota) |
-| 12 | CU22 pago de suscripción con Stripe |
-| 13 | CU28 traspaso por demanda |
-| 14 | CU31 offline (PWA y móvil) |
-| 15 | CU30 IA de varias sucursales (+ CU29 pérdidas como herramienta) |
-| 16 | CU24 perfil de clientas del tenant |
+| 11 | CU16 cambio por talla (con la nota de devolución) |
+| 12 | CU05 renovar suscripción con Stripe |
+| 13 | CU11 sugerir traspasos según la demanda |
+| 14 | Tienda sin conexión (requisito sin número) |
+| 15 | CU26 reporte con IA de varias sucursales (con CU25 pérdidas como herramienta) |
+| 16 | CU08 gestionar clientas de la empresa |
 
 ## 4. Diseño: secuencia y clases
 

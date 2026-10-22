@@ -1,4 +1,4 @@
-"""Tests unitarios de las funciones puras de app/modules/reportes/router.py (CU15): sin base
+"""Tests unitarios de las funciones puras de app/modules/inteligencia_de_negocio/reportes/router.py (CU15): sin base
 de datos, no llaman a asyncpg.Connection."""
 
 from datetime import date, timedelta
@@ -7,7 +7,7 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from app.modules.reportes.router import _normalizar, _rango_fechas
+from app.modules.inteligencia_de_negocio.reportes.router import _normalizar, _rango_fechas
 
 
 class _FilaFalsa(dict):

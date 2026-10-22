@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../core/offline/conexion_service.dart';
+import '../core/operacion_sin_conexion/offline/conexion_service.dart';
 import '../core/tema.dart';
 
 /// Franja inferior con el estado de la conexion (PENDIENTES 5.3), espejo de

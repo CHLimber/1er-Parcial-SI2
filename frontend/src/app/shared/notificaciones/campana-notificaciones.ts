@@ -3,10 +3,10 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, ElementRef, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { AuthService } from '../../core/auth/auth.service';
-import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/auth/auth.guard';
-import { NotificacionOut } from '../../core/notificaciones/notificaciones.models';
-import { NotificacionesService } from '../../core/notificaciones/notificaciones.service';
+import { AuthService } from '../../core/acceso-y-organizacion/auth/auth.service';
+import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/acceso-y-organizacion/auth/auth.guard';
+import { NotificacionOut } from '../../core/nucleo/notificaciones/notificaciones.models';
+import { NotificacionesService } from '../../core/nucleo/notificaciones/notificaciones.service';
 import { interpretarError } from '../errores';
 
 const TAMANIO_PAGINA = 15;

@@ -4,8 +4,8 @@ import 'package:http/http.dart' as http;
 
 import 'config.dart';
 import 'errores.dart';
-import 'offline/base_local.dart';
-import 'offline/conexion_service.dart';
+import 'operacion_sin_conexion/offline/base_local.dart';
+import 'operacion_sin_conexion/offline/conexion_service.dart';
 
 /// GET que se pueden mostrar sin red (PENDIENTES 5.3): se guardan en SQLite y, si la red falla,
 /// se responde con lo guardado. Mismo criterio que CACHEABLES de offline.interceptor.ts (web).

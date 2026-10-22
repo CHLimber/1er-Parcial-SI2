@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../core/envios/envios_models.dart';
+import '../core/operacion_comercial/envios/envios_models.dart';
 import '../core/tema.dart';
 
 /// Ruta aproximada del delivery (CU20), de solo lectura: la sucursal, el domicilio y la linea

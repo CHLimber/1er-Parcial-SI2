@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 
-import { ConexionService } from '../../core/offline/conexion.service';
+import { ConexionService } from '../../core/operacion-sin-conexion/offline/conexion.service';
 
 /**
  * Franja fija que avisa el estado de la PWA (PENDIENTES 5.2): sin conexion (y desde cuando son

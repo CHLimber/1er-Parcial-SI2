@@ -10,8 +10,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.modules.sincronizacion import servicio
-from app.modules.sincronizacion.schemas import OperacionIn
+from app.modules.operacion_sin_conexion.sincronizacion import servicio
+from app.modules.operacion_sin_conexion.sincronizacion.schemas import OperacionIn
 from tests.conexion_falsa import EMPRESA, ConexionFalsa, staff
 
 AHORA = datetime(2026, 10, 18, 15, 0, tzinfo=timezone.utc)

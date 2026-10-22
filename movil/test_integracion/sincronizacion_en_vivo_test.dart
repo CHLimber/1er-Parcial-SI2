@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fashionstore_movil/core/api.dart';
-import 'package:fashionstore_movil/core/offline/base_local.dart';
-import 'package:fashionstore_movil/core/offline/conexion_service.dart';
-import 'package:fashionstore_movil/core/sincronizacion/sincronizacion_models.dart';
-import 'package:fashionstore_movil/core/sincronizacion/sincronizacion_service.dart';
+import 'package:fashionstore_movil/core/operacion_sin_conexion/offline/base_local.dart';
+import 'package:fashionstore_movil/core/operacion_sin_conexion/offline/conexion_service.dart';
+import 'package:fashionstore_movil/core/operacion_sin_conexion/sincronizacion/sincronizacion_models.dart';
+import 'package:fashionstore_movil/core/operacion_sin_conexion/sincronizacion/sincronizacion_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../core/carrito/carrito_service.dart';
-import '../core/reservas/reserva_carrito_service.dart';
+import '../core/operacion_comercial/carrito/carrito_service.dart';
+import '../core/operacion_comercial/reservas/reserva_carrito_service.dart';
 import '../core/tema.dart';
 
 /// Barra inferior de las cuatro pantallas de uso diario del cliente. El panel de gestion

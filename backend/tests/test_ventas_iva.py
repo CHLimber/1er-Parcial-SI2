@@ -1,4 +1,4 @@
-"""Tests unitarios de la formula de IVA/total de CU05/CU06 (app/modules/ventas/router.py).
+"""Tests unitarios de la formula de IVA/total de CU05/CU06 (app/modules/operacion_comercial/ventas/router.py).
 
 IVA_TASA es la unica constante pura que vive en el modulo: el resto del calculo esta inline
 dentro del endpoint /ventas/checkout (que necesita conn/carrito reales, asi que queda fuera de
@@ -9,7 +9,7 @@ para detectar si alguien cambia la tasa o el redondeo sin querer.
 
 from decimal import Decimal
 
-from app.modules.ventas.router import IVA_TASA
+from app.modules.operacion_comercial.ventas.router import IVA_TASA
 
 
 def test_iva_tasa_es_13_por_ciento():

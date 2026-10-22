@@ -9,5 +9,5 @@ python-multipart==0.0.19
 stripe==11.4.1
 anthropic==1.6.0
 httpx==0.28.1
-# Modulo G (app/modules/analitica/): modelos de machine learning
+# Modulo G (app/modules/inteligencia_de_negocio/analitica/): modelos de machine learning
 scikit-learn==1.5.2

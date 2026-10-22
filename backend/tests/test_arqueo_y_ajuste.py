@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.db import get_connection
 from app.core.deps import get_encargado_actual
 from app.main import app
-from app.modules.inventario import router as inventario_router
+from app.modules.catalogo_e_inventario.inventario import router as inventario_router
 from tests.conexion_falsa import EMPRESA, ConexionFalsa, staff
 
 SUCURSAL = uuid4()

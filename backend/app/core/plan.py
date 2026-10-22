@@ -12,9 +12,9 @@ requiere_funcion_plan y la sincronizacion de operaciones offline registradas des
 vencimiento. El personal igual puede entrar, ver su plan y renovarlo. La tienda publica y lo ya
 comprado por las clientas no se cortan: no se castiga a la clienta por una deuda de la empresa.
 
-`requiere_funcion_plan` combina el chequeo de permiso de CU13 con el del plan, asi un endpoint
-reemplaza su `requiere_permiso(...)` por `requiere_funcion_plan("traspasos", ...)` sin cambiar
-nada mas. El SUPERADMIN no depende de ningun plan (no es de ninguna empresa).
+`requiere_funcion_plan` combina el chequeo de permiso de CU13 del primer parcial con el del plan,
+asi un endpoint reemplaza su `requiere_permiso(...)` por `requiere_funcion_plan("traspasos", ...)`
+sin cambiar nada mas. El SUPERADMIN no depende de ningun plan (no es de ninguna empresa).
 """
 
 from datetime import datetime, timezone
@@ -128,8 +128,8 @@ async def exigir_funcion(conn: asyncpg.Connection, staff: dict, funcion: str | N
 
 
 def requiere_funcion_plan(funcion: str | None, *codigos: str):
-    """Permiso de CU13 (uno de `codigos`) + plan de la empresa que habilite `funcion` y este al
-    dia. funcion=None solo exige la suscripcion vigente."""
+    """Permiso de CU13 del primer parcial (uno de `codigos`) + plan de la empresa que habilite
+    `funcion` y este al dia. funcion=None solo exige la suscripcion vigente."""
     if funcion is not None and funcion not in FUNCIONES_PLAN:
         raise ValueError(f"Funcion de plan desconocida: {funcion}")
     con_permiso = requiere_permiso(*codigos)

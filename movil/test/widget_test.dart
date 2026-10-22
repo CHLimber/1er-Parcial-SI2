@@ -2,10 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:fashionstore_movil/core/auth/auth_service.dart';
-import 'package:fashionstore_movil/core/carrito/carrito_service.dart';
-import 'package:fashionstore_movil/core/reservas/reserva_carrito_service.dart';
-import 'package:fashionstore_movil/core/reservas/reservas_models.dart';
+import 'package:fashionstore_movil/core/acceso_y_organizacion/auth/auth_service.dart';
+import 'package:fashionstore_movil/core/operacion_comercial/carrito/carrito_service.dart';
+import 'package:fashionstore_movil/core/operacion_comercial/reservas/reserva_carrito_service.dart';
+import 'package:fashionstore_movil/core/operacion_comercial/reservas/reservas_models.dart';
 import 'package:fashionstore_movil/main.dart';
 
 void main() {

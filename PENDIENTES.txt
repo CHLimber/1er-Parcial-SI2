@@ -38,7 +38,7 @@
       pago fallaba, pero no habia forma de dar de alta o editar una promocion
       desde la aplicacion (solo por seed SQL).
       No se creo un modulo nuevo: se agrego al mismo
-      app/modules/catalogo/admin_router.py y admin_schemas.py (CU10 ya incluye
+      app/modules/catalogo_e_inventario/catalogo/admin_router.py y admin_schemas.py (CU10 ya incluye
       "promociones" en su propio titulo, y no hay permiso `promociones.*`
       sembrado -- reusa `catalogo.leer/crear/actualizar/eliminar`, mismos
       `puede_ver/puede_crear/puede_actualizar/puede_cambiar_estado` que ya
@@ -97,7 +97,7 @@
       por ese permiso) para no mezclar los dos mecanismos de auth dentro del
       mismo router -- migrar caja/router.py entero a requiere_permiso() queda
       para [3.1].
-      Dos endpoints nuevos en app/modules/caja/router.py:
+      Dos endpoints nuevos en app/modules/operacion_comercial/caja/router.py:
         - GET /caja/arqueo: foto de la sesion abierta ANTES de declarar el
           cierre. monto_sistema = monto_inicial + SUM(pago.monto) de las
           ventas de esa sesion con metodo EFECTIVO y pago.estado='APROBADO'
@@ -183,7 +183,7 @@
       hasta la puerta.
 
 [2.5] [HECHO 2026-09-18] CU15 "Consultar Reportes e Indicadores": backend + web.
-      Modulo nuevo app/modules/reportes/ (permiso unico reportes.leer, ya sembrado
+      Modulo nuevo app/modules/inteligencia_de_negocio/reportes/ (permiso unico reportes.leer, ya sembrado
       para ADMIN y ENCARGADO): 6 endpoints, sin capa de servicio, SQL directo en el
       router (no se toco db/02_logica.sql; v_ventas_diarias no se reusa porque no
       expone sucursal_id para filtrar, se reescribio la misma agregacion en el
@@ -197,7 +197,7 @@
       los 6 endpoints, el 403 cruzando sucursal como ENCARGADO y el 403 de un
       CLIENTE sin el permiso.
       OJO tipos: los campos de plata quedaron en `float` (no Decimal) en
-      app/modules/reportes/schemas.py -- Pydantic v2 serializa Decimal como string
+      app/modules/inteligencia_de_negocio/reportes/schemas.py -- Pydantic v2 serializa Decimal como string
       en el JSON y el frontend (y Chart.js) esperan number. catalogo/schemas.py ya
       usaba float por lo mismo; recepciones/schemas.py sigue en Decimal y por eso
       sus montos le llegan al frontend como string (no verificado si algo lo nota).
@@ -338,7 +338,7 @@
       [2.5.5] [HECHO 2026-09-18] "Reporte con IA" pasa de
       placeholder a funcional (texto + voz) y se suma exportacion PDF/Excel a las
       3 pestanias de tablas -- backend + web, movil sigue sin CU15 a proposito.
-      Backend: `app/modules/reportes/router.py` se refactorizo primero (sin
+      Backend: `app/modules/inteligencia_de_negocio/reportes/router.py` se refactorizo primero (sin
       cambiar ninguna consulta) para sacar el SQL de cada uno de los 11 reportes
       a una funcion interna `_consultar_*(conn, ...)` que devuelve dict/list[dict]
       crudo (Decimal ya convertido a float via `_normalizar` -- Pydantic v2
@@ -449,7 +449,7 @@
       a ADMIN, ENCARGADO y ALMACEN junto con `inventario.leer`; CAJERO y
       VENDEDOR solo tienen `inventario.leer`. fn_mover_inventario() ya aceptaba
       el tipo AJUSTE desde que se escribio, pero ningun endpoint lo disparaba.
-      Modulo nuevo app/modules/inventario/ (prefix /inventario, sin cara
+      Modulo nuevo app/modules/catalogo_e_inventario/inventario/ (prefix /inventario, sin cara
       publica, mismo criterio que recepciones/proveedores -- ver CLAUDE.md),
       tres endpoints:
         - GET /inventario/variantes (permiso leer O actualizar): buscador por
@@ -1100,7 +1100,7 @@
 [2.10] [HECHO 2026-09-18] CU17 "Recibir Recomendaciones de IA": backend + web.
       Aclaracion del usuario que quedo registrada: "IA" aca NO es un modelo (Claude, Gemini, etc)
       activo, es un algoritmo sobre el historial del cliente. Modulo nuevo
-      app/modules/recomendaciones/ (GET /recomendaciones, cualquier CLIENTE autenticado, 403 para
+      app/modules/relacion_con_la_clienta/recomendaciones/ (GET /recomendaciones, cualquier CLIENTE autenticado, 403 para
       STAFF), sin permiso de CU13 de por medio porque no es pantalla de gestion. Algoritmo, todo
       en SQL crudo en el router, dos pasadas:
         1. "Personalizadas": categorias donde el cliente compro (peso 2) o reservo (peso 1) mas
@@ -1115,7 +1115,7 @@
       historial) recibe puro fallback de destacados; admin pidiendo el endpoint da 403.
       Reusa el mismo shape de ProductoOut que /catalogo/productos + un campo `motivo`; no se
       importa el schema de catalogo (cada modulo mantiene el suyo, ver CLAUDE.md), se duplico a
-      proposito en app/modules/recomendaciones/schemas.py.
+      proposito en app/modules/relacion_con_la_clienta/recomendaciones/schemas.py.
       Web: la tarjeta de prenda de tienda.page se extrajo a
       frontend/src/app/shared/catalogo/producto-card.ts (selector `li[app-producto-card]`, para
       no envolverla en un <li> aparte) porque ahora tiene dos consumidores: el catalogo de
@@ -1138,7 +1138,7 @@
 [2.11] [HECHO 2026-09-18, PROBADO EN VIVO 2026-09-18] CU18 "Asistir al Cliente via Chatbot":
       backend + web. A diferencia de CU17, esta CU si llama a un modelo de IA de verdad (API de
       Claude, Anthropic) -- aclaracion explicita del usuario al pedirla.
-      Backend: app/modules/asistente/router.py, POST /asistente/chat, solo CLIENTE (403 para
+      Backend: app/modules/relacion_con_la_clienta/asistente/router.py, POST /asistente/chat, solo CLIENTE (403 para
       STAFF, mismo patron _exigir_cliente que recomendaciones/carrito). Decisiones conversadas
       con el usuario:
         - Modelo: claude-haiku-4-5 (barato, configurable por ANTHROPIC_MODEL en .env).
@@ -1267,7 +1267,7 @@
       Solo lectura sobre la tabla `auditoria` que ya existia en el esquema (db/01_schema.sql:639)
       y que CU10-CU13 y el login vienen poblando desde antes via app/core/auditoria.py -- esta CU
       no agrega escritura nueva, solo la pantalla para consultarla. Modulo nuevo
-      app/modules/auditoria/ con permiso unico `auditoria.leer`, sembrado SOLO para ADMIN (a
+      app/modules/acceso_y_organizacion/auditoria/ con permiso unico `auditoria.leer`, sembrado SOLO para ADMIN (a
       diferencia de reportes.leer, que tambien tiene ENCARGADO): la bitacora es del sistema
       completo -- usuarios, roles, catalogo, sucursales, proveedores, recepciones -- y la tabla
       auditoria no tiene sucursal_id para acotar por sucursal, asi que no hay forma de darsela a
@@ -1421,7 +1421,7 @@
           sincrono. Para que ventas/router.py pudiera aprobar un pago sin pasar por
           pagos/router.py (evitando un ciclo de imports), la logica de
           confirmar_aprobado/confirmar_rechazado que antes vivia en pagos/router.py se
-          extrajo a app/modules/pagos/servicio.py (mismo patron que envios/servicio.py: la
+          extrajo a app/modules/operacion_comercial/pagos/servicio.py (mismo patron que envios/servicio.py: la
           excepcion documentada a "cada modulo se basta a si mismo"), junto con
           _alertar_stock_bajo (antes en ventas/router.py). pagos/router.py, ventas/router.py
           y envios/servicio.py orbitan alrededor de este archivo sin ciclos.
@@ -1669,7 +1669,7 @@
       + mayuscula + numero, sin caracter especial) en usuarios/schemas.py, admin_schemas.py
       y el espejo a mano en registro_pagina.dart -- panel-usuarios web ni siquiera la
       aplicaba (solo Validators.minLength(8)). Se centralizo en
-      backend/app/modules/usuarios/politica_password.py (`REGLAS_PASSWORD`, 5 reglas:
+      backend/app/modules/acceso_y_organizacion/usuarios/politica_password.py (`REGLAS_PASSWORD`, 5 reglas:
       longitud >= 8, minuscula, mayuscula, numero, caracter especial) y lo importan
       schemas.py (CU02) y admin_schemas.py (StaffIn y PasswordIn, CU13); sigue siendo un
       espejo manual en frontend/src/app/shared/validacion-password.ts y en
@@ -2178,7 +2178,7 @@
 [5.4] [SUPERADO por 6.1-6.3] [HECHO 2026-10-14 backend + web] SaaS: bloque 8 del esquema (plan, suscripcion,
       pago_suscripcion, cliente_perfil_tenant). Tres planes: BASICO (Bs 350, 3 personas,
       1 caja), PROFESIONAL (Bs 750, 8/2, + perfil de clientas y traspasos), PREMIUM
-      (Bs 1400, sin limites, + reportes con IA). Modulo backend/app/modules/saas/, permisos
+      (Bs 1400, sin limites, + reportes con IA). Modulo backend/app/modules/plataforma_saas/saas/, permisos
       suscripciones.leer/actualizar (ADMIN y ENCARGADO). Topes: alta de personal y de cajas
       responden 409 si el plan de la sucursal esta lleno (app/core/plan.py::exigir_limite).
       Web: /panel/suscripcion (plan actual, uso vs topes, planes, pagar, historial; el ADMIN
@@ -2199,7 +2199,7 @@
       de prueba del plan Basico. Seed: SC-01 Premium, LP/CB Profesional, SU Basico, TJ en
       prueba, OR vencida (para mostrar el bloqueo).
 [5.7] [HECHO 2026-10-14 backend + web] Cartera/perfil de clientas por tenant: modulo
-      backend/app/modules/clientes/ (GET/POST /clientes, PUT /clientes/{id}/perfil), tabla
+      backend/app/modules/relacion_con_la_clienta/clientes/ (GET/POST /clientes, PUT /clientes/{id}/perfil), tabla
       cliente_perfil_tenant. La cartera = compraron o reservaron en la sucursal + altas a mano
       por email; segmento sugerido (NUEVA/FRECUENTE/VIP/INACTIVA) del historial en la
       sucursal, editable. Web: /panel/clientes. Probado: la ficha de La Paz no aparece en
@@ -2359,6 +2359,99 @@
       con plantuml.jar + Java 8, sin Docker). El 09 y ICONIX_SEGUNDO_PARCIAL.md quedan marcados
       como superados en lo de "tenant = sucursal". Los C4 (20-22) no se tocaron: no muestran
       los modulos sync/ y analitica/.
+
+===============================================================================
+ 7. DOCUMENTACION DEL SEGUNDO PARCIAL: CATALOGO CU01-CU29 Y DIAGRAMAS (2026-10-22)
+===============================================================================
+ Rama `reorganizar-paquetes`. El catalogo vigente de casos de uso esta en
+ docs/PARCIALES.md (seccion 1.2): 29 CU = 22 nuevos del 2P + 7 del 1P que el 2P
+ modifica. Los "CUxx" de este archivo (secciones 1-6) siguen siendo la numeracion del
+ docx del primer parcial (regla 4 de PARCIALES).
+
+[7.1] [HECHO 2026-10-22] Lo que quedo cerrado en esta tanda:
+      - Catalogo CU01-CU29 en docs/PARCIALES.md, con equivalencias de todas las
+        numeraciones viejas (seccion 6). Correcciones contra el codigo: actor de CU16 =
+        Encargado + Admin. empresa (devoluciones.* no la tiene CAJERO/VENDEDOR); la venta
+        offline sin caja abierta queda CONFLICTO SIN_CAJA_ABIERTA (no RECHAZADA).
+      - Renumerados a CU01-CU29: ICONIX_SEGUNDO_PARCIAL.md, ICONIX_SAAS_MULTITENANT.md,
+        PAQUETES.md, uml/README.md y los comentarios del codigo de SaaS, sin conexion y
+        analitica. CU19 suma el curso alterno "la reserva del personal nace CONFIRMADA".
+      - Modulo `traspasos` movido a catalogo_e_inventario/ (backend, web y movil), porque
+        sus CU (CU10, CU11) son de ese paquete. Los 7 paquetes siguen iguales. Probado:
+        pytest 186 ok, ruff ok, ng build ok, flutter analyze sin issues.
+      - 92 diagramas .drawio (UML 2.5, blanco y negro) en
+        ducumentacion/UML 2.5/ (FUERA de este repo git): CU general, dominio, clases,
+        despliegue, arquitectura y secuencia/robustez/comunicacion de los 29 CU. Se
+        borraron los .drawio viejos (CU20-CU38). Validados por script (XML, ids, grilla,
+        sin solapes); NO abiertos en draw.io.
+
+[7.2] PENDIENTE (decision del usuario) Actor de CU29 "Entrenar y evaluar modelos de ML".
+      El catalogo dice Administrador de plataforma. En el codigo SUPERADMIN y ADMIN de
+      empresa tienen analitica.actualizar, pero la web le oculta "Analitica ML" a la
+      plataforma (!esPlataforma() y tieneFuncion('analitica_ml')). En la practica entrena
+      el ADMIN de empresa con plan Profesional. Opciones: (A, recomendada) actor = Admin.
+      empresa en PARCIALES + CU_general + CU29_{secuencia,robustez,comunicacion}; (B)
+      dejar la plataforma y abrirle la pantalla en la web.
+
+[7.3] PENDIENTE (decision) Paquete de CU07 "Elegir tienda": el catalogo lo pone en
+      Relacion con la clienta pero el endpoint es saas/router.py::listar_tiendas. Opciones:
+      (A, recomendada) dejarlo y anotar la excepcion en PAQUETES.md; (B) pasarlo a
+      Plataforma SaaS, lo que obliga a renumerar CU01-CU08 y los diagramas.
+
+[7.4] PENDIENTE Revisar los diagramas abriendolos en draw.io:
+      - Escalas distintas entre tandas: comunicacion CU01-15 cajas 190x60 vs CU16-29
+        170x40; secuencia CU01-10 paso de 50 px vs 40 px en CU11-29; en CU01-10 el nombre
+        de la lifeline es un texto aparte encima del icono. Emparejar si se nota.
+      - Etiquetas largas que pisan lifelines: CU22 "Alternos" y CU29 (secuencia).
+      - Robustez: para no cruzar lineas cada entity se une solo a controles contiguos; faltan
+        vinculos reales (ej. CU13 "Confirmar pago" -> Pago, CU16 "Registrar devolucion" ->
+        Venta, CU05 "Rechazar pago" -> Pago de suscripcion); la auditoria no aparece.
+      - Arquitectura: que los sockets (requiredInterface rotados) miren a su lollipop; no
+        hay flecha Presentacion -> Stripe (Checkout web / flutter_stripe).
+      - Despliegue: 3 cruces de lineas (telefono -> Stripe) y posicion de etiquetas.
+      - Dominio: notas largas con whiteSpace=wrap; Empresa 1..* Sucursal sale del diseno,
+        no del esquema.
+      - Los archivos ocultos .$CUnn_secuencia.drawio.bkp son respaldos de draw.io.
+      - Diagrama de Paquetes/ (9 archivos, del usuario) no se toco: revisar si nombra CU
+        con la numeracion vieja.
+      - Generadores de cada agente: scratchpad de la sesion 2026-10-22 (temporal; si se
+        pierde, los .drawio se editan a mano).
+
+[7.5] PENDIENTE Huecos del codigo que encontraron los agentes (no se tocaron):
+      - traspasos: solo crear y sugerencias exigen la funcion de plan `traspasos`;
+        despachar/recibir/anular solo permiso -> una empresa vencida o que bajo de plan
+        sigue moviendo stock de traspasos ya creados.
+      - reservas/router.py crear_reserva busca la sucursal sin filtrar por empresa (las
+        prendas si se filtran). Hueco de aislamiento a cerrar con exigir_sucursal.
+      - GET /sync/operaciones no llama a exigir_sucursal: una sucursal ajena da lista vacia,
+        no 404. POST /sync/operaciones valida el plan dentro de validar_cabecera y no con
+        requiere_funcion_plan (estilo distinto, no error).
+      - CU01: PUT /saas/empresas/{id} y SaasService.editarEmpresa existen pero
+        PanelEmpresasPage no tiene formulario de edicion.
+      - CU26: la consulta IA solo devuelve tabla (ConsultaIaOut); falta el grafico que pide
+        el examen 8.3 ("tabla o grafico").
+      - Sin llamador en la web: GET /analitica/modelo (las metricas vienen en
+        /analitica/dashboard) y GET /saas/suscripciones.
+      - ClientesService (web) manda sucursal_id que clientes/router.py ignora (el tenant es
+        la empresa); el comentario del servicio dice "clientas de la sucursal".
+      - Movil: no tiene nota de devolucion imprimible, export de reportes, dashboard
+        analitico ni panel de supervision de sync (CU24): solo web.
+
+[7.6] PENDIENTE Documentacion:
+      - Narrativas que dicen "Falta"/"Actualizar" en docs/PARCIALES.md seccion 3 (CU01
+        editar/suspender, CU07, CU10, CU15, CU26 visualizacion, CU27; actualizar CU04,
+        CU05, CU06, CU08, CU09, CU11-CU14) y la nota "que cambia en el 2P" de los 7 del 1P.
+      - Los .puml de docs/uml/ (10-28) quedan obsoletos frente a los .drawio; decidir si se
+        borran o se dejan como historia.
+      - Decidir si CU16 (cambio de prenda) funciona sin conexion (PARCIALES 5.5).
+      - Capitulo I, alcance y limitaciones: Proveedor fuera de alcance; tallas/colores sin
+        CRUD; temporadas/colecciones no se pueden crear ni editar (RF23 del 1P).
+      - 3.6 Interfaces: no hay documento propio.
+      - docs/RAILWAY.md desactualizado: dice 43 tablas (son 45) y que el job de expiracion
+        no esta implementado (si lo esta); scripts/aplicar_en_railway.sh solo aplica
+        db/01-03 (no 04_historial_demo.sql).
+      - CLAUDE.md dice que los mapas son de CARTO: vale para la web; el movil usa
+        tile.openstreetmap.org.
 
 ===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)

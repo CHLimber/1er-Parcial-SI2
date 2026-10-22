@@ -14,8 +14,8 @@ from fastapi.testclient import TestClient
 from app.core.db import get_connection
 from app.core.deps import get_cajero_actual
 from app.main import app
-from app.modules.devoluciones import router as devoluciones_router
-from app.modules.pagos import servicio
+from app.modules.operacion_comercial.devoluciones import router as devoluciones_router
+from app.modules.operacion_comercial.pagos import servicio
 from tests.conexion_falsa import EMPRESA, ConexionFalsa, staff
 
 SUCURSAL = uuid4()

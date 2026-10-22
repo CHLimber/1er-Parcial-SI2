@@ -6,7 +6,7 @@ import stripe
 
 from app.core.config import settings
 from app.core.db import get_pool
-from app.modules.pagos.servicio import confirmar_rechazado
+from app.modules.operacion_comercial.pagos.servicio import confirmar_rechazado
 
 logger = logging.getLogger(__name__)
 

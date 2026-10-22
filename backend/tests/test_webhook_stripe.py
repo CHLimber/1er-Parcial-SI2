@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.core.db import get_connection
 from app.main import app
-from app.modules.pagos import servicio
+from app.modules.operacion_comercial.pagos import servicio
 from tests.conexion_falsa import ConexionFalsa
 
 PAGO = uuid4()

@@ -1,8 +1,8 @@
 """Aislamiento multi-tenant (segundo parcial, Modulo A).
 
 Tenant = EMPRESA. La regla de la consigna es doble: el backend valida que el usuario tenga el
-PERMISO (requiere_permiso, CU13) y ademas que el RECURSO pertenezca a su empresa. Lo segundo
-vive aca, en funciones chicas que los routers llaman antes de leer o escribir:
+PERMISO (requiere_permiso, CU13 del primer parcial) y ademas que el RECURSO pertenezca a su
+empresa. Lo segundo vive aca, en funciones chicas que los routers llaman antes de leer o escribir:
 
   - empresa_de(staff): la empresa del personal; la cuenta de la plataforma (SUPERADMIN, sin
     empresa) no opera tiendas y recibe 403.

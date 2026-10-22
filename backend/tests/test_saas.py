@@ -13,8 +13,8 @@ from app.core.db import get_connection
 from app.core.deps import get_staff_actual
 from app.core.plan import evaluar_acceso
 from app.main import app
-from app.modules.clientes.router import segmento_sugerido
-from app.modules.saas.servicio import nuevo_periodo, sumar_meses
+from app.modules.plataforma_saas.saas.servicio import nuevo_periodo, sumar_meses
+from app.modules.relacion_con_la_clienta.clientes.router import segmento_sugerido
 from tests.conexion_falsa import ConexionFalsa, staff
 
 AHORA = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)

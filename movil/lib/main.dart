@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'compartido/aviso_conexion.dart';
-import 'core/auth/auth_service.dart';
-import 'core/carrito/carrito_service.dart';
-import 'core/notificaciones/notificaciones_service.dart';
-import 'core/offline/conexion_service.dart';
-import 'core/reservas/reserva_carrito_service.dart';
-import 'core/sincronizacion/sincronizacion_service.dart';
+import 'core/acceso_y_organizacion/auth/auth_service.dart';
+import 'core/operacion_comercial/carrito/carrito_service.dart';
+import 'core/nucleo/notificaciones/notificaciones_service.dart';
+import 'core/operacion_sin_conexion/offline/conexion_service.dart';
+import 'core/operacion_comercial/reservas/reserva_carrito_service.dart';
+import 'core/operacion_sin_conexion/sincronizacion/sincronizacion_service.dart';
 import 'core/tema.dart';
 import 'rutas.dart';
 

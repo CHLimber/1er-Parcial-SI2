@@ -1,0 +1,115 @@
+import { HttpClient } from '@angular/common/http';
+import { Injectable, computed, signal } from '@angular/core';
+import { Observable, map, tap } from 'rxjs';
+
+import { environment } from '../../../../environments/environment';
+import { offlineDb } from '../../operacion-sin-conexion/offline/offline-db';
+import {
+  CambiarPasswordRequest,
+  LoginRequest,
+  RegistroRequest,
+  TokenResponse,
+  UsuarioOut,
+} from './auth.models';
+
+const STORAGE_KEY = 'fashionstore.sesion';
+
+interface SesionGuardada {
+  token: string;
+  usuario: UsuarioOut;
+}
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly sesion = signal<SesionGuardada | null>(this.leerSesionGuardada());
+
+  readonly usuario = computed(() => this.sesion()?.usuario ?? null);
+  readonly estaAutenticado = computed(() => this.sesion() !== null);
+  readonly esStaff = computed(() => this.usuario()?.tipo === 'STAFF');
+  readonly permisos = computed(() => this.usuario()?.permisos ?? []);
+  /** La administracion del SaaS: personal sin empresa con el modulo `empresas`. */
+  readonly esPlataforma = computed(
+    () => this.esStaff() && !this.usuario()?.empresa_id && this.permisos().includes('empresas.leer'),
+  );
+
+  constructor(private readonly http: HttpClient) {}
+
+  get token(): string | null {
+    return this.sesion()?.token ?? null;
+  }
+
+  /** CU13: la UI se arma con los permisos del rol, no con su nombre. Basta con tener uno. */
+  tienePermiso(...codigos: string[]): boolean {
+    const propios = this.permisos();
+    return codigos.some((codigo) => propios.includes(codigo));
+  }
+
+  /** Funcion del plan de la empresa (ia_reportes, analitica_ml, operacion_offline...). La
+   * plataforma no tiene plan: para ella todo lo de gestion de tiendas no aplica. */
+  tieneFuncion(funcion: string): boolean {
+    return (this.usuario()?.funciones_plan ?? []).includes(funcion);
+  }
+
+  iniciarSesion(credenciales: LoginRequest): Observable<UsuarioOut> {
+    return this.http.post<TokenResponse>(`${environment.apiUrl}/auth/login`, credenciales).pipe(
+      tap((respuesta) => this.guardar(respuesta)),
+      map((respuesta) => respuesta.usuario),
+    );
+  }
+
+  registrarse(datos: RegistroRequest): Observable<UsuarioOut> {
+    return this.http.post<TokenResponse>(`${environment.apiUrl}/auth/registro`, datos).pipe(
+      tap((respuesta) => this.guardar(respuesta)),
+      map((respuesta) => respuesta.usuario),
+    );
+  }
+
+  /**
+   * Vuelve a pedir el usuario al backend. Si el administrador cambio el rol o los permisos
+   * (CU13), la sesion guardada en el navegador queda desactualizada hasta este refresco.
+   */
+  refrescarSesion(): Observable<UsuarioOut> {
+    return this.http.get<UsuarioOut>(`${environment.apiUrl}/auth/yo`).pipe(
+      tap((usuario) => {
+        const actual = this.sesion();
+        if (!actual) return;
+        const guardada: SesionGuardada = { token: actual.token, usuario };
+        this.sesion.set(guardada);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(guardada));
+      }),
+    );
+  }
+
+  /** Cambiar mi propia contraseña (CLIENTE o STAFF); no toca la sesion guardada. */
+  cambiarPassword(datos: CambiarPasswordRequest): Observable<void> {
+    return this.http.post<void>(`${environment.apiUrl}/auth/password`, datos);
+  }
+
+  cerrarSesion(): void {
+    this.sesion.set(null);
+    localStorage.removeItem(STORAGE_KEY);
+    // la base temporal offline (PENDIENTES 5.2) guarda datos de este usuario: se vacia
+    void offlineDb.limpiar().catch(() => null);
+  }
+
+  private guardar(respuesta: TokenResponse): void {
+    const guardada: SesionGuardada = { token: respuesta.access_token, usuario: respuesta.usuario };
+    this.sesion.set(guardada);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(guardada));
+  }
+
+  private leerSesionGuardada(): SesionGuardada | null {
+    const crudo = localStorage.getItem(STORAGE_KEY);
+    if (!crudo) return null;
+    try {
+      const guardada = JSON.parse(crudo) as SesionGuardada;
+      // sesiones guardadas antes de CU13 no traen permisos
+      guardada.usuario.permisos ??= [];
+      guardada.usuario.funciones_plan ??= [];
+      return guardada;
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+  }
+}

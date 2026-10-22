@@ -1,7 +1,7 @@
 import { Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { ProductoOut } from '../../core/catalogo/catalogo.models';
+import { ProductoOut } from '../../core/catalogo-e-inventario/catalogo/catalogo.models';
 
 /**
  * Tarjeta de prenda, extraida de tienda.page (unico consumidor original) al sumarse

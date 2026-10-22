@@ -7,7 +7,7 @@ from datetime import date
 import numpy as np
 import pytest
 
-from app.modules.analitica import modelos, sinteticos
+from app.modules.inteligencia_de_negocio.analitica import modelos, sinteticos
 
 
 def test_los_datos_sinteticos_son_reproducibles_con_la_semilla():

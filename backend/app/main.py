@@ -11,34 +11,38 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings, verificar_jwt_secret
 from app.core.db import connect_pool, disconnect_pool
 from app.core.jobs import job_expirar_reservas
-from app.modules.analitica.router import router as analitica_router
-from app.modules.asistente.router import router as asistente_router
-from app.modules.auditoria.router import router as auditoria_router
-from app.modules.caja.router import router as caja_router
-from app.modules.carrito.router import router as carrito_router
-from app.modules.catalogo.admin_router import router as catalogo_admin_router
-from app.modules.catalogo.router import router as catalogo_router
-from app.modules.clientes.router import router as clientes_router
-from app.modules.devoluciones.router import router as devoluciones_router
-from app.modules.direcciones.router import router as direcciones_router
-from app.modules.envios.admin_router import router as envios_admin_router
-from app.modules.envios.router import router as envios_router
-from app.modules.inventario.router import router as inventario_router
-from app.modules.notificaciones.router import router as notificaciones_router
-from app.modules.pagos.router import router as pagos_router
-from app.modules.proveedores.router import router as proveedores_router
-from app.modules.recepciones.router import router as recepciones_router
-from app.modules.recomendaciones.router import router as recomendaciones_router
-from app.modules.reportes.router import router as reportes_router
-from app.modules.reservas.router import router as reservas_router
-from app.modules.saas.router import router as saas_router
-from app.modules.sincronizacion.router import router as sincronizacion_router
-from app.modules.sucursales.admin_router import router as sucursales_admin_router
-from app.modules.sucursales.router import router as sucursales_router
-from app.modules.traspasos.router import router as traspasos_router
-from app.modules.usuarios.admin_router import router as usuarios_admin_router
-from app.modules.usuarios.router import router as usuarios_router
-from app.modules.ventas.router import router as ventas_router
+from app.core.notificaciones.router import router as notificaciones_router
+from app.modules.acceso_y_organizacion.auditoria.router import router as auditoria_router
+from app.modules.acceso_y_organizacion.sucursales.admin_router import (
+    router as sucursales_admin_router,
+)
+from app.modules.acceso_y_organizacion.sucursales.router import router as sucursales_router
+from app.modules.acceso_y_organizacion.usuarios.admin_router import router as usuarios_admin_router
+from app.modules.acceso_y_organizacion.usuarios.router import router as usuarios_router
+from app.modules.catalogo_e_inventario.catalogo.admin_router import router as catalogo_admin_router
+from app.modules.catalogo_e_inventario.catalogo.router import router as catalogo_router
+from app.modules.catalogo_e_inventario.inventario.router import router as inventario_router
+from app.modules.catalogo_e_inventario.proveedores.router import router as proveedores_router
+from app.modules.catalogo_e_inventario.recepciones.router import router as recepciones_router
+from app.modules.catalogo_e_inventario.traspasos.router import router as traspasos_router
+from app.modules.inteligencia_de_negocio.analitica.router import router as analitica_router
+from app.modules.inteligencia_de_negocio.reportes.router import router as reportes_router
+from app.modules.operacion_comercial.caja.router import router as caja_router
+from app.modules.operacion_comercial.carrito.router import router as carrito_router
+from app.modules.operacion_comercial.devoluciones.router import router as devoluciones_router
+from app.modules.operacion_comercial.direcciones.router import router as direcciones_router
+from app.modules.operacion_comercial.envios.admin_router import router as envios_admin_router
+from app.modules.operacion_comercial.envios.router import router as envios_router
+from app.modules.operacion_comercial.pagos.router import router as pagos_router
+from app.modules.operacion_comercial.reservas.router import router as reservas_router
+from app.modules.operacion_comercial.ventas.router import router as ventas_router
+from app.modules.operacion_sin_conexion.sincronizacion.router import router as sincronizacion_router
+from app.modules.plataforma_saas.saas.router import router as saas_router
+from app.modules.relacion_con_la_clienta.asistente.router import router as asistente_router
+from app.modules.relacion_con_la_clienta.clientes.router import router as clientes_router
+from app.modules.relacion_con_la_clienta.recomendaciones.router import (
+    router as recomendaciones_router,
+)
 
 
 @asynccontextmanager
