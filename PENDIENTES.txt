@@ -2444,14 +2444,27 @@
       - Los .puml de docs/uml/ (10-28) quedan obsoletos frente a los .drawio; decidir si se
         borran o se dejan como historia.
       - Decidir si CU16 (cambio de prenda) funciona sin conexion (PARCIALES 5.5).
-      - Capitulo I, alcance y limitaciones: Proveedor fuera de alcance; tallas/colores sin
-        CRUD; temporadas/colecciones no se pueden crear ni editar (RF23 del 1P).
+      - [HECHO 2026-10-25] Capitulo I, alcance y limitaciones: Proveedor fuera de alcance;
+        tallas/colores sin CRUD; temporadas/colecciones no se pueden crear ni editar. Quedo
+        en ducumentacion/CAPITULOS_I_II_FASHIONSTORE.md (capitulos I y II reescritos como
+        proyecto, con RF -> CU y reglas RN01-RN20).
       - 3.6 Interfaces: no hay documento propio.
       - docs/RAILWAY.md desactualizado: dice 43 tablas (son 45) y que el job de expiracion
         no esta implementado (si lo esta); scripts/aplicar_en_railway.sh solo aplica
         db/01-03 (no 04_historial_demo.sql).
       - CLAUDE.md dice que los mapas son de CARTO: vale para la web; el movil usa
         tile.openstreetmap.org.
+
+[7.7] [HECHO 2026-10-25] Actores de los diagramas alineados con Casos de Uso/CU_general.drawio
+      (verificado con 4 agentes sobre los 139 .drawio; CU_general ya estaba bien). Secuencia,
+      robustez y clases por CU salen de specs3 corregido con
+      _generadores/secuencia_robustez/sec/actores_general.py; comunicacion con
+      _generadores/comunicacion/ajustar_actores.py. Cambios: pagina propia del Admin. empresa
+      en CU16 y CU23-CU28, Claude API actor en CU26, CU03 sin el Encargado, CU04 con la vista
+      de plataforma en comunicacion, CU15 sin Stripe como actor, nombres completos (CU10, CU29).
+      En el documento los actores se llaman como en los diagramas: «Encargado» y
+      «Temporizador». Detalle en ducumentacion/UML 2.5/MANTENIMIENTO.md. Sigue abierta la
+      decision 7.2 (actor de CU29).
 
 ===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)

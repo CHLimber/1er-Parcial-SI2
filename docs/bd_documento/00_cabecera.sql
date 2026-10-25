@@ -1,0 +1,45 @@
+-- #####################################################################
+--  FashionStore - Plataforma SaaS de comercio electronico para moda femenina
+--  BASE DE DATOS: documento SQL para el informe (Capitulo 8 - Diseno de Datos)
+--  PostgreSQL 16  |  Sistemas II - S2-2026
+--
+--  Contenido (mismo orden que el indice del documento):
+--    8.2.2  Script SQL ............ creacion de la base: extensiones, ENUM, 51 tablas, indices
+--                                   y vistas (copia fiel de db/01_schema.sql y de las vistas de
+--                                   db/02_logica.sql)
+--    8.2.4  Poblacion
+--           8.2.4.1 Insert ........ datos de ejemplo de las 3 empresas (tenants)
+--           8.2.4.2 Update ........ modificaciones tipicas de la operacion
+--           8.2.4.3 Delete ........ bajas fisicas, logicas y en cascada
+--    8.2.5  Consultas
+--           8.2.5.1 Simples ....... una sola tabla
+--           8.2.5.2 Dobles ........ dos tablas (JOIN)
+--           8.2.5.3 Multiples ..... tres o mas tablas
+--           8.2.5.4 Subconsultas .. IN, EXISTS, escalares, correlacionadas y CTE
+--    8.2.6  Procedimientos almacenados
+--           8.2.6.1 Procedimientos  CREATE PROCEDURE (se invocan con CALL)
+--           8.2.6.2 Funciones ..... CREATE FUNCTION (logica central del inventario, caja,
+--                                   reservas y delivery; copia de db/02_logica.sql)
+--           8.2.6.3 Triggers ...... disparadores que mueven el stock y llevan las bitacoras
+--           8.2.6.4 Pruebas ....... ejecucion de procedimientos, funciones y triggers
+--
+--  Como ejecutarlo (base vacia, de punta a punta):
+--      createdb fashionstore_doc
+--      psql -d fashionstore_doc -f FASHIONSTORE_BD.sql
+--
+--  Nota sobre el orden: la poblacion (8.2.4) se carga ANTES de crear los triggers (8.2.6.3),
+--  porque asi lo pide el orden del documento. Por eso en 8.2.4.1 el stock comprometido por las
+--  reservas y el descontado por las ventas de ejemplo se refleja con un UPDATE explicito; en el
+--  sistema real eso lo hacen los triggers, y en 8.2.6.4 se ve cada uno funcionando.
+--
+--  Password de todos los usuarios de ejemplo: demo1234 (se guarda con bcrypt via pgcrypto).
+-- #####################################################################
+
+
+-- =====================================================================
+--  8.2.2  SCRIPT SQL - CREACION DE LA BASE DE DATOS
+-- =====================================================================
+-- Si se ejecuta desde psql como superusuario se puede crear la base primero:
+--   CREATE DATABASE fashionstore ENCODING 'UTF8' TEMPLATE template0;
+--   \c fashionstore
+
