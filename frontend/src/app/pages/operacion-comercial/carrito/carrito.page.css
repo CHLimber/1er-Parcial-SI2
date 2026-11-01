@@ -110,11 +110,13 @@
 }
 
 .carrito__nombre {
+  overflow-wrap: anywhere;
   font-weight: 600;
   color: var(--ink);
 }
 
 .carrito__variante {
+  overflow-wrap: anywhere;
   font-size: 0.78rem;
   color: var(--ink-soft);
 }
@@ -134,6 +136,8 @@
 }
 
 .carrito__subtotal {
+  flex: none;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
@@ -230,6 +234,8 @@
 
 .campo input,
 .campo select {
+  width: 100%;
+  min-width: 0;
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--paper-line);
   background: var(--white);
@@ -290,6 +296,9 @@
 .qr-preview__imagen {
   width: 100%;
   max-width: 14rem;
+  height: auto;
+  aspect-ratio: 817 / 896;
+  object-fit: contain;
   border-radius: var(--radius-sm);
 }
 
@@ -322,6 +331,9 @@
 
 /* CU20 - entrega a domicilio */
 .envio {
+  /* Mismo alto que el "Calculando…": al llegar la tarifa el formulario no se estira. */
+  min-height: 5.5rem;
+  align-content: start;
   background: var(--white);
   border: 1px solid var(--paper-line);
   border-radius: var(--radius-sm);
@@ -340,6 +352,20 @@
   font-size: 0.82rem;
   color: var(--ink-soft);
   line-height: 1.4;
+}
+
+.envio__estado {
+  min-height: 5.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--paper-line);
+  border-radius: var(--radius-sm);
+}
+
+.envio__mapa-esqueleto {
+  height: 15rem;
+  border-radius: var(--radius-sm);
+  background: var(--paper-line);
+  opacity: 0.5;
 }
 
 .envio__estado,
@@ -388,7 +414,8 @@
 }
 
 @media (max-width: 30rem) {
-  .envio__mapa-lienzo {
+  .envio__mapa-lienzo,
+  .envio__mapa-esqueleto {
     height: 12rem;
   }
 

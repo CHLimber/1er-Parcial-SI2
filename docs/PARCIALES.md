@@ -45,7 +45,7 @@ Reglas:
 | Administrador de plataforma | `SUPERADMIN` (no pertenece a ninguna empresa) | No existía |
 | Administrador de empresa | `ADMIN` del tenant | Administrador |
 | Encargado (gerente de sucursal) | `ENCARGADO` | Encargado de sucursal |
-| Empleado | `CAJERO`, `VENDEDOR` | Cajero |
+| Empleado | `CAJERO` | Cajero |
 | Clienta | `CLIENTE` (cuenta de la plataforma; elige la tienda con `X-Empresa`) | Cliente |
 | Temporizador / vuelta de la red | dispara la sincronización | No existía |
 | Claude API | servicio externo | Servicio de IA |

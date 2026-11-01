@@ -3,6 +3,34 @@
  * Cada pagina lo incluye en su styleUrls; Angular lo scopea a su propio componente.
  */
 
+/*
+ * Alturas unificadas (`--alto-control` en styles.css): botones, campos y solapas miden 2.5rem
+ * (40px, el piso tactil de styles.css); el boton chico 2rem. Con esto una barra con un campo y
+ * un boton queda a ras sin que cada pantalla ajuste padding a ojo.
+ */
+
+/* Un hijo flex/grid no baja de su contenido salvo que se lo permitas: sin esto un email o
+   una tabla ancha estira la tarjeta y aplasta a la vecina. */
+.panel,
+.barra > *,
+.rejilla > *,
+.campo,
+.formulario > *,
+.columnas > *,
+.tarjeta,
+.rol,
+.resultado {
+  min-width: 0;
+}
+
+/* Textos largos (un nombre, un email) cortan por donde pueden en vez de ensanchar la tarjeta. */
+.tarjeta > *,
+.rol > *,
+.resultado > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .barra {
   display: flex;
   flex-wrap: wrap;
@@ -15,18 +43,59 @@
   flex: 1;
 }
 
+/* Filtros con ancho propio: el ancho de un <select> dependia del texto de la opcion elegida y
+   la barra se movia al filtrar. */
+.barra > .campo {
+  flex: 0 1 14rem;
+}
+
+.barra > .campo--ancho {
+  flex: 1 1 16rem;
+  max-width: 30rem;
+}
+
+.barra > .panel__titulo {
+  margin: 0;
+  align-self: center;
+}
+
+.campo select {
+  text-overflow: ellipsis;
+}
+
 .panel {
   background: var(--white);
   border: 1px solid var(--paper-line);
   border-radius: var(--radius);
   padding: 1.35rem;
+  /* nunca mas ancho que su columna (la tabla se desliza adentro de .tabla-envoltorio) */
+  max-width: 100%;
 }
 
-.panel + .panel {
+/* Los bloques sueltos (div, section) entre paneles tambien se separan: `.panel + .panel` solo
+   cubre dos paneles pegados. */
+.panel + .panel,
+.panel + .columnas,
+.columnas + .panel,
+.columnas + .columnas,
+.kpis + .panel,
+.kpis + .columnas,
+.panel + .kpis,
+.sugerencias + .columnas {
   margin-top: 1.25rem;
 }
 
+/* Dentro de `.columnas` el espacio entre paneles lo pone el `gap` del flex: con el margen de
+   arriba el segundo panel quedaba 1.25rem mas abajo que el primero al ir lado a lado. */
+.columnas > .panel + .panel,
+.columnas > .panel + aside,
+.columnas > section + aside,
+.columnas--detalle > section + section {
+  margin-top: 0;
+}
+
 .panel__titulo {
+  overflow-wrap: anywhere;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
@@ -51,13 +120,17 @@
 
 .columnas > section:first-child {
   flex: 1 1 30rem;
-  min-width: 0;
 }
 
 .columnas > aside {
   flex: 1 1 20rem;
   max-width: 24rem;
-  min-width: 0;
+}
+
+/* Si la segunda columna es otra <section> (no un <aside>), tambien se reparte el espacio.
+   Sin base propia su ancho dependia de su texto mas largo. */
+.columnas > section + section {
+  flex: 1 1 24rem;
 }
 
 /*
@@ -70,21 +143,61 @@
   display: none;
 }
 
-.columnas--detalle > section:first-child {
-  flex: 0 1 20rem;
-  min-width: 16rem;
+/*
+ * Maestro-detalle (`columnas--detalle`): lista a la izquierda, ficha a la derecha. Es una
+ * grilla de dos pistas fijas y no flex: en flex, una tabla ancha dentro de la ficha la hacia
+ * crecer y la lista se aplastaba a su minimo. Se mantiene en dos columnas hasta 48rem
+ * (verificado con capturas) y recien ahi pasa a una sola.
+ */
+.columnas--detalle {
+  display: grid;
+  grid-template-columns: minmax(15rem, 21rem) minmax(0, 1fr);
+  align-items: start;
 }
 
-.columnas--detalle > section:last-child {
-  flex: 3 1 30rem;
+@media (max-width: 47.99rem) {
+  .columnas--detalle {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-@media (max-width: 62rem) {
-  .columnas > section,
-  .columnas > aside {
-    flex-basis: 100%;
+/* Formulario lateral: arriba y a todo el ancho, no al costado de una tabla angosta. Con la
+   barra lateral visible el panel mide (ventana - 20.5rem); la tabla necesita ~46rem y el
+   formulario 24rem, de ahi los 90rem. No se usa un container query a proposito: crea un
+   bloque contenedor para `position: fixed` y rompe el aviso flotante (`.exito`). */
+@media (max-width: 90rem) {
+  .columnas:not(.columnas--detalle) > aside {
+    order: -1;
+    flex: 1 1 100%;
     max-width: none;
   }
+}
+
+/* Una columna debajo de la otra (tablet y telefono). */
+@media (max-width: 64rem) {
+  .columnas > section:first-child,
+  .columnas > section + section,
+  .columnas > aside {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+}
+
+/* Lista a todo el ancho y la ficha se abre DEBAJO, en vez de lado a lado: para tablas de 7 o
+   mas columnas (empresas). Los selectores repiten la especificidad de las reglas de arriba a
+   proposito, para ganarles sin depender del orden. */
+.columnas.columnas--apilado {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.columnas.columnas--apilado > section,
+.columnas.columnas--apilado > section:first-child,
+.columnas.columnas--apilado > section + section {
+  flex: none;
+  width: 100%;
+  max-width: none;
+  scroll-margin-top: 5rem;
 }
 
 /* --- formularios --- */
@@ -107,6 +220,7 @@
 .campo input,
 .campo select,
 .campo textarea {
+  min-height: var(--alto-control);
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--paper-line);
   border-radius: var(--radius-sm);
@@ -114,7 +228,9 @@
   color: var(--ink);
   font-family: inherit;
   font-size: 0.9rem;
+  line-height: 1.3;
   width: 100%;
+  min-width: 0;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -128,6 +244,7 @@
 
 .campo textarea {
   min-height: 5rem;
+  line-height: 1.45;
   resize: vertical;
 }
 
@@ -145,6 +262,7 @@
 
 .campo__casilla input {
   width: auto;
+  min-height: 0;
 }
 
 .campo__casilla label {
@@ -157,7 +275,10 @@
 
 .rejilla {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  /* `min(11rem, 100%)`: en una columna mas angosta que 11rem la pista se achica en vez de
+     desbordar. `auto-fill` (no `auto-fit`) para que dos campos no se estiren a todo el
+     ancho cuando el formulario tiene pocos. */
+  grid-template-columns: repeat(auto-fill, minmax(min(11rem, 100%), 1fr));
   gap: 0.85rem;
 }
 
@@ -170,7 +291,13 @@
 /* --- botones --- */
 
 .boton {
-  padding: 0.6rem 1.1rem;
+  /* inline-flex: un <button> y un <a class="boton"> miden y centran igual */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: var(--alto-control);
+  padding: 0.5rem 1.1rem;
   border: 1px solid var(--ink);
   border-radius: var(--radius-sm);
   background: var(--ink);
@@ -178,8 +305,12 @@
   font-family: inherit;
   font-weight: 600;
   font-size: 0.85rem;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
+  max-width: 100%;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
@@ -216,8 +347,14 @@
 }
 
 .boton--chico {
-  padding: 0.35rem 0.6rem;
+  min-height: var(--alto-control-chico);
+  padding: 0.25rem 0.6rem;
   font-size: 0.75rem;
+}
+
+/* Un ancho minimo: los textos "Guardando…" cambian de largo y el boton no debe bailar. */
+.boton:not(.boton--chico) {
+  min-width: 8rem;
 }
 
 .acciones {
@@ -230,6 +367,28 @@
 
 .tabla-envoltorio {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+/* Una tabla nunca se aprieta hasta ser ilegible: por debajo de este ancho se desliza adentro
+   de `.tabla-envoltorio` (tampoco se parte cada palabra en una letra por linea). Las de muchas
+   columnas lo declaran a mano: `tabla--ancha` (~6-8 columnas) y `tabla--muy-ancha` (~9 o con
+   fechas largas). */
+.tabla-envoltorio > .tabla {
+  min-width: 32rem;
+}
+
+aside .tabla-envoltorio > .tabla {
+  min-width: 22rem;
+}
+
+.tabla-envoltorio > .tabla.tabla--ancha {
+  min-width: 46rem;
+}
+
+.tabla-envoltorio > .tabla.tabla--muy-ancha {
+  min-width: 58rem;
 }
 
 /* Tabla limpia: encabezado con fondo suave y solo lineas horizontales entre filas. */
@@ -266,6 +425,9 @@
   border-bottom: 1px solid var(--paper-line);
   vertical-align: middle;
   color: var(--ink);
+  /* un email o un SKU largo parte por donde puede en vez de ensanchar la columna sin tope */
+  max-width: 24rem;
+  overflow-wrap: break-word;
 }
 
 .tabla tbody tr:last-child td {
@@ -289,19 +451,31 @@
 
 .tabla__acciones {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   justify-content: flex-end;
 }
 
-/* en una celda, `display: flex` la saca de la tabla y el borde de la fila queda desfasado */
+/* en una celda, `display: flex` la saca de la tabla y el borde de la fila queda desfasado.
+   Las botoneras envuelven en vez de ensanchar la tabla: "Restablecer contraseña" +
+   "Desbloquear" + "Desactivar" juntos pasaban de 25rem. */
 td.tabla__acciones {
   display: table-cell;
   text-align: right;
-  white-space: nowrap;
+  white-space: normal;
+  min-width: 7rem;
 }
 
 td.tabla__acciones > * + * {
   margin-left: 0.4rem;
+}
+
+td.tabla__acciones > .boton {
+  margin-bottom: 0.3rem;
+}
+
+td.tabla__acciones > .boton:last-child {
+  margin-bottom: 0;
 }
 
 .mono {
@@ -318,6 +492,8 @@ td.tabla__acciones > * + * {
 
 .badge {
   display: inline-block;
+  line-height: 1.3;
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 0.66rem;
   text-transform: uppercase;
@@ -350,6 +526,12 @@ td.tabla__acciones > * + * {
   margin: 0;
 }
 
+/* "Cargando…" de una pantalla entera: reserva alto para que, al llegar los datos, el panel no
+   salte desde una linea hasta varias pantallas. Se suma a `.estado`. */
+.estado--pantalla {
+  min-height: 14rem;
+}
+
 .error {
   color: var(--flame-dark);
   font-size: 0.85rem;
@@ -366,18 +548,76 @@ td.tabla__acciones > * + * {
   margin: 0;
 }
 
+/* Confirmacion: aviso flotante que se apaga solo. En el flujo empujaba todo lo de abajo. */
 .exito {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  z-index: 60;
+  width: min(32rem, calc(100vw - 2rem));
+  transform: translateX(-50%);
   border-left: 3px solid var(--gold);
   border-radius: var(--radius-sm);
-  background: var(--paper);
+  background: var(--white);
+  box-shadow: 0 12px 32px rgba(46, 37, 48, 0.22);
   padding: 0.6rem 0.8rem;
   font-size: 0.85rem;
   color: var(--ink);
   margin: 0;
+  animation: aviso-flotante 7s ease forwards;
+}
+
+@keyframes aviso-flotante {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0.6rem);
+  }
+  5% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  88% {
+    opacity: 1;
+    visibility: visible;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* Con movimiento reducido el aviso no sube, pero se sigue apagando a los 7 s: sin el
+   `animation-duration` de aca, la regla global de styles.css lo acortaba a 0.001 ms y el aviso
+   nacia ya apagado. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes aviso-flotante {
+    0% {
+      opacity: 0;
+    }
+    5% {
+      opacity: 1;
+    }
+    88% {
+      opacity: 1;
+      visibility: visible;
+    }
+    100% {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+  }
+
+  .exito {
+    transform: translateX(-50%);
+    animation-duration: 7s !important;
+  }
 }
 
 .punto {
   display: inline-block;
+  flex: none;
   width: 0.7rem;
   height: 0.7rem;
   border: 1px solid var(--paper-line);
@@ -395,18 +635,16 @@ td.tabla__acciones > * + * {
    menos aire en los paneles.
    ========================================================================== */
 
-.tabla-envoltorio {
-  -webkit-overflow-scrolling: touch;
-}
-
 /* Solapas para alternar vistas dentro de una pantalla del panel (catalogo, usuarios, devoluciones) */
 .solapas {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   margin-bottom: 1.25rem;
 }
 
 .solapa {
+  min-height: var(--alto-control);
   border: 1px solid var(--paper-line);
   border-radius: var(--radius-pill);
   background: var(--white);
@@ -431,10 +669,6 @@ td.tabla__acciones > * + * {
 }
 
 @media (max-width: 48rem) {
-  .solapas {
-    flex-wrap: wrap;
-  }
-
   .solapa {
     flex: 1 1 8rem;
   }
@@ -450,7 +684,7 @@ td.tabla__acciones > * + * {
   .rejilla {
     /* `minmax(11rem, ...)` mete dos columnas de 11rem en un telefono de 360px y los
        campos quedan mas angostos que su propia etiqueta. */
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .barra {
@@ -467,19 +701,16 @@ td.tabla__acciones > * + * {
     margin: 0 -0.9rem;
     padding: 0 0.9rem;
   }
-
-  .tabla {
-    /* Fuerza el scroll horizontal en vez de que el navegador comprima las columnas
-       hasta partir cada palabra en una letra por linea. */
-    min-width: 34rem;
-  }
-
-  .tabla__acciones {
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 30rem) {
+  /* Los filtros ocupan toda la fila (a 14rem fijos quedaban a medio ancho). */
+  .barra > .campo,
+  .barra > .campo--ancho {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
   .barra > .boton,
   .acciones > .boton {
     flex: 1 1 100%;
@@ -487,5 +718,38 @@ td.tabla__acciones > * + * {
 
   .formulario .boton {
     width: 100%;
+  }
+}
+
+/* Tablet y toque: areas de toque mas generosas que el piso de 2.5rem de styles.css. */
+@media (pointer: coarse) {
+  .boton {
+    min-height: 2.75rem;
+  }
+
+  .boton--chico {
+    min-height: 2.4rem;
+    padding-inline: 0.8rem;
+  }
+
+  .campo input:not([type='checkbox']):not([type='radio']),
+  .campo select,
+  .solapa {
+    min-height: 2.75rem;
+  }
+
+  .tarjeta,
+  .rol,
+  .resultado {
+    min-height: 3rem;
+  }
+
+  .campo__casilla {
+    min-height: 2.5rem;
+  }
+
+  .campo__casilla input[type='checkbox'] {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 }

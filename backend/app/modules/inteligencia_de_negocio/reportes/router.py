@@ -53,7 +53,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.config import settings
 from app.core.db import get_connection
 from app.core.plan import requiere_funcion_plan
-from app.core.tenant import empresa_de, es_admin_empresa, exigir_sucursal
+from app.core.tenant import empresa_de, exigir_sucursal, sucursal_visible
 from app.modules.inteligencia_de_negocio.reportes.schemas import (
     CajaOcupacionOut,
     ClienteRankingOut,
@@ -104,21 +104,9 @@ SITUACIONES_EXISTENCIA = ("DISPONIBLE", "RESERVADA", "PROXIMA_A_INGRESAR", "AGOT
 SITUACION_PATTERN = "^(" + "|".join(SITUACIONES_EXISTENCIA) + ")$"
 
 
-def _sucursal_visible(staff: dict) -> UUID | None:
-    """El ADMIN de la empresa ve todas las de su empresa (None); el resto solo la suya."""
-    if es_admin_empresa(staff):
-        return None
-    if staff["sucursal_id"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    return staff["sucursal_id"]
-
-
 def _resolver_sucursal(staff: dict, solicitado: UUID | None) -> UUID | None:
     """None = sin filtro (cadena completa); solo un ADMIN puede pedir eso o cambiar de sucursal."""
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     if limite is None:
         return solicitado
     if solicitado is not None and solicitado != limite:

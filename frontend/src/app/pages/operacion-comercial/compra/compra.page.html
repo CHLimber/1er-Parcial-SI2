@@ -9,9 +9,11 @@
 
   <main class="contenido">
     @if (cargando()) {
-      <p class="estado">Cargando tu pedido…</p>
+      <div class="esqueleto confirmacion confirmacion--esqueleto" role="status" aria-live="polite">
+        <span class="visualmente-oculto">Cargando tu pedido…</span>
+      </div>
     } @else if (noEncontrada() || !venta()) {
-      <p class="estado estado--error">No encontramos ese pedido.</p>
+      <p class="estado estado--error" role="alert">No encontramos ese pedido.</p>
     } @else {
       @let v = venta()!;
 

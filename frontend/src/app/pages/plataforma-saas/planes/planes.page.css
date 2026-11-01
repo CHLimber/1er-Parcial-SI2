@@ -90,3 +90,15 @@
   color: var(--ink);
   font-weight: 600;
 }
+
+/* Reserva el alto de las tarjetas mientras cargan: el pie no salta al llegar los planes. */
+app-tarjetas-planes {
+  display: block;
+  min-height: 28rem;
+}
+
+@media (max-width: 30rem) {
+  .cabecera__marca {
+    font-size: 1.25rem;
+  }
+}

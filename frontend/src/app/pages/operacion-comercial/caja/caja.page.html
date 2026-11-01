@@ -150,7 +150,7 @@
           <button type="button" class="boton" [disabled]="cerrandoSesion()" (click)="confirmarCierreCaja()">
             {{ cerrandoSesion() ? 'Cerrando…' : 'Confirmar cierre' }}
           </button>
-          <button type="button" class="cabecera__salir" (click)="cancelarCierreCaja()">Cancelar</button>
+          <button type="button" class="boton boton--secundario" (click)="cancelarCierreCaja()">Cancelar</button>
         } @else if (errorCierre()) {
           <p class="formulario__error" role="alert">{{ errorCierre() }}</p>
           <button type="button" class="boton" (click)="cancelarCierreCaja()">Volver</button>
@@ -158,6 +158,7 @@
       </section>
     } @else {
       <section class="pos">
+        <div class="pos__izquierda">
         <div class="pos__busqueda">
           <label for="codigo" class="visualmente-oculto">SKU o código de barras</label>
           <input
@@ -205,7 +206,11 @@
               </li>
             }
           </ul>
+        }
+        </div>
 
+        @if (ticket().length > 0) {
+          <aside class="pos__derecha" aria-label="Cobro">
           <div class="resumen">
             <p>Subtotal <strong>{{ formatearPrecio(subtotal()) }}</strong></p>
             <p>IVA (13%) <strong>{{ formatearPrecio(iva()) }}</strong></p>
@@ -241,19 +246,18 @@
                   [(ngModel)]="montoRecibido"
                 />
               </div>
-              @if (vuelto() != null) {
-                <p class="estado">Vuelto: <strong>{{ formatearPrecio(vuelto()!) }}</strong></p>
-              }
+              <p class="estado vuelto">Vuelto: <strong>{{ vuelto() != null ? formatearPrecio(vuelto()!) : '—' }}</strong></p>
             }
 
             @if (errorCobro()) {
               <p class="formulario__error" role="alert">{{ errorCobro() }}</p>
             }
 
-            <button type="button" class="boton" [disabled]="cobrando()" (click)="cobrar()">
+            <button type="button" class="boton boton--cobrar" [disabled]="cobrando()" (click)="cobrar()">
               {{ cobrando() ? 'Cobrando…' : 'Cobrar ' + formatearPrecio(total()) }}
             </button>
           </div>
+          </aside>
         }
       </section>
     }

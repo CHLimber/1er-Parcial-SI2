@@ -3,7 +3,14 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
-import { EmpresaIn, EmpresaOut, PlanIn, PlanOut } from '../../../core/plataforma-saas/saas/saas.models';
+import {
+  EmpresaIn,
+  EmpresaOut,
+  PersonalEmpresaIn,
+  PersonalEmpresaOut,
+  PlanIn,
+  PlanOut,
+} from '../../../core/plataforma-saas/saas/saas.models';
 import { SaasService } from '../../../core/plataforma-saas/saas/saas.service';
 import { interpretarError } from '../../../shared/errores';
 import { PanelShell } from '../../../shared/panel/panel-shell';
@@ -23,6 +30,18 @@ function empresaVacia(): EmpresaIn {
     administrador: { email: '', nombre: '', apellido: '', password: '' },
     sucursal: { codigo: '', nombre: '', ciudad: 'LA_PAZ', direccion: '' },
   };
+}
+
+/** Fecha de calendario LOCAL (yyyy-mm-dd) de un instante: lo que muestra y manda un input date.
+ * Cortar el ISO (UTC) con slice corria el dia en Bolivia: 23:59 local ya es el dia siguiente en UTC. */
+function fechaLocal(instante: string | Date): string {
+  const d = new Date(instante);
+  const dos = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+}
+
+function personalVacio(): PersonalEmpresaIn {
+  return { email: '', nombre: '', apellido: '', password: '' };
 }
 
 /**
@@ -52,6 +71,14 @@ export class PanelEmpresasPage implements OnInit {
   protected readonly ocupado = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly aviso = signal<string | null>(null);
+  protected readonly hoy = fechaLocal(new Date());
+
+  // cuentas de personal de la empresa elegida (la plataforma las atiende)
+  protected readonly personal = signal<PersonalEmpresaOut[]>([]);
+  protected agregandoAdmin = false;
+  protected nuevoAdmin: PersonalEmpresaIn = personalVacio();
+  protected passwordDe: string | null = null;
+  protected passwordNueva = '';
 
   protected creando = false;
   protected conSucursal = true;
@@ -102,12 +129,85 @@ export class PanelEmpresasPage implements OnInit {
     });
   }
 
+  /** Clic del usuario en "Gestionar": elige la empresa y lleva la vista a su ficha, que se abre debajo de la tabla. */
+  protected gestionar(empresa: EmpresaOut): void {
+    this.elegir(empresa);
+    setTimeout(() => document.getElementById('detalle-empresa')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+
   protected elegir(empresa: EmpresaOut | null): void {
+    const cambio = this.elegida()?.id !== empresa?.id;
     this.elegida.set(empresa);
+    if (cambio) {
+      this.agregandoAdmin = false;
+      this.passwordDe = null;
+    }
+    if (empresa) this.cargarPersonal(empresa.id);
+    else this.personal.set([]);
     if (!empresa?.suscripcion) return;
     this.planAsignado = empresa.suscripcion.plan.codigo;
     this.estadoAsignado = empresa.suscripcion.estado as 'PRUEBA' | 'ACTIVA' | 'VENCIDA' | 'CANCELADA';
-    this.venceAsignado = empresa.suscripcion.vence_en.slice(0, 10);
+    this.venceAsignado = fechaLocal(empresa.suscripcion.vence_en);
+  }
+
+  /** Estado real de la empresa para quien la administra: suspendida manda sobre todo lo demas. */
+  protected estadoEmpresa(e: EmpresaOut): { texto: string; clase: 'ok' | 'baja' | 'alerta' } {
+    if (!e.activa) return { texto: 'Suspendida', clase: 'baja' };
+    const s = e.suscripcion;
+    if (!s) return { texto: 'Sin suscripción', clase: 'alerta' };
+    if (!s.vigente) return { texto: s.estado === 'CANCELADA' ? 'Cancelada' : 'Vencida', clase: 'baja' };
+    return { texto: s.estado === 'PRUEBA' ? 'En prueba' : 'Activa', clase: 'ok' };
+  }
+
+  /** Lo que el formulario de plan no deja guardar (el backend lo vuelve a validar). */
+  protected problemaPlan(e: EmpresaOut): string | null {
+    if (!this.venceAsignado) return 'Elegí la fecha de vencimiento.';
+    const vigente = this.estadoAsignado === 'PRUEBA' || this.estadoAsignado === 'ACTIVA';
+    if (vigente && !e.activa) return 'La empresa está suspendida: reactivala antes de darle un plan vigente.';
+    if (vigente && this.venceAsignado < this.hoy) {
+      return 'Un plan activo o en prueba no puede vencer en el pasado: elegí una fecha futura o marcalo como vencido.';
+    }
+    return null;
+  }
+
+  private cargarPersonal(empresaId: string): void {
+    this.servicio.personalDeEmpresa(empresaId).subscribe({
+      next: (lista) => this.personal.set(lista),
+      error: () => this.personal.set([]),
+    });
+  }
+
+  protected agregarAdministrador(empresa: EmpresaOut): void {
+    this.accion(this.servicio.agregarAdministrador(empresa.id, this.nuevoAdmin), (p) => {
+      this.agregandoAdmin = false;
+      this.nuevoAdmin = personalVacio();
+      this.aviso.set(`Administrador ${p.email} agregado a ${empresa.nombre}.`);
+      this.cargar(empresa.id);
+    });
+  }
+
+  protected alternarActivo(empresa: EmpresaOut, p: PersonalEmpresaOut): void {
+    if (p.activo && !confirm(`¿Desactivar la cuenta de ${p.nombre} ${p.apellido}? Ya no podrá iniciar sesión.`)) return;
+    this.accion(this.servicio.cambiarEstadoPersonal(p.id, !p.activo), (r) => {
+      this.aviso.set(`${r.email} ${r.activo ? 'reactivada' : 'desactivada'}.`);
+      this.cargar(empresa.id);
+    });
+  }
+
+  protected restablecerPassword(p: PersonalEmpresaOut): void {
+    this.accion(this.servicio.restablecerPasswordPersonal(p.id, this.passwordNueva), () => {
+      this.aviso.set(`Contraseña de ${p.email} restablecida (y cuenta desbloqueada). Pasásela por un canal seguro.`);
+      this.passwordDe = null;
+      this.passwordNueva = '';
+      this.cargarPersonal(this.elegida()!.id);
+    });
+  }
+
+  protected desbloquear(p: PersonalEmpresaOut): void {
+    this.accion(this.servicio.desbloquearPersonal(p.id), (r) => {
+      this.aviso.set(`${r.email} desbloqueada.`);
+      this.cargarPersonal(this.elegida()!.id);
+    });
   }
 
   protected registrar(): void {

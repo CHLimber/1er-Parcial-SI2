@@ -12,7 +12,23 @@ export interface VarianteBuscadaOut {
   cantidad_fisica: number;
   cantidad_reservada: number;
   disponible: number;
+  /** Umbral de reposicion de la prenda en la sucursal (0 = sin umbral). */
+  stock_minimo: number;
 }
+
+/** Indicadores de una sucursal para la cabecera de la pantalla. */
+export interface ResumenInventarioOut {
+  sucursal_id: string;
+  sucursal: string;
+  variantes: number;
+  unidades_fisicas: number;
+  unidades_reservadas: number;
+  unidades_disponibles: number;
+  agotadas: number;
+  stock_bajo: number;
+}
+
+export type AlertaInventario = 'agotadas' | 'bajo';
 
 export interface AjusteIn {
   sucursal_id: string;

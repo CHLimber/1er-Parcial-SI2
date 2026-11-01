@@ -1,9 +1,9 @@
 <app-panel-shell
   titulo="Inventario"
-  bajada="Ajustá el stock físico cuando el conteo no coincide con el sistema. Cada ajuste queda en el kardex, no se puede editar ni borrar."
+  bajada="Existencias por sucursal: qué hay, qué está comprometido y qué hay que reponer. Cada ajuste queda en el kardex, que no se edita ni se borra."
 >
-  <div class="barra">
-    @if (eligeSucursal) {
+  @if (eligeSucursal) {
+    <div class="barra">
       <div class="campo">
         <label for="sucursal">Sucursal</label>
         <select
@@ -16,9 +16,50 @@
           }
         </select>
       </div>
-    }
+    </div>
+  }
 
-    <div class="campo" style="flex: 1">
+  <div class="indicadores-reserva">
+  @if (resumen(); as r) {
+    <section class="indicadores" aria-label="Indicadores de {{ r.sucursal }}">
+      <article class="indicador">
+        <span class="indicador__etiqueta">En {{ r.sucursal }}</span>
+        <span class="indicador__valor">{{ r.unidades_fisicas }}</span>
+        <span class="indicador__detalle">unidades físicas · {{ r.variantes }} prendas (talla y color)</span>
+      </article>
+      <article class="indicador">
+        <span class="indicador__etiqueta">Disponible para vender</span>
+        <span class="indicador__valor">{{ r.unidades_disponibles }}</span>
+        <span class="indicador__detalle">{{ r.unidades_reservadas }} comprometidas en reservas</span>
+      </article>
+      <button
+        type="button"
+        class="indicador indicador--boton"
+        [class.indicador--alerta]="r.stock_bajo > 0"
+        [class.indicador--activo]="alerta === 'bajo'"
+        (click)="filtrarPor(alerta === 'bajo' ? null : 'bajo')"
+      >
+        <span class="indicador__etiqueta">Stock bajo</span>
+        <span class="indicador__valor">{{ r.stock_bajo }}</span>
+        <span class="indicador__detalle">en o bajo su mínimo · tocá para filtrar</span>
+      </button>
+      <button
+        type="button"
+        class="indicador indicador--boton"
+        [class.indicador--alerta]="r.agotadas > 0"
+        [class.indicador--activo]="alerta === 'agotadas'"
+        (click)="filtrarPor(alerta === 'agotadas' ? null : 'agotadas')"
+      >
+        <span class="indicador__etiqueta">Agotadas</span>
+        <span class="indicador__valor">{{ r.agotadas }}</span>
+        <span class="indicador__detalle">sin nada disponible · tocá para filtrar</span>
+      </button>
+    </section>
+  }
+  </div>
+
+  <div class="barra">
+    <div class="campo campo--ancho">
       <label for="termino">Buscar prenda</label>
       <input
         id="termino"
@@ -41,10 +82,18 @@
 
   <div class="columnas columnas--detalle">
     <section class="panel">
-      <h2 class="panel__titulo">Resultados ({{ resultados().length }})</h2>
+      <h2 class="panel__titulo">
+        {{ alerta === 'agotadas' ? 'Prendas agotadas' : alerta === 'bajo' ? 'Prendas con stock bajo' : termino.trim() ? 'Resultados' : 'Primero lo que hay que mirar' }}
+        ({{ resultados().length }})
+      </h2>
+      @if (!termino.trim() && !alerta) {
+        <p class="secundario">Ordenadas de menos a más disponible. Buscá para ver cualquier otra prenda.</p>
+      }
 
       @if (resultados().length === 0) {
-        <p class="estado">Buscá una prenda por SKU, código de barras o nombre para ver su stock.</p>
+        <p class="estado">
+          {{ buscando() ? 'Cargando…' : alerta || termino.trim() ? 'Ninguna prenda coincide con este filtro.' : 'Todavía no hay prendas con existencias en esta sucursal.' }}
+        </p>
       } @else {
         <ul class="lista">
           @for (variante of resultados(); track variante.id) {
@@ -55,15 +104,30 @@
                 [class.tarjeta--activa]="elegida()?.id === variante.id"
                 (click)="elegir(variante)"
               >
-                <span class="tarjeta__numero mono">{{ variante.sku }}</span>
+                <span class="tarjeta__cabecera">
+                  <span class="tarjeta__numero mono">{{ variante.sku }}</span>
+                  <span
+                    class="badge"
+                    [class.badge--ok]="estadoStock(variante).clase === 'ok'"
+                    [class.badge--alerta]="estadoStock(variante).clase === 'alerta'"
+                    [class.badge--baja]="estadoStock(variante).clase === 'baja'"
+                  >
+                    {{ estadoStock(variante).texto }}
+                  </span>
+                </span>
                 <span class="tarjeta__proveedor">{{ variante.producto }}</span>
                 <span class="tarjeta__meta">
                   <span class="punto" [style.background]="variante.codigo_hex"></span>
-                  {{ variante.talla }} · {{ variante.color }} · {{ variante.sucursal }}
+                  Talla {{ variante.talla }} · {{ variante.color }}
                 </span>
                 <span class="tarjeta__meta">
-                  Físico {{ variante.cantidad_fisica }} · Reservado {{ variante.cantidad_reservada }} ·
-                  Disponible {{ variante.disponible }}
+                  <strong>{{ variante.disponible }}</strong> disponibles · {{ variante.cantidad_fisica }} físicas
+                  @if (variante.cantidad_reservada > 0) {
+                    · {{ variante.cantidad_reservada }} reservadas
+                  }
+                  @if (variante.stock_minimo > 0) {
+                    · mínimo {{ variante.stock_minimo }}
+                  }
                 </span>
               </button>
             </li>
@@ -77,24 +141,41 @@
         <div class="ficha">
           <h2 class="panel__titulo">{{ variante.producto }}</h2>
           <p class="estado">
-            <span class="mono">{{ variante.sku }}</span> · {{ variante.talla }} · {{ variante.color }} ·
-            {{ variante.sucursal }}
+            <span class="punto" [style.background]="variante.codigo_hex"></span>
+            Talla <strong>{{ variante.talla }}</strong> · {{ variante.color }} ·
+            <span class="mono">{{ variante.sku }}</span> · {{ variante.sucursal }}
           </p>
-          <p class="estado">
-            Físico actual <strong>{{ variante.cantidad_fisica }}</strong> · Reservado
-            <strong>{{ variante.cantidad_reservada }}</strong> · Disponible
-            <strong>{{ variante.disponible }}</strong>
-          </p>
+
+          <div class="cifras">
+            <div class="cifra">
+              <span class="cifra__valor">{{ variante.cantidad_fisica }}</span>
+              <span class="cifra__etiqueta">Físico</span>
+              <span class="cifra__ayuda">lo que hay en el estante</span>
+            </div>
+            <div class="cifra">
+              <span class="cifra__valor">{{ variante.cantidad_reservada }}</span>
+              <span class="cifra__etiqueta">Reservado</span>
+              <span class="cifra__ayuda">apartado en reservas</span>
+            </div>
+            <div class="cifra cifra--destacada">
+              <span class="cifra__valor">{{ variante.disponible }}</span>
+              <span class="cifra__etiqueta">Disponible</span>
+              <span class="cifra__ayuda">se puede vender hoy</span>
+            </div>
+          </div>
 
           @if (aviso()) {
             <p class="exito">{{ aviso() }}</p>
           }
 
           @if (puedeAjustar) {
-            <h3 class="subtitulo">Registrar ajuste</h3>
+            <h3 class="subtitulo">Corregir el stock físico</h3>
+            <p class="secundario">
+              Escribí cuántas unidades contaste. El sistema registra la diferencia en el kardex con el motivo.
+            </p>
             <div class="rejilla">
               <div class="campo">
-                <label for="cantidad-nueva">Cantidad física nueva</label>
+                <label for="cantidad-nueva">Cantidad física contada</label>
                 <input
                   id="cantidad-nueva"
                   type="number"
@@ -115,49 +196,74 @@
               </div>
             </div>
 
+            @if (variacionAjuste !== null && variacionAjuste !== 0) {
+              <p class="previa" [class.previa--baja]="variacionAjuste < 0">
+                El físico pasará de <strong>{{ variante.cantidad_fisica }}</strong> a
+                <strong>{{ cantidadNueva }}</strong>
+                ({{ variacionAjuste > 0 ? '+' : '' }}{{ variacionAjuste }}).
+              </p>
+            } @else if (variacionAjuste === 0) {
+              <p class="secundario">La cantidad es la misma que hay hoy: no habría nada que ajustar.</p>
+            }
+
             @if (errorAjuste()) {
               <p class="error" role="alert">{{ errorAjuste() }}</p>
             }
 
             <div class="acciones">
-              <button type="button" class="boton" [disabled]="guardando()" (click)="guardarAjuste()">
+              <button type="button" class="boton" [disabled]="guardando() || variacionAjuste === 0" (click)="guardarAjuste()">
                 {{ guardando() ? 'Guardando…' : 'Guardar ajuste' }}
               </button>
               <button type="button" class="boton boton--secundario" (click)="limpiarSeleccion()">
-                Cancelar
+                Cerrar
               </button>
             </div>
           }
 
-          <h3 class="subtitulo">Kardex</h3>
+          <h3 class="subtitulo">Historial de movimientos (kardex)</h3>
           @if (cargandoKardex()) {
             <p class="estado">Cargando movimientos…</p>
           } @else if (kardex().length === 0) {
-            <p class="estado">Sin movimientos registrados para esta variante en esta sucursal.</p>
+            <p class="estado">Sin movimientos registrados para esta prenda en esta sucursal.</p>
           } @else {
+            <p class="secundario">Del más reciente al más antiguo. «Antes» y «Después» son el stock en ese momento.</p>
             <div class="tabla-envoltorio">
               <table class="tabla">
                 <thead>
                   <tr>
                     <th>Fecha</th>
-                    <th>Tipo</th>
-                    <th class="tabla__numero">Cantidad</th>
-                    <th class="tabla__numero">Saldo anterior</th>
-                    <th class="tabla__numero">Saldo nuevo</th>
-                    <th>Motivo</th>
-                    <th>Usuario</th>
+                    <th>Qué pasó</th>
+                    <th class="tabla__numero">Variación</th>
+                    <th class="tabla__numero">Antes</th>
+                    <th class="tabla__numero">Después</th>
+                    <th>Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
                   @for (movimiento of kardex(); track movimiento.id) {
                     <tr>
-                      <td class="mono">{{ movimiento.fecha | date: 'short' }}</td>
-                      <td>{{ etiquetaMovimiento(movimiento.tipo) }}</td>
-                      <td class="tabla__numero">{{ movimiento.cantidad }}</td>
+                      <td class="mono">{{ movimiento.fecha | date: 'dd/MM/yy HH:mm' }}</td>
+                      <td>
+                        {{ etiquetaMovimiento(movimiento.tipo) }}
+                        @if (movimiento.documento_tipo) {
+                          <div class="secundario">{{ etiquetaDocumento(movimiento) }}</div>
+                        }
+                      </td>
+                      <td
+                        class="tabla__numero variacion"
+                        [class.variacion--mas]="variacion(movimiento) > 0"
+                        [class.variacion--menos]="variacion(movimiento) < 0"
+                      >
+                        {{ variacion(movimiento) > 0 ? '+' : '' }}{{ variacion(movimiento) }}
+                      </td>
                       <td class="tabla__numero">{{ movimiento.saldo_anterior }}</td>
                       <td class="tabla__numero">{{ movimiento.saldo_nuevo }}</td>
-                      <td>{{ movimiento.motivo ?? '—' }}</td>
-                      <td>{{ movimiento.usuario ?? '—' }}</td>
+                      <td>
+                        {{ movimiento.motivo ?? '—' }}
+                        @if (movimiento.usuario) {
+                          <div class="secundario">{{ movimiento.usuario }}</div>
+                        }
+                      </td>
                     </tr>
                   }
                 </tbody>
@@ -166,7 +272,7 @@
           }
         </div>
       } @else {
-        <p class="estado">Elegí una prenda de los resultados para ver su kardex y ajustarla.</p>
+        <p class="estado">Elegí una prenda de la lista para ver su stock, su historial y corregirlo si hace falta.</p>
       }
     </section>
   </div>

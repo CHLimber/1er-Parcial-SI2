@@ -85,7 +85,16 @@
     <section class="panel">
       <h2 class="panel__titulo">Resumen del período</h2>
       @if (cargandoIndicadores()) {
-        <p class="estado">Cargando…</p>
+        <!-- esqueleto con la forma de los indicadores: el panel no cambia de alto al llegar los datos -->
+        <div class="kpis" aria-busy="true" aria-label="Cargando indicadores">
+          @for (i of [1, 2, 3, 4, 5]; track i) {
+            <div class="kpi kpi--esqueleto">
+              <span class="kpi__etiqueta">Cargando…</span>
+              <span class="kpi__valor">—</span>
+              <span class="kpi__detalle">&nbsp;</span>
+            </div>
+          }
+        </div>
       } @else if (indicadores(); as ind) {
         <div class="kpis">
           <div class="kpi">
@@ -356,7 +365,7 @@
     </form>
 
     @if (estaticoCargando()) {
-      <p class="estado">Cargando…</p>
+      <p class="estado estado--pantalla">Cargando…</p>
     } @else if (estaticoTipoActivo(); as tipo) {
       <section class="panel">
         <div class="panel__cabecera">
@@ -625,7 +634,7 @@
     </form>
 
     @if (dinCargando()) {
-      <p class="estado">Cargando…</p>
+      <p class="estado estado--pantalla">Cargando…</p>
     } @else if (dinTipoActivo(); as tipo) {
       <section class="panel">
         <div class="panel__cabecera">
@@ -918,7 +927,7 @@
     }
 
     @if (exiCargando()) {
-      <p class="estado">Cargando…</p>
+      <p class="estado estado--pantalla">Cargando…</p>
     } @else if (exiConsultado()) {
       <section class="panel">
         <div class="panel__cabecera">

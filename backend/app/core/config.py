@@ -19,6 +19,20 @@ class Settings(BaseSettings):
     cors_origins_raw: str = Field("http://localhost:3000", alias="CORS_ORIGINS")
     frontend_url: str = "http://localhost:3000"
 
+    # Recuperacion de cuenta (POST /auth/recuperar). El enlace de un solo uso se manda por correo
+    # SMTP (Gmail con contrasena de aplicacion, Brevo, etc.); con SMTP_HOST vacio no sale ningun
+    # correo y el enlace queda en el log del backend. RECUPERACION_MOSTRAR_ENLACE=true lo devuelve
+    # ademas en la respuesta (SOLO para demostrar sin correo: quien conozca un email podria tomar
+    # esa cuenta, asi que en produccion va en false).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+    recuperacion_minutos: int = 30
+    recuperacion_mostrar_enlace: bool = False
+
     stripe_secret_key: str = ""
     stripe_publishable_key: str = ""
     stripe_webhook_secret: str = ""

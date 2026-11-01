@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
-from app.core.tenant import empresa_de, es_admin_empresa, no_encontrado
+from app.core.tenant import empresa_de, no_encontrado, sucursal_visible
 from app.modules.operacion_comercial.envios.admin_schemas import (
     CambioEstadoIn,
     EnvioAdminDetalleOut,
@@ -61,18 +61,6 @@ LEFT JOIN usuario c ON c.id = v.usuario_id
 """
 
 
-def _sucursal_visible(staff: dict) -> UUID | None:
-    """El ADMIN de la empresa ve todas las de su empresa (None); el resto solo la suya."""
-    if es_admin_empresa(staff):
-        return None
-    if staff["sucursal_id"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    return staff["sucursal_id"]
-
-
 def _a_salida(fila: asyncpg.Record) -> EnvioAdminOut:
     return EnvioAdminOut(
         id=fila["id"],
@@ -107,7 +95,7 @@ async def _obtener(conn: asyncpg.Connection, envio_id: UUID, staff: dict) -> asy
     if fila is None:
         raise no_encontrado("Envio no encontrado")
 
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     if limite is not None and fila["sucursal_id"] != limite:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Ese envio es de otra sucursal"
@@ -124,7 +112,7 @@ async def listar_envios(
     staff: dict = Depends(puede_ver),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> list[EnvioAdminOut]:
-    limite_sucursal = _sucursal_visible(staff)
+    limite_sucursal = sucursal_visible(staff)
     if limite_sucursal is not None and sucursal_id is not None and sucursal_id != limite_sucursal:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Solo podes ver los envios de tu sucursal"
@@ -164,7 +152,7 @@ async def resumen(
     staff: dict = Depends(puede_ver),
     conn: asyncpg.Connection = Depends(get_connection),
 ) -> ResumenEnviosOut:
-    limite_sucursal = _sucursal_visible(staff)
+    limite_sucursal = sucursal_visible(staff)
     if limite_sucursal is not None and sucursal_id is not None and sucursal_id != limite_sucursal:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Solo podes ver los envios de tu sucursal"

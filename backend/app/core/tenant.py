@@ -87,6 +87,22 @@ def alcance_sucursal(staff: dict, pedida: UUID | None) -> UUID | None:
     return staff["sucursal_id"]
 
 
+def sucursal_visible(staff: dict) -> UUID | None:
+    """Limite de sucursal de las pantallas de gestion con alcance por sucursal (inventario,
+    recepciones, traspasos, devoluciones, envios, reportes): None si el usuario ve todas las de su
+    empresa (el que puede editar sucursales); si no, su sucursal, y 403 si no tiene ninguna.
+    Es la parte sin base de `alcance_sucursal`: no valida que una sucursal pedida sea de la
+    empresa (eso es de `exigir_sucursal`) ni compara contra una pedida."""
+    if es_admin_empresa(staff):
+        return None
+    if staff.get("sucursal_id") is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu usuario no esta asignado a ninguna sucursal",
+        )
+    return staff["sucursal_id"]
+
+
 async def exigir_variantes(
     conn: asyncpg.Connection, variante_ids: list[UUID], empresa_id: UUID
 ) -> None:

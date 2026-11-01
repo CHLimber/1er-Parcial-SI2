@@ -25,6 +25,28 @@ class CambiarPasswordRequest(BaseModel):
         return validar_password(value)
 
 
+class RecuperarPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class RecuperarPasswordResponse(BaseModel):
+    """Siempre la misma respuesta exista o no el correo (no se revela quien tiene cuenta).
+    `enlace` solo viaja con RECUPERACION_MOSTRAR_ENLACE=true (demostracion sin correo)."""
+
+    mensaje: str
+    enlace: str | None = None
+
+
+class RestablecerPasswordRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=2000)
+    password_nueva: str = Field(max_length=72)
+
+    @field_validator("password_nueva")
+    @classmethod
+    def password_segura(cls, value: str) -> str:
+        return validar_password(value)
+
+
 class RegistroRequest(BaseModel):
     email: EmailStr
     password: str = Field(max_length=72)
@@ -48,7 +70,7 @@ class UsuarioOut(BaseModel):
     tipo: str
     rol: str | None = None
     # cargo del empleado: el permiso dice QUE puede hacer, el cargo QUIEN es (ENCARGADO,
-    # CAJERO, VENDEDOR o ALMACEN). El reparto a domicilio (CU20) lo hace un servicio externo,
+    # o CAJERO). El reparto a domicilio (CU20) lo hace un servicio externo,
     # no personal con este cargo.
     cargo: str | None = None
     # codigos de permiso del rol (CU13). El frontend los usa para mostrar u ocultar el panel.

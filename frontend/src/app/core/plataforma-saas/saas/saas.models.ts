@@ -46,6 +46,10 @@ export interface SuscripcionOut {
 export interface TiendaOut {
   slug: string;
   nombre: string;
+  sucursales: number;
+  /** Ciudades con sucursal activa, como las guarda la base (SANTA_CRUZ, LA_PAZ...). */
+  ciudades: string[];
+  prendas: number;
 }
 
 export interface EmpresaOut {
@@ -60,6 +64,27 @@ export interface EmpresaOut {
   creada_en: string;
   administradores: string[];
   suscripcion: SuscripcionOut | null;
+}
+
+/** Una cuenta de personal de una empresa, vista por la plataforma. */
+export interface PersonalEmpresaOut {
+  id: string;
+  email: string;
+  nombre: string;
+  apellido: string;
+  rol: string | null;
+  cargo: string | null;
+  sucursal: string | null;
+  activo: boolean;
+  bloqueado: boolean;
+  ultimo_acceso: string | null;
+}
+
+export interface PersonalEmpresaIn {
+  email: string;
+  nombre: string;
+  apellido: string;
+  password: string;
 }
 
 export interface EmpresaDatosIn {

@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 import { ProveedorOut } from '../../../core/catalogo-e-inventario/proveedores/proveedores.models';
@@ -23,7 +24,7 @@ import { PanelShell } from '../../../shared/panel/panel-shell';
 @Component({
   selector: 'app-panel-recepciones-page',
   standalone: true,
-  imports: [PanelShell, ReactiveFormsModule, FormsModule],
+  imports: [PanelShell, ReactiveFormsModule, FormsModule, RouterLink],
   templateUrl: './panel-recepciones.page.html',
   styleUrls: ['../../../shared/panel/panel-comun.css', './panel-recepciones.page.css'],
 })
@@ -292,6 +293,11 @@ export class PanelRecepcionesPage implements OnInit {
   protected confirmar(): void {
     const recepcion = this.seleccionada();
     if (!recepcion) return;
+    // confirmar es irreversible (el kardex no se edita): se pide una confirmacion con el impacto
+    const resumen = `${this.unidadesCargadas} unidad(es) de ${recepcion.detalle.length} prenda(s) entrarán al stock de ${recepcion.sucursal}.`;
+    if (!confirm(`${resumen}\n\nUna recepción confirmada no se puede editar ni anular (se corrige con un ajuste). ¿Confirmar?`)) {
+      return;
+    }
 
     this.ocupado.set(true);
     this.errorDetalle.set(null);
@@ -301,7 +307,7 @@ export class PanelRecepcionesPage implements OnInit {
         this.ocupado.set(false);
         this.aplicar(detalle);
         this.aviso.set(
-          `Recepción ${detalle.numero} confirmada: ${detalle.unidades} unidad(es) entraron al stock de ${detalle.sucursal}.`,
+          `Recepción ${detalle.numero} confirmada: ${detalle.unidades} unidad(es) entraron al stock de ${detalle.sucursal}. Abajo ves cómo quedó cada prenda.`,
         );
         this.cargar();
       },
@@ -329,6 +335,10 @@ export class PanelRecepcionesPage implements OnInit {
         this.errorDetalle.set(interpretarError(e));
       },
     });
+  }
+
+  protected get unidadesCargadas(): number {
+    return (this.seleccionada()?.detalle ?? []).reduce((suma, linea) => suma + linea.cantidad, 0);
   }
 
   protected get totalCargado(): number {

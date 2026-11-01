@@ -1,10 +1,24 @@
-import { Component, HostListener, OnInit, computed, inject, input, signal } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { AuthService } from '../../core/acceso-y-organizacion/auth/auth.service';
 import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/acceso-y-organizacion/auth/auth.guard';
 import { CampanaNotificaciones } from '../notificaciones/campana-notificaciones';
 import { Icono } from './icono';
+
+const CLAVE_SCROLL_LATERAL = 'fashionstore.panel.lateral-scroll';
 
 interface EntradaNav {
   ruta: string;
@@ -200,12 +214,13 @@ export function primeraSeccionPanel(auth: AuthService): string {
   templateUrl: './panel-shell.html',
   styleUrl: './panel-shell.css',
 })
-export class PanelShell implements OnInit {
+export class PanelShell implements OnInit, AfterViewInit, OnDestroy {
   readonly titulo = input.required<string>();
   readonly bajada = input<string>('');
 
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly elemento = inject<ElementRef<HTMLElement>>(ElementRef);
 
   protected readonly menuAbierto = signal(false);
   protected readonly usuarioAbierto = signal(false);
@@ -228,9 +243,54 @@ export class PanelShell implements OnInit {
     return `${u?.nombre?.charAt(0) ?? ''}${u?.apellido?.charAt(0) ?? ''}`.toUpperCase() || '?';
   });
 
+  constructor() {
+    // Con el cajon abierto la pagina de atras no debe deslizarse (el scroll se iria al fondo
+    // por detras del velo). La clase vive en styles.css.
+    effect(() => {
+      document.documentElement.classList.toggle('cajon-abierto', this.menuAbierto());
+    });
+  }
+
   ngOnInit(): void {
     // si el administrador cambio los permisos del rol, esta es la oportunidad de enterarse
     this.auth.refrescarSesion().subscribe({ error: () => undefined });
+  }
+
+  /**
+   * Cada pagina del panel monta su propio shell, asi que al navegar la barra lateral se
+   * vuelve a crear y su scroll vuelve a cero (el menu "salta"). Se guarda la posicion al
+   * destruirse y se restaura al crearse.
+   */
+  ngAfterViewInit(): void {
+    try {
+      const guardado = Number(sessionStorage.getItem(CLAVE_SCROLL_LATERAL));
+      const lateral = this.elemento.nativeElement.querySelector<HTMLElement>('.lateral');
+      if (lateral && guardado > 0) {
+        lateral.scrollTop = guardado;
+      }
+    } catch {
+      // sin sessionStorage (ventana privada, datos bloqueados): se arranca desde arriba
+    }
+  }
+
+  ngOnDestroy(): void {
+    document.documentElement.classList.remove('cajon-abierto');
+    try {
+      const lateral = this.elemento.nativeElement.querySelector<HTMLElement>('.lateral');
+      if (lateral) {
+        sessionStorage.setItem(CLAVE_SCROLL_LATERAL, String(lateral.scrollTop));
+      }
+    } catch {
+      // idem
+    }
+  }
+
+  /** Si se agranda la ventana con el cajon abierto, el cajon deja de existir: se cierra. */
+  @HostListener('window:resize')
+  protected alCambiarTamanio(): void {
+    if (this.menuAbierto() && window.matchMedia('(min-width: 64rem)').matches) {
+      this.menuAbierto.set(false);
+    }
   }
 
   protected alternarMenu(): void {

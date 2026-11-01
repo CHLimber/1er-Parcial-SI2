@@ -27,7 +27,7 @@
       <p class="estado">Todavía no hay copias de seguridad.</p>
     } @else {
       <div class="tabla-envoltorio">
-        <table class="tabla">
+        <table class="tabla tabla--muy-ancha">
           <thead>
             <tr>
               <th>Fecha</th>
@@ -94,7 +94,7 @@
   </ng-template>
 
   @if (cargando()) {
-    <p class="estado">Cargando…</p>
+    <p class="estado estado--pantalla">Cargando…</p>
   } @else if (esPlataforma && solapa === 'automatica') {
     @if (programacion(); as p) {
       <section class="panel">

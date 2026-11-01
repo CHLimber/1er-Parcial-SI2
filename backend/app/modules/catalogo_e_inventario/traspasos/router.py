@@ -35,13 +35,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
+from app.core.notificaciones.servicio import avisar_personal_de_sucursal
 from app.core.plan import requiere_funcion_plan
 from app.core.tenant import (
     empresa_de,
-    es_admin_empresa,
     exigir_sucursal,
     exigir_variantes,
     no_encontrado,
+    sucursal_visible,
 )
 from app.modules.catalogo_e_inventario.traspasos.schemas import (
     DetalleTraspasoOut,
@@ -90,25 +91,9 @@ LEFT JOIN usuario ur ON ur.id = t.usuario_recibe_id
 """
 
 
-def _es_admin(staff: dict) -> bool:
-    """Mismo criterio que recepciones: el ADMIN de la empresa ve todas sus sucursales."""
-    return es_admin_empresa(staff)
-
-
-def _mi_sucursal(staff: dict) -> UUID | None:
-    if _es_admin(staff):
-        return None
-    if staff["sucursal_id"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    return staff["sucursal_id"]
-
-
 def _exigir_lado(staff: dict, traspaso: TraspasoOut, lado: str) -> None:
     """lado: 'origen', 'destino' o 'cualquiera'."""
-    mia = _mi_sucursal(staff)
+    mia = sucursal_visible(staff)
     if mia is None:
         return
     es_origen = traspaso.sucursal_origen_id == mia
@@ -131,7 +116,7 @@ def _exigir_lado(staff: dict, traspaso: TraspasoOut, lado: str) -> None:
 
 def _armar(fila: asyncpg.Record, staff: dict) -> TraspasoOut:
     traspaso = TraspasoOut(**dict(fila))
-    mia = _mi_sucursal(staff)
+    mia = sucursal_visible(staff)
     if mia is not None:
         traspaso.mi_lado = "ORIGEN" if traspaso.sucursal_origen_id == mia else "DESTINO"
     return traspaso
@@ -223,17 +208,8 @@ async def _cambiar_estado(
 async def _avisar_encargados(
     conn: asyncpg.Connection, sucursal_id: UUID, traspaso_id: UUID, titulo: str, mensaje: str
 ) -> None:
-    await conn.execute(
-        """
-        INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-        SELECT e.usuario_id, 'STOCK', $3, $4, 'TRASPASO', $2
-        FROM empleado e
-        WHERE e.sucursal_id = $1 AND e.activo AND e.cargo = 'ENCARGADO'
-        """,
-        sucursal_id,
-        traspaso_id,
-        titulo,
-        mensaje,
+    await avisar_personal_de_sucursal(
+        conn, sucursal_id, "ENCARGADO", "STOCK", titulo, mensaje, "TRASPASO", traspaso_id
     )
 
 
@@ -251,7 +227,7 @@ async def listar_traspasos(
 ) -> list[TraspasoOut]:
     """Un encargado ve los que salen de o llegan a su sucursal (direccion filtra uno de los
     dos lados); un ADMIN ve todos."""
-    mia = _mi_sucursal(staff)
+    mia = sucursal_visible(staff)
     filas = await conn.fetch(
         SELECT_TRASPASO
         + """
@@ -281,7 +257,7 @@ async def buscar_variantes(
 ) -> list[VarianteTraspasoOut]:
     """Buscador para armar el traspaso: muestra lo disponible en el origen (lo que se puede
     mandar) y en el destino (cuanto le falta a la otra tienda)."""
-    origen = origen_id or _mi_sucursal(staff)
+    origen = origen_id or sucursal_visible(staff)
     if origen is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Indica la sucursal de origen"
@@ -412,7 +388,7 @@ async def sugerir_traspasos(
     ese destino. Un ENCARGADO ve las sugerencias donde su sucursal es origen o destino.
     """
     filas = await conn.fetch(
-        SQL_SUGERENCIAS, dias, horizonte, _mi_sucursal(staff), limite, empresa_de(staff)
+        SQL_SUGERENCIAS, dias, horizonte, sucursal_visible(staff), limite, empresa_de(staff)
     )
     return [SugerenciaTraspasoOut(**dict(fila)) for fila in filas]
 
@@ -461,7 +437,7 @@ async def crear_traspaso(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> TraspasoDetalleOut:
-    mia = _mi_sucursal(staff)
+    mia = sucursal_visible(staff)
     origen = body.sucursal_origen_id or mia or staff["sucursal_id"]
     if origen is None:
         raise HTTPException(

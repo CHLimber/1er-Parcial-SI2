@@ -12,6 +12,8 @@ import {
   EmpresaOut,
   PagoManualIn,
   PagoSuscripcionOut,
+  PersonalEmpresaIn,
+  PersonalEmpresaOut,
   PlanIn,
   PlanOut,
   RegistroEmpresaIn,
@@ -92,5 +94,27 @@ export class SaasService {
 
   configurarPlan(codigo: string, datos: PlanIn): Observable<PlanOut> {
     return this.http.put<PlanOut>(`${this.base}/planes/${codigo}`, datos);
+  }
+
+  // --- cuentas de personal de una empresa (la plataforma las atiende) -------------------------
+
+  personalDeEmpresa(empresaId: string): Observable<PersonalEmpresaOut[]> {
+    return this.http.get<PersonalEmpresaOut[]>(`${this.base}/empresas/${empresaId}/usuarios`);
+  }
+
+  agregarAdministrador(empresaId: string, datos: PersonalEmpresaIn): Observable<PersonalEmpresaOut> {
+    return this.http.post<PersonalEmpresaOut>(`${this.base}/empresas/${empresaId}/administradores`, datos);
+  }
+
+  cambiarEstadoPersonal(usuarioId: string, activo: boolean): Observable<PersonalEmpresaOut> {
+    return this.http.patch<PersonalEmpresaOut>(`${this.base}/usuarios/${usuarioId}/estado`, { activo });
+  }
+
+  restablecerPasswordPersonal(usuarioId: string, password: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/usuarios/${usuarioId}/password`, { password });
+  }
+
+  desbloquearPersonal(usuarioId: string): Observable<PersonalEmpresaOut> {
+    return this.http.post<PersonalEmpresaOut>(`${this.base}/usuarios/${usuarioId}/desbloquear`, null);
   }
 }

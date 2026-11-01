@@ -80,6 +80,7 @@
 }
 
 .barra__interior {
+  min-width: 0;
   max-width: 72rem;
   margin: 0 auto;
   padding: 0.85rem 1rem;
@@ -89,6 +90,7 @@
 }
 
 .barra__marca {
+  flex: none;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
@@ -216,7 +218,7 @@
   padding: 0 1rem;
   position: relative;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
   gap: 1.25rem;
 }
 
@@ -314,14 +316,17 @@
 }
 
 .seccion--papel app-tarjetas-planes {
+  display: block;
   margin-top: 2.5rem;
+  /* Reserva el alto de las tarjetas mientras cargan: el cierre y el pie no saltan. */
+  min-height: 28rem;
 }
 
 /* ---------- pasos ---------- */
 
 .pasos {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
   gap: 1.5rem;
   margin: 2.5rem 0 0;
   padding: 0;
@@ -358,21 +363,33 @@
 
 .tiendas {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
   gap: 1rem;
   margin: 2.5rem 0 0;
   padding: 0;
   list-style: none;
 }
 
+.tiendas > li {
+  min-width: 0;
+  display: flex;
+}
+
 .tienda {
   width: 100%;
+  height: 100%;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 7.5rem;
+  overflow-wrap: anywhere;
   grid-template-areas:
     'inicial nombre'
+    'inicial ubicacion'
+    'inicial prendas'
     'inicial ir';
   column-gap: 1rem;
+  row-gap: 0.15rem;
   align-items: center;
   padding: 1.1rem 1.25rem;
   border: 1px solid rgba(255, 253, 249, 0.2);
@@ -408,11 +425,37 @@
 
 .tienda__nombre {
   grid-area: nombre;
+  min-width: 0;
   font-weight: 600;
   font-size: 1.05rem;
 }
 
+.tienda__datos {
+  font-size: 0.82rem;
+  color: rgba(255, 253, 249, 0.7);
+}
+
+.tienda__datos--ubicacion {
+  grid-area: ubicacion;
+}
+
+.tienda__datos--prendas {
+  grid-area: prendas;
+}
+
+/* Tarjetas fantasma de la carga inicial: mismo alto que una tienda real. */
+.tienda--esqueleto {
+  display: block;
+  cursor: default;
+}
+
+.tienda--esqueleto:hover {
+  background: rgba(255, 253, 249, 0.04);
+  border-color: rgba(255, 253, 249, 0.2);
+}
+
 .tienda__ir {
+  margin-top: 0.35rem;
   grid-area: ir;
   font-size: 0.82rem;
   color: var(--gold);
@@ -420,14 +463,19 @@
 
 .vacio {
   margin: 2rem 0 0;
-  color: rgba(255, 253, 249, 0.6);
+  color: rgba(255, 253, 249, 0.75);
+}
+
+.vacio--tarjeta {
+  grid-column: 1 / -1;
+  list-style: none;
 }
 
 /* ---------- funciones ---------- */
 
 .funciones {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
   gap: 1rem;
   margin: 2.5rem 0 0;
   padding: 0;

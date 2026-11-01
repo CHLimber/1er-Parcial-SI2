@@ -74,7 +74,7 @@ package "Tenant" {
     tipo : CLIENTE | STAFF
   }
   class Empleado {
-    cargo : ENCARGADO | CAJERO | VENDEDOR | ALMACEN
+    cargo : ENCARGADO | CAJERO
   }
   class ClientePerfilTenant {
     segmento : NUEVA | FRECUENTE | VIP | INACTIVA

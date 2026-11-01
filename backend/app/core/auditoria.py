@@ -6,7 +6,9 @@ sesion HTTP, que la base no conoce.
 
 Multi-tenant: el empresa_id de la fila sale del usuario que hizo la accion (subconsulta en el
 mismo INSERT), asi ningun llamador tiene que pasarlo y la bitacora de cada empresa se puede
-filtrar sin mirar adentro del JSON.
+filtrar sin mirar adentro del JSON. Excepcion: cuando actua la plataforma (SUPERADMIN, sin
+empresa) sobre UNA empresa, el llamador pasa `empresa_id` para que la accion quede en la
+bitacora de esa empresa y se pueda filtrar por ella.
 """
 
 import json
@@ -31,12 +33,13 @@ async def registrar_auditoria(
     accion: str,
     datos_antes: dict[str, Any] | None = None,
     datos_despues: dict[str, Any] | None = None,
+    empresa_id: UUID | None = None,
 ) -> None:
     await conn.execute(
         """
         INSERT INTO auditoria (usuario_id, empresa_id, entidad, entidad_id, accion,
                                datos_antes, datos_despues)
-        VALUES ($1, (SELECT empresa_id FROM usuario WHERE id = $1), $2, $3, $4::accion_auditoria,
+        VALUES ($1, COALESCE($7::uuid, (SELECT empresa_id FROM usuario WHERE id = $1)), $2, $3, $4::accion_auditoria,
                 $5::jsonb, $6::jsonb)
         """,
         usuario_id,
@@ -45,4 +48,5 @@ async def registrar_auditoria(
         accion,
         _serializar(datos_antes),
         _serializar(datos_despues),
+        empresa_id,
     )

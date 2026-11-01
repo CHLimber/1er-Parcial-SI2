@@ -17,7 +17,8 @@ from app.modules.plataforma_saas.saas.servicio import nuevo_periodo, sumar_meses
 from app.modules.relacion_con_la_clienta.clientes.router import segmento_sugerido
 from tests.conexion_falsa import ConexionFalsa, staff
 
-AHORA = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+# el reloj real: los endpoints comparan contra now(), asi que una fecha fija vencia con el tiempo
+AHORA = datetime.now(timezone.utc).replace(microsecond=0)
 
 
 def _plan(**cambios) -> dict:
@@ -50,7 +51,7 @@ def test_suscripcion_vencida_da_402_aunque_el_estado_diga_activa():
     plan = _plan(traspasos=True, vence_en=AHORA - timedelta(days=1))
     codigo, detalle = evaluar_acceso(plan, "traspasos", ahora=AHORA)
     assert codigo == 402
-    assert "vencio el 13/10/2026" in detalle
+    assert f"vencio el {(AHORA - timedelta(days=1)):%d/%m/%Y}" in detalle
 
 
 @pytest.mark.parametrize("estado", ["VENCIDA", "CANCELADA"])

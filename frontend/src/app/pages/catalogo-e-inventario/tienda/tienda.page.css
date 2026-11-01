@@ -14,6 +14,11 @@
 }
 
 .cabecera__marca {
+  /* Un nombre de tienda largo se corta con puntos suspensivos en vez de empujar la barra. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
@@ -52,6 +57,7 @@
 }
 
 .cabecera__reserva {
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -138,7 +144,22 @@
   white-space: nowrap;
 }
 
+/* Oculto pero ocupando su lugar: el titulo del catalogo mantiene el mismo alto. */
+.catalogo__contador--oculto {
+  visibility: hidden;
+}
+
+.catalogo__titulo--bloque {
+  margin-bottom: 1rem;
+}
+
+.catalogo {
+  margin-bottom: 2rem;
+}
+
 .catalogo__estado {
+  margin: 0;
+  padding: 2rem 0;
   color: var(--ink-soft);
 }
 
@@ -147,6 +168,8 @@
 }
 
 .filtros {
+  /* Mientras llegan las categorias y tallas se reserva su alto aproximado. */
+  min-height: 6rem;
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -158,11 +181,28 @@
   border-radius: var(--radius);
 }
 
+.filtros--cargando {
+  min-height: 14rem;
+}
+
 .filtros__campo {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  min-width: 9rem;
+  min-width: min(9rem, 100%);
+}
+
+/* Marcadores de la carga de filtros (`.esqueleto` global) */
+.esqueleto--etiqueta {
+  width: 4rem;
+  height: 0.7rem;
+  border-radius: var(--radius-pill);
+}
+
+.esqueleto--chip {
+  width: 4.5rem;
+  height: 1.9rem;
+  border-radius: var(--radius-pill);
 }
 
 .filtros__campo--busqueda {
@@ -360,8 +400,27 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  /* `auto-fill` y no `auto-fit`: con una o dos prendas, `auto-fit` estira la tarjeta a todo el ancho. */
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
   gap: 1.5rem;
+}
+
+/* Las tarjetas son elementos hijos con su propio ancho: sin `min-width: 0` un nombre largo o una
+   foto ensanchan la columna y aplastan a las vecinas. */
+.grilla > li {
+  min-width: 0;
+}
+
+.grilla--cargando {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Tarjeta fantasma (`.esqueleto--tarjeta` global): el alto de la tarjeta real, foto 3/4 + texto. */
+.grilla > .esqueleto,
+.carrusel > .esqueleto {
+  min-height: 23rem;
 }
 
 /* ==========================================================================
@@ -442,9 +501,19 @@
   background: var(--flame);
 }
 
-@media (max-width: 64rem) {
+/* 90rem y no 64rem: con nueve enlaces mas la marca y el selector de tienda, la fila ya no
+   entra en un notebook de 1280px y los enlaces se partian en dos renglones. */
+@media (max-width: 90rem) {
+  /* Una sola fila: la marca cede (con puntos suspensivos) antes de que la barra baje a dos
+     renglones. `shared/responsive.css` envuelve la cabecera con `:where()`, asi que esto le gana. */
   .cabecera {
     position: relative;
+    flex-wrap: nowrap;
+    gap: 0.6rem;
+  }
+
+  .cabecera__marca {
+    flex: 1 1 auto;
   }
 
   .cabecera__menu {
@@ -452,6 +521,8 @@
   }
 
   .cabecera__cuenta {
+    max-height: calc(100dvh - 4rem);
+    overflow-y: auto;
     display: none;
     position: absolute;
     top: 100%;
@@ -521,7 +592,18 @@
   }
 }
 
+@media (max-width: 48rem) {
+  .grilla > .esqueleto,
+  .carrusel > .esqueleto {
+    min-height: 19rem;
+  }
+}
+
 @media (max-width: 30rem) {
+  .cabecera__campana {
+    margin-right: 0.5rem;
+  }
+
   .filtros-activos {
     margin-top: -0.5rem;
   }
@@ -551,15 +633,4 @@
   .swatch--mas {
     padding: 0.3rem 0.7rem;
   }
-}
-
-/* Multi-tenant: selector de tienda de la clienta, al lado de la marca */
-.cabecera__tienda {
-  font: inherit;
-  font-size: 0.85rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--paper-line);
-  background: var(--paper);
-  color: var(--ink);
-  max-width: 12rem;
 }

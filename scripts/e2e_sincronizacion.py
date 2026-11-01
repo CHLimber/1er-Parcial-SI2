@@ -47,7 +47,6 @@ def login(email):
 caj, u_caj = login("cajera.scz@fashionstore.bo")
 enc, u_enc = login("admin@fashionstore.bo")
 an, u_an = login("cajero.sanmiguel@andina.bo")
-ven, u_ven = login("vendedor.scz@fashionstore.bo")
 
 # la cajera abre caja
 cajas = c.get("/caja/cajas", headers=caj).json()
@@ -129,8 +128,8 @@ r = enviar(caj, mal)[0]
 chk("total que no cierra -> RECHAZADA", r["codigo_motivo"] == "TOTAL_INCONSISTENTE", r)
 fut = venta(registrada_en=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat())
 chk("fecha futura -> RECHAZADA", enviar(caj, fut)[0]["codigo_motivo"] == "FECHA_INVALIDA")
-r = enviar(ven, {**venta(), "usuario_id": u_ven["id"]})[0]
-chk("vendedor sin caja.crear -> SIN_PERMISO", r["codigo_motivo"] == "SIN_PERMISO", r)
+# (el rechazo SIN_PERMISO ya no se prueba aca: desde que CAJERO absorbio al VENDEDOR, PENDIENTES 9.10,
+# ningun rol del seed atiende el mostrador sin caja.crear; hace falta un rol propio de empresa)
 r = c.post("/sync/operaciones", headers=caj, json={"operaciones": [{**venta(), "venta": {**venta()["venta"], "metodo_pago": "TARJETA"}}]})
 chk("pago no contado -> 422 de validacion", r.status_code == 422)
 

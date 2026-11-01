@@ -62,3 +62,162 @@
   letter-spacing: 0.05em;
   color: var(--ink);
 }
+
+/* ---------- indicadores de la sucursal ---------- */
+
+.indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--paper-line);
+  background: var(--white);
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink);
+}
+
+.indicador--boton {
+  cursor: pointer;
+}
+
+.indicador--boton:hover {
+  border-color: var(--ink);
+}
+
+.indicador--activo {
+  border-color: var(--ink);
+  box-shadow: inset 0 -3px 0 var(--ink);
+}
+
+.indicador--alerta .indicador__valor {
+  color: var(--flame-dark);
+}
+
+.indicador__etiqueta {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.indicador__valor {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.indicador__detalle {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- listado y ficha ---------- */
+
+.tarjeta__cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.cifras {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.cifra {
+  display: flex;
+  flex-direction: column;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--paper-line);
+}
+
+.cifra--destacada {
+  border-color: var(--ink);
+  background: var(--paper);
+}
+
+.cifra__valor {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+
+.cifra__etiqueta {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cifra__ayuda {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+.previa {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-left: 3px solid var(--gold);
+  background: var(--paper);
+  font-size: 0.88rem;
+}
+
+.previa--baja {
+  border-left-color: var(--flame);
+}
+
+.variacion {
+  font-weight: 700;
+}
+
+.variacion--mas {
+  color: #2f7d4f;
+}
+
+.variacion--menos {
+  color: var(--flame-dark);
+}
+
+@media (max-width: 30rem) {
+  .cifras {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Los indicadores llegan despues de la consulta: se reserva su alto para que la lista y la
+   ficha de abajo no salten cuando aparecen. */
+.indicadores-reserva {
+  min-height: 6.4rem;
+  margin-bottom: 1rem;
+}
+
+.indicadores-reserva > .indicadores {
+  margin-bottom: 0;
+}
+
+.indicador,
+.cifra {
+  min-width: 0;
+}
+
+.indicador__valor,
+.cifra__valor {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 48rem) {
+  .indicadores-reserva {
+    min-height: 0;
+  }
+}

@@ -264,3 +264,38 @@ volver a iniciar sesion (o recargar el panel) para ver las secciones nuevas.
   presento".
 - La app movil no tiene deep link de retorno desde Stripe (ver seccion 4); despues de pagar hay
   que volver a la app y tocar "consultar estado del pago".
+
+## Sin cargo ALMACEN (2026-11-01)
+
+Los roles son los actores documentados (SUPERADMIN, ADMIN, ENCARGADO, CAJERO y VENDEDOR): ALMACEN
+se elimino y lo absorbe ENCARGADO (ya tenia todos sus permisos). En una base existente:
+
+```bash
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1 \
+  < db/reparaciones/sin_cargo_almacen.sql
+```
+
+Es idempotente: pasa las cuentas ALMACEN a ENCARGADO, borra el rol y recrea el tipo
+`cargo_empleado` sin ese valor. Tiene que imprimir `rol_almacen = 0` y los cargos
+`{ENCARGADO,CAJERO,VENDEDOR}`. Las cuentas de demo que el seed ya no crea no se tocan.
+
+Variables nuevas del backend para la recuperacion de cuenta (ver `backend/.env.example`):
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` y `FRONTEND_URL` (con la
+URL publica del frontend: es la base del enlace del correo). Dejar `RECUPERACION_MOSTRAR_ENLACE` en
+`false` en produccion.
+
+## Sin cargo VENDEDOR (2026-11-01)
+
+"Cajero y vendedor es la misma cosa": VENDEDOR se elimino y lo absorbe CAJERO, que ademas de la
+caja ahora atiende reservas en el piso (gana `reservas.leer` y `reservas.actualizar`). Los roles
+quedan SUPERADMIN, ADMIN, ENCARGADO y CAJERO. En una base existente, despues de `sin_cargo_almacen.sql`:
+
+```bash
+docker run --rm -i postgres:16 psql "<DATABASE_PUBLIC_URL>" -v ON_ERROR_STOP=1   < db/reparaciones/sin_cargo_vendedor.sql
+```
+
+Es idempotente: le da al CAJERO los permisos del VENDEDOR que no tenia, pasa las cuentas y los
+empleados VENDEDOR a CAJERO, borra el rol y recrea el tipo `cargo_empleado` sin ese valor. Tiene que
+imprimir `rol_vendedor = 0`, los cargos `{ENCARGADO,CAJERO}` y `cajero_con_reservas = 2`. La cuenta de
+demo `vendedor.scz` no se borra (queda como CAJERO); se desactiva desde CU13. Despues hay que volver a
+iniciar sesion para que lleguen los permisos nuevos.

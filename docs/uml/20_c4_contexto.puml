@@ -5,7 +5,7 @@ LAYOUT_WITH_LEGEND()
 title FashionStore — C4 Nivel 1: Contexto
 
 Person(clienta, "Clienta", "Mujer de 18 a 40 años: compra en línea, reserva vestidor, usa la app sin conexión.")
-Person(personal, "Personal de la sucursal", "Encargado, cajero, vendedor, almacén: administración del tenant.")
+Person(personal, "Personal de la sucursal", "Encargado y cajero: administración del tenant.")
 Person(admin, "Administrador de la plataforma", "Dueño del SaaS: gestiona sucursales/tenants y sus suscripciones.")
 
 System(fs, "FashionStore SaaS", "E-commerce e inteligencia de tienda multi-tenant (un tenant por sucursal), PWA web + app móvil.")

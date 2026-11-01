@@ -11,9 +11,13 @@
     <h1 class="titulo">Mis compras</h1>
 
     @if (cargando()) {
-      <p class="estado">Cargando tus compras…</p>
+      <ul class="lista lista--esqueleto" aria-busy="true" aria-label="Cargando tus compras">
+        @for (n of [1, 2, 3]; track n) {
+          <li class="esqueleto esqueleto--fila" aria-hidden="true"></li>
+        }
+      </ul>
     } @else if (error()) {
-      <p class="estado estado--error">{{ error() }}</p>
+      <p class="estado estado--error" role="alert">{{ error() }}</p>
     } @else if (compras().length === 0) {
       <p class="estado">
         Todavía no tenés compras registradas. Andá al

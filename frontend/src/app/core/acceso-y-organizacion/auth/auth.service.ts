@@ -7,6 +7,7 @@ import { offlineDb } from '../../operacion-sin-conexion/offline/offline-db';
 import {
   CambiarPasswordRequest,
   LoginRequest,
+  RecuperarPasswordResponse,
   RegistroRequest,
   TokenResponse,
   UsuarioOut,
@@ -78,6 +79,19 @@ export class AuthService {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(guardada));
       }),
     );
+  }
+
+  /** Recuperacion de cuenta, paso 1: pide el enlace por correo (publico; responde igual exista o no). */
+  recuperarPassword(email: string): Observable<RecuperarPasswordResponse> {
+    return this.http.post<RecuperarPasswordResponse>(`${environment.apiUrl}/auth/recuperar`, { email });
+  }
+
+  /** Recuperacion de cuenta, paso 2: elige la contraseña nueva con el token del enlace. */
+  restablecerPassword(token: string, passwordNueva: string): Observable<void> {
+    return this.http.post<void>(`${environment.apiUrl}/auth/restablecer`, {
+      token,
+      password_nueva: passwordNueva,
+    });
   }
 
   /** Cambiar mi propia contraseña (CLIENTE o STAFF); no toca la sesion guardada. */

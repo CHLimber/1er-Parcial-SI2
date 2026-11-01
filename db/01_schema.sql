@@ -24,7 +24,7 @@ CREATE EXTENSION IF NOT EXISTS unaccent;   -- busqueda del catalogo sin tildes
 CREATE TYPE ciudad_bo         AS ENUM ('SANTA_CRUZ','LA_PAZ','EL_ALTO','COCHABAMBA','SUCRE',
                                        'ORURO','POTOSI','TARIJA','TRINIDAD','COBIJA');
 CREATE TYPE tipo_usuario      AS ENUM ('CLIENTE','STAFF');
-CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO','VENDEDOR','ALMACEN');
+CREATE TYPE cargo_empleado    AS ENUM ('ENCARGADO','CAJERO');
 CREATE TYPE estado_caja       AS ENUM ('ABIERTA','CERRADA');
 CREATE TYPE tipo_talla        AS ENUM ('LETRA','NUMERO','CALZADO');
 CREATE TYPE tipo_temporada    AS ENUM ('PRIMAVERA_VERANO','OTONO_INVIERNO','ESCOLAR',
@@ -110,7 +110,7 @@ CREATE TABLE rol (
 -- el nombre no se repite dentro de una empresa; los del sistema son unicos entre si
 CREATE UNIQUE INDEX ux_rol_nombre_empresa ON rol(empresa_id, nombre) WHERE empresa_id IS NOT NULL;
 CREATE UNIQUE INDEX ux_rol_nombre_sistema ON rol(nombre) WHERE empresa_id IS NULL;
-COMMENT ON TABLE rol IS 'SUPERADMIN (plataforma), ADMIN (de empresa), ENCARGADO, CAJERO, VENDEDOR, ALMACEN (los del sistema; CU13 puede crear otros por empresa). Solo aplica a usuarios STAFF.';
+COMMENT ON TABLE rol IS 'SUPERADMIN (plataforma), ADMIN (de empresa), ENCARGADO, CAJERO (los del sistema; CU13 puede crear otros por empresa). Solo aplica a usuarios STAFF.';
  
 CREATE TABLE permiso (
     id          SERIAL PRIMARY KEY,
@@ -274,6 +274,10 @@ CREATE TABLE sesion_caja (
 );
 -- una sola sesion abierta por caja
 CREATE UNIQUE INDEX ux_sesion_caja_abierta ON sesion_caja(caja_id) WHERE estado = 'ABIERTA';
+
+-- Rendimiento (db/reparaciones/indices_rendimiento.sql): la sesion de caja abierta de un empleado se
+-- consulta al darlo de baja o cambiarlo de sucursal
+CREATE INDEX IF NOT EXISTS ix_sesion_caja_empleado ON sesion_caja(empleado_id) WHERE estado = 'ABIERTA';
  
  
 -- =====================================================================
@@ -425,6 +429,11 @@ CREATE TABLE promocion (
     CONSTRAINT ck_promo_porcentaje CHECK (tipo <> 'PORCENTAJE' OR valor <= 100),
     UNIQUE (empresa_id, codigo_cupon)
 );
+
+-- Rendimiento (db/reparaciones/indices_rendimiento.sql): FK sin indice que los listados cuentan o
+-- filtran por proveedor/empresa
+CREATE INDEX IF NOT EXISTS ix_proveedor_empresa ON proveedor(empresa_id);
+CREATE INDEX IF NOT EXISTS ix_producto_proveedor ON producto(proveedor_id) WHERE proveedor_id IS NOT NULL;
  
  
 -- =====================================================================
@@ -525,6 +534,16 @@ CREATE TABLE traspaso_detalle (
     cantidad_solicitada INT  NOT NULL CHECK (cantidad_solicitada > 0),
     cantidad_recibida   INT  CHECK (cantidad_recibida >= 0)
 );
+
+-- Rendimiento (db/reparaciones/indices_rendimiento.sql): lineas de cada documento y listados por
+-- sucursal; sin estos, cada detalle y cada pantalla de gestion recorria la tabla entera
+CREATE INDEX IF NOT EXISTS ix_movimiento_sucursal ON movimiento_inventario(sucursal_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS ix_recepcion_sucursal ON recepcion(sucursal_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS ix_recepcion_proveedor ON recepcion(proveedor_id);
+CREATE INDEX IF NOT EXISTS ix_recepcion_detalle_recepcion ON recepcion_detalle(recepcion_id);
+CREATE INDEX IF NOT EXISTS ix_traspaso_origen ON traspaso(sucursal_origen_id, fecha_solicitud DESC);
+CREATE INDEX IF NOT EXISTS ix_traspaso_destino ON traspaso(sucursal_destino_id, fecha_solicitud DESC);
+CREATE INDEX IF NOT EXISTS ix_traspaso_detalle_traspaso ON traspaso_detalle(traspaso_id);
  
  
 -- =====================================================================
@@ -575,6 +594,9 @@ CREATE TABLE reserva_historial (
     comentario      VARCHAR(250),
     fecha           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Rendimiento (db/reparaciones/indices_rendimiento.sql): bitacora de la reserva por reserva
+CREATE INDEX IF NOT EXISTS ix_reserva_historial_reserva ON reserva_historial(reserva_id, fecha);
  
  
 -- =====================================================================
@@ -811,6 +833,15 @@ CREATE TABLE devolucion_detalle (
     -- Cambio por talla/color: la variante (misma prenda) que la clienta pide a cambio.
     variante_solicitada_id UUID REFERENCES producto_variante(id)
 );
+
+-- Rendimiento (db/reparaciones/indices_rendimiento.sql): venta_detalle(venta_id) es la FK mas
+-- consultada del sistema (totales, devoluciones, alertas de stock, reportes) y no tenia indice
+CREATE INDEX IF NOT EXISTS ix_venta_detalle_venta ON venta_detalle(venta_id);
+CREATE INDEX IF NOT EXISTS ix_venta_reserva ON venta(reserva_id) WHERE reserva_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_venta_pendiente ON venta(fecha) WHERE estado = 'PENDIENTE';
+CREATE INDEX IF NOT EXISTS ix_devolucion_sucursal ON devolucion(sucursal_id, fecha DESC);
+CREATE INDEX IF NOT EXISTS ix_devolucion_detalle_devolucion ON devolucion_detalle(devolucion_id);
+CREATE INDEX IF NOT EXISTS ix_devolucion_detalle_linea ON devolucion_detalle(venta_detalle_id);
  
  
 -- =====================================================================
@@ -856,6 +887,10 @@ CREATE TABLE auditoria (
 );
 CREATE INDEX ix_auditoria_entidad ON auditoria(entidad, entidad_id, fecha DESC);
 CREATE INDEX ix_auditoria_empresa ON auditoria(empresa_id, fecha DESC);
+
+-- Rendimiento (db/reparaciones/indices_rendimiento.sql): el listado de notificaciones trae TODAS las
+-- del usuario (no solo las pendientes, que ya tienen ix_notificacion_pendiente)
+CREATE INDEX IF NOT EXISTS ix_notificacion_usuario ON notificacion(usuario_id, fecha DESC);
 
 
 -- =====================================================================

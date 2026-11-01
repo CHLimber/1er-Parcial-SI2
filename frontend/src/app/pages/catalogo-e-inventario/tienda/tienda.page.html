@@ -4,12 +4,36 @@
     @if (!esStaff() && tiendas().length > 1) {
       <!-- Multi-tenant: la clienta elige que tienda de la plataforma mira (cada empresa tiene su
            catalogo, stock y precios). Tambien se llega con ?empresa=slug. -->
-      <select class="cabecera__tienda" aria-label="Tienda" [value]="tienda()"
-        (change)="cambiarTienda($any($event.target).value)">
-        @for (t of tiendas(); track t.slug) {
-          <option [value]="t.slug" [selected]="t.slug === tienda()">{{ t.nombre }}</option>
+      <div class="selector-tienda">
+        <button
+          type="button"
+          class="selector-tienda__boton"
+          aria-haspopup="listbox"
+          aria-label="Cambiar de tienda"
+          [attr.aria-expanded]="selectorAbierto()"
+          (click)="selectorAbierto.set(!selectorAbierto())"
+        >
+          <span class="selector-tienda__verbo">Cambiar de </span>tienda <span aria-hidden="true">▾</span>
+        </button>
+        @if (selectorAbierto()) {
+          <div class="selector-tienda__velo" (click)="selectorAbierto.set(false)" aria-hidden="true"></div>
+          <ul class="selector-tienda__lista" role="listbox" aria-label="Tiendas disponibles">
+            @for (t of tiendas(); track t.slug) {
+              <li role="option" [attr.aria-selected]="t.slug === tienda()">
+                <button type="button" class="selector-tienda__tienda" [class.selector-tienda__tienda--actual]="t.slug === tienda()"
+                  (click)="cambiarTienda(t.slug); selectorAbierto.set(false)">
+                  <span class="selector-tienda__inicial" aria-hidden="true">{{ t.nombre.charAt(0) }}</span>
+                  <span class="selector-tienda__nombre">{{ t.nombre }}</span>
+                  <span class="selector-tienda__datos">{{ resumenUbicacion(t) }} · {{ resumenPrendas(t) }}</span>
+                  @if (t.slug === tienda()) {
+                    <span class="selector-tienda__actual">Estás acá</span>
+                  }
+                </button>
+              </li>
+            }
+          </ul>
         }
-      </select>
+      </div>
     }
 
     <!-- Campana (PENDIENTES 2.19.3): afuera del menu plegable para que se vea tambien en telefono. -->
@@ -72,12 +96,20 @@
     <h1 class="saludo">Hola, {{ usuario()?.nombre }}</h1>
     <p class="saludo__linea">Explorá el catálogo y consultá qué sucursal tiene stock de cada prenda.</p>
 
-    @if (!esStaff() && recomendaciones().length > 0) {
-      <section class="catalogo">
-        <h2 class="catalogo__titulo">Recomendado para vos</h2>
-        <ul class="grilla">
-          @for (producto of recomendaciones(); track producto.id) {
-            <li app-producto-card [producto]="producto" [motivo]="producto.motivo"></li>
+    @if (!esStaff() && (cargandoRecomendaciones() || recomendaciones().length > 0)) {
+      <section class="catalogo" aria-labelledby="titulo-recomendados">
+        <h2 class="catalogo__titulo catalogo__titulo--bloque" id="titulo-recomendados">Recomendado para vos</h2>
+        <!-- Tira horizontal de alto fijo: ocho recomendaciones en grilla ocupaban dos pantallas
+             y empujaban el catalogo; asi ocupa siempre una sola fila, cargue o no. -->
+        <ul class="carrusel" [attr.aria-busy]="cargandoRecomendaciones()">
+          @if (cargandoRecomendaciones()) {
+            @for (n of esqueletoGrilla; track n) {
+              <li class="esqueleto esqueleto--tarjeta" aria-hidden="true"></li>
+            }
+          } @else {
+            @for (producto of recomendaciones(); track producto.id) {
+              <li app-producto-card [producto]="producto" [motivo]="producto.motivo"></li>
+            }
           }
         </ul>
       </section>
@@ -86,14 +118,17 @@
     <section class="catalogo">
       <div class="catalogo__cabecera">
         <h2 class="catalogo__titulo">Catálogo</h2>
-        @if (!cargandoCatalogo() && !errorCatalogo()) {
-          <span class="catalogo__contador">
-            {{ totalResultados() }} {{ totalResultados() === 1 ? 'prenda encontrada' : 'prendas encontradas' }}
-          </span>
-        }
+        <!-- Siempre en el DOM (oculto hasta la primera respuesta): el titulo no cambia de alto. -->
+        <span
+          class="catalogo__contador"
+          [class.catalogo__contador--oculto]="!!errorCatalogo() || (cargandoCatalogo() && productos().length === 0)"
+          role="status"
+        >
+          {{ totalResultados() }} {{ totalResultados() === 1 ? 'prenda encontrada' : 'prendas encontradas' }}
+        </span>
       </div>
 
-      <form class="filtros" (ngSubmit)="buscar()">
+      <form class="filtros" [class.filtros--cargando]="cargandoFiltros()" (ngSubmit)="buscar()">
         <div class="filtros__campo filtros__campo--busqueda">
           <label for="q">Buscar</label>
           <input
@@ -105,6 +140,19 @@
             placeholder="Ej. vestido, blusa, jean…"
           />
         </div>
+
+        @if (cargandoFiltros()) {
+          @for (n of [1, 2]; track n) {
+            <div class="filtros__grupo" aria-hidden="true">
+              <span class="esqueleto esqueleto--etiqueta"></span>
+              <div class="chips">
+                @for (m of [1, 2, 3, 4, 5]; track m) {
+                  <span class="esqueleto esqueleto--chip"></span>
+                }
+              </div>
+            </div>
+          }
+        }
 
         @if ((filtros()?.categorias ?? []).length > 0) {
           <div class="filtros__grupo">
@@ -210,16 +258,22 @@
         </div>
       }
 
-      @if (cargandoCatalogo()) {
-        <p class="catalogo__estado">Cargando productos…</p>
-      } @else if (errorCatalogo()) {
-        <p class="catalogo__estado catalogo__estado--error">{{ errorCatalogo() }}</p>
+      <!-- Al filtrar o buscar la grilla anterior se queda (atenuada) hasta que llega la nueva: si se
+           reemplazaba por un "Cargando…" la pagina colapsaba y el scroll saltaba en cada clic. -->
+      @if (errorCatalogo()) {
+        <p class="catalogo__estado catalogo__estado--error" role="alert">{{ errorCatalogo() }}</p>
+      } @else if (cargandoCatalogo() && productos().length === 0) {
+        <ul class="grilla" aria-busy="true" aria-label="Cargando prendas">
+          @for (n of esqueletoGrilla; track n) {
+            <li class="esqueleto esqueleto--tarjeta" aria-hidden="true"></li>
+          }
+        </ul>
       } @else if (productos().length === 0) {
-        <p class="catalogo__estado">
+        <p class="catalogo__estado" role="status">
           No encontramos prendas con esos filtros. Probá ajustar la búsqueda o quitar algún filtro.
         </p>
       } @else {
-        <ul class="grilla">
+        <ul class="grilla" [class.grilla--cargando]="cargandoCatalogo()" [attr.aria-busy]="cargandoCatalogo()">
           @for (producto of productos(); track producto.id) {
             <li app-producto-card [producto]="producto"></li>
           }

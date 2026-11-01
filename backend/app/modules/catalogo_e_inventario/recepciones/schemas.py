@@ -26,9 +26,13 @@ class DetalleOut(BaseModel):
     producto: str
     talla: str
     color: str
+    codigo_hex: str
     cantidad: int
     costo_unitario: Decimal
     subtotal: Decimal
+    # stock fisico de esa prenda en la sucursal que recibe, ANTES de confirmar: con la cantidad
+    # de la linea se ve cuanto va a quedar. En una recepcion confirmada es el stock de hoy.
+    stock_actual: int = 0
 
 
 class RecepcionOut(BaseModel):
@@ -70,6 +74,9 @@ class MovimientoOut(BaseModel):
     variante_id: UUID
     sku: str
     producto: str
+    talla: str
+    color: str
+    codigo_hex: str
     cantidad: int
     saldo_anterior: int
     saldo_nuevo: int

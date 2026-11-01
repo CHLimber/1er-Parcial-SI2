@@ -189,3 +189,62 @@
     gap: 0.6rem;
   }
 }
+
+/* ---------- estabilidad ---------- */
+
+/* El UUID de la entidad (36 caracteres) ensanchaba la tabla entera: se recorta con elipsis y el
+   valor completo queda en el title. */
+.id-corto {
+  display: inline-block;
+  max-width: 8.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.fecha-hora {
+  white-space: nowrap;
+}
+
+/* "Ver qué cambió" y "Ocultar cambios" miden distinto: con un ancho fijo la columna no se
+   corre al abrir un detalle. */
+.boton-detalle,
+.tabla__vacio {
+  min-width: 9.5rem;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.boton-detalle {
+  min-height: 2.1rem;
+  border-radius: var(--radius-sm);
+}
+
+/* El detalle abierto se queda a la vista aunque la tabla se haya deslizado en horizontal. */
+.fila-detalle td {
+  padding-block: 0.25rem;
+}
+
+.detalle-auditoria {
+  position: sticky;
+  left: 0.75rem;
+  width: min(42rem, calc(100vw - 4rem));
+  max-width: none;
+}
+
+.tabla-comparacion {
+  table-layout: fixed;
+}
+
+.tabla-comparacion th:first-child,
+.tabla-comparacion td:first-child {
+  width: 30%;
+}
+
+@media (max-width: 48rem) {
+  .detalle-auditoria {
+    width: min(30rem, calc(100vw - 4rem));
+  }
+}

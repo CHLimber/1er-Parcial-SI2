@@ -3,6 +3,17 @@
   bajada="CU19 — bitácora de altas, bajas, modificaciones e inicios de sesión del sistema. Solo lectura."
 >
   <form class="barra" [formGroup]="filtro" (ngSubmit)="aplicarFiltro()">
+    @if (auth.esPlataforma()) {
+      <div class="campo">
+        <label for="f-empresa">Empresa</label>
+        <select id="f-empresa" formControlName="empresa_id" (change)="cambiarEmpresa()">
+          <option value="">Todas las empresas</option>
+          @for (e of empresas(); track e.id) {
+            <option [value]="e.id">{{ e.nombre }}</option>
+          }
+        </select>
+      </div>
+    }
     <div class="campo">
       <label for="f-entidad">Entidad</label>
       <select id="f-entidad" formControlName="entidad">
@@ -49,11 +60,14 @@
       <p class="estado">No hay eventos de auditoría con estos filtros.</p>
     } @else {
       <div class="tabla-envoltorio">
-        <table class="tabla">
+        <table class="tabla tabla--muy-ancha">
           <thead>
             <tr>
               <th>Fecha</th>
               <th>Usuario</th>
+              @if (auth.esPlataforma()) {
+                <th>Empresa</th>
+              }
               <th>Entidad</th>
               <th>ID</th>
               <th>Acción</th>
@@ -63,7 +77,7 @@
           <tbody>
             @for (fila of items(); track fila.id) {
               <tr [attr.data-inactivo]="!(fila.datos_antes || fila.datos_despues) ? 'true' : null">
-                <td class="mono">{{ fila.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
+                <td class="mono fecha-hora">{{ fila.fecha | date: 'dd/MM/yyyy HH:mm:ss' }}</td>
                 <td>
                   @if (fila.usuario_nombre) {
                     {{ fila.usuario_nombre }}
@@ -72,8 +86,11 @@
                     <span class="secundario">Sistema</span>
                   }
                 </td>
+                @if (auth.esPlataforma()) {
+                  <td>{{ fila.empresa_nombre ?? 'Plataforma' }}</td>
+                }
                 <td>{{ fila.entidad }}</td>
-                <td class="mono">{{ fila.entidad_id }}</td>
+                <td class="mono"><span class="id-corto" [title]="fila.entidad_id">{{ fila.entidad_id }}</span></td>
                 <td>
                   <span class="badge" [class.badge--ok]="fila.accion === 'CREAR'" [class.badge--alerta]="fila.accion === 'ELIMINAR'">
                     {{ etiquetasAccion[fila.accion] }}
@@ -98,7 +115,7 @@
               </tr>
               @if (filaExpandida() === fila.id) {
                 <tr class="fila-detalle">
-                  <td colspan="6">
+                  <td [attr.colspan]="auth.esPlataforma() ? 7 : 6">
                     <div class="detalle-auditoria">
                       @if (fila.datos_antes && fila.datos_despues) {
                         <!-- ACTUALIZAR (y similares): comparacion campo a campo, solo lo que cambio primero -->

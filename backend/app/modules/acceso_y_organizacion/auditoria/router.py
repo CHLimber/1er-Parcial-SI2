@@ -52,6 +52,7 @@ def _fila_a_esquema(fila: asyncpg.Record) -> AuditoriaOut:
         datos_antes=_parsear_json(fila["datos_antes"]),
         datos_despues=_parsear_json(fila["datos_despues"]),
         ip=str(fila["ip"]) if fila["ip"] is not None else None,
+        empresa_nombre=fila["empresa_nombre"],
     )
 
 
@@ -101,9 +102,10 @@ async def listar_auditoria(
         f"""
         SELECT a.id, a.fecha, a.usuario_id, u.nombre, u.apellido, u.email,
                a.entidad, a.entidad_id, a.accion::text AS accion,
-               a.datos_antes, a.datos_despues, a.ip
+               a.datos_antes, a.datos_despues, a.ip, em.nombre AS empresa_nombre
         FROM auditoria a
-        LEFT JOIN usuario u ON u.id = a.usuario_id
+        LEFT JOIN usuario u  ON u.id = a.usuario_id
+        LEFT JOIN empresa em ON em.id = a.empresa_id
         {filtros}
         ORDER BY a.fecha DESC
         LIMIT ${len(parametros) + 1} OFFSET ${len(parametros) + 2}
@@ -123,13 +125,15 @@ async def listar_auditoria(
 
 @router.get("/entidades", response_model=list[str])
 async def listar_entidades(
+    empresa_id: UUID | None = Query(default=None, description="Solo la plataforma la elige"),
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[str]:
     """Valores distintos de `entidad` ya registrados, para armar el filtro en el panel."""
+    alcance = staff["empresa_id"] if staff["empresa_id"] is not None else empresa_id
     filas = await conn.fetch(
         """SELECT DISTINCT entidad FROM auditoria
             WHERE ($1::uuid IS NULL OR empresa_id = $1) ORDER BY entidad""",
-        staff["empresa_id"],
+        alcance,
     )
     return [fila["entidad"] for fila in filas]

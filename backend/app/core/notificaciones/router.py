@@ -70,8 +70,12 @@ async def listar_notificaciones(
 ) -> NotificacionPaginadoOut:
     filtros = "WHERE n.usuario_id = $1 AND ($2::boolean IS FALSE OR NOT n.leida)"
 
-    total = await conn.fetchval(
-        f"SELECT COUNT(*) FROM notificacion n {filtros}",
+    # total y no_leidas en una sola consulta (antes eran dos COUNT separados)
+    conteo = await conn.fetchrow(
+        f"""
+        SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE NOT n.leida) AS no_leidas
+        FROM notificacion n {filtros}
+        """,
         usuario["id"],
         solo_no_leidas,
     )
@@ -88,9 +92,10 @@ async def listar_notificaciones(
         (pagina - 1) * tamanio_pagina,
     )
 
+    # con solo_no_leidas el filtro ya deja afuera las leidas: no_leidas == total
     return NotificacionPaginadoOut(
-        total=total,
-        no_leidas=await _contar_no_leidas(conn, usuario["id"]),
+        total=conteo["total"],
+        no_leidas=conteo["no_leidas"],
         pagina=pagina,
         tamanio_pagina=tamanio_pagina,
         items=[_fila_a_esquema(fila) for fila in filas],

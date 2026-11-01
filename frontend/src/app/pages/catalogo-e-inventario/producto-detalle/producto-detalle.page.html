@@ -20,7 +20,17 @@
 
   <main class="contenido">
     @if (cargando()) {
-      <p class="estado">Cargando producto…</p>
+      <div class="detalle" role="status" aria-busy="true">
+        <span class="visualmente-oculto">Cargando producto…</span>
+        <div class="detalle__imagen-cont esqueleto" aria-hidden="true"></div>
+        <div class="detalle__info" aria-hidden="true">
+          <span class="esqueleto esqueleto--linea esqueleto--corta"></span>
+          <span class="esqueleto esqueleto--titulo"></span>
+          <span class="esqueleto esqueleto--linea esqueleto--corta"></span>
+          <span class="esqueleto esqueleto--linea"></span>
+          <span class="esqueleto esqueleto--linea"></span>
+        </div>
+      </div>
     } @else if (noEncontrado() || !producto()) {
       <div class="estado estado--error">
         <p>No encontramos esta prenda en el catálogo.</p>
@@ -32,7 +42,7 @@
       <div class="detalle">
         <div class="detalle__imagen-cont">
           @if (imagenActual(); as urlImagen) {
-            <img class="detalle__imagen" [src]="urlImagen" [alt]="p.nombre" />
+            <img class="detalle__imagen" [src]="urlImagen" [alt]="p.nombre" width="528" height="704" />
           }
           @if (p.agotado) {
             <span class="detalle__badge">Agotado en todas las sucursales</span>
@@ -60,6 +70,7 @@
                     type="button"
                     class="selector__talla"
                     [class.selector__talla--activa]="tallaSeleccionada() === talla"
+                    [attr.aria-pressed]="tallaSeleccionada() === talla"
                     (click)="elegirTalla(talla)"
                   >
                     {{ talla }}
@@ -78,6 +89,7 @@
                     type="button"
                     class="selector__color"
                     [class.selector__color--activo]="colorSeleccionado() === color.nombre"
+                    [attr.aria-pressed]="colorSeleccionado() === color.nombre"
                     [style.background]="color.codigoHex"
                     [title]="color.nombre"
                     (click)="elegirColor(color.nombre)"
@@ -98,6 +110,7 @@
                     type="button"
                     class="selector__color"
                     [class.selector__color--activo]="previewGaleria()?.color === item.color"
+                    [attr.aria-pressed]="previewGaleria()?.color === item.color"
                     [style.background]="item.codigo_hex"
                     [title]="item.color"
                     (click)="previsualizarColorGaleria(item)"
@@ -129,17 +142,17 @@
               </button>
             </div>
             @if (agregadoAlCarrito()) {
-              <p class="reserva-accion__confirmacion">
+              <p class="reserva-accion__confirmacion" role="status">
                 Agregado al carrito. <a routerLink="/carrito">Ver mi carrito →</a>
               </p>
             }
             @if (agregadoAReserva()) {
-              <p class="reserva-accion__confirmacion">
+              <p class="reserva-accion__confirmacion" role="status">
                 Agregado. <a routerLink="/reservar">Ver mi reserva →</a>
               </p>
             }
             @if (errorCarrito()) {
-              <p class="reserva-accion__error">{{ errorCarrito() }}</p>
+              <p class="reserva-accion__error" role="alert">{{ errorCarrito() }}</p>
             }
           </div>
 

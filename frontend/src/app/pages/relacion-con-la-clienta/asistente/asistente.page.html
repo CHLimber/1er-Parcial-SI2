@@ -5,7 +5,7 @@
   </header>
 
   <main class="chat">
-    <div class="chat__mensajes" #contenedor>
+    <div class="chat__mensajes" #contenedor role="log" aria-live="polite" aria-label="Conversación con el asistente">
       <div class="burbuja burbuja--assistant">
         <p class="burbuja__texto">
           ¡Hola! Contame qué estás buscando (categoría, color, talla, para qué ocasión) y te ayudo
@@ -42,13 +42,14 @@
     </div>
 
     @if (error()) {
-      <p class="chat__error">{{ error() }}</p>
+      <p class="chat__error" role="alert">{{ error() }}</p>
     }
 
     <form class="chat__form" (ngSubmit)="enviar()">
       <input
         type="text"
         name="mensaje"
+        aria-label="Tu mensaje para el asistente"
         [(ngModel)]="borrador"
         [placeholder]="escuchando() ? 'Escuchando…' : 'Ej: busco un vestido para una fiesta, talla M'"
         [disabled]="enviando()"

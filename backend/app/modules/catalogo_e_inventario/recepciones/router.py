@@ -20,11 +20,11 @@ from app.core.db import get_connection
 from app.core.deps import requiere_permiso
 from app.core.tenant import (
     empresa_de,
-    es_admin_empresa,
     exigir_fila,
     exigir_sucursal,
     exigir_variantes,
     no_encontrado,
+    sucursal_visible,
 )
 from app.modules.catalogo_e_inventario.recepciones.schemas import (
     DetalleIn,
@@ -61,18 +61,6 @@ LEFT JOIN usuario u     ON u.id = r.usuario_id
 """
 
 
-def _sucursal_visible(staff: dict) -> UUID | None:
-    """El ADMIN de la empresa ve todas las de su empresa (None); el resto solo la suya."""
-    if es_admin_empresa(staff):
-        return None
-    if staff["sucursal_id"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    return staff["sucursal_id"]
-
-
 async def _obtener(conn: asyncpg.Connection, recepcion_id: UUID, staff: dict) -> RecepcionOut:
     fila = await conn.fetchrow(
         SELECT_RECEPCION + "WHERE r.id = $1 AND s.empresa_id = $2", recepcion_id, empresa_de(staff)
@@ -80,7 +68,7 @@ async def _obtener(conn: asyncpg.Connection, recepcion_id: UUID, staff: dict) ->
     if fila is None:
         raise no_encontrado("Recepcion no encontrada")
 
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     if limite is not None and fila["sucursal_id"] != limite:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Esa recepcion es de otra sucursal"
@@ -92,14 +80,17 @@ async def _detalle(conn: asyncpg.Connection, recepcion_id: UUID) -> list[Detalle
     filas = await conn.fetch(
         """
         SELECT d.id, d.variante_id, pv.sku, pr.nombre AS producto,
-               t.codigo AS talla, c.nombre AS color,
+               t.codigo AS talla, c.nombre AS color, c.codigo_hex,
                d.cantidad, d.costo_unitario,
-               (d.cantidad * d.costo_unitario) AS subtotal
+               (d.cantidad * d.costo_unitario) AS subtotal,
+               COALESCE(i.cantidad_fisica, 0) AS stock_actual
         FROM recepcion_detalle d
+        JOIN recepcion r          ON r.id = d.recepcion_id
         JOIN producto_variante pv ON pv.id = d.variante_id
         JOIN producto pr          ON pr.id = pv.producto_id
         JOIN talla t              ON t.id = pv.talla_id
         JOIN color c              ON c.id = pv.color_id
+        LEFT JOIN inventario i    ON i.variante_id = d.variante_id AND i.sucursal_id = r.sucursal_id
         WHERE d.recepcion_id = $1
         ORDER BY pr.nombre, t.orden, c.nombre
         """,
@@ -150,7 +141,7 @@ async def listar_recepciones(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[RecepcionOut]:
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     filas = await conn.fetch(
         SELECT_RECEPCION
         + """
@@ -177,7 +168,7 @@ async def buscar_variantes(
 ) -> list[VarianteBuscadaOut]:
     """Buscador para cargar lineas: muestra el stock que la variante tiene hoy en la sucursal
     que va a recibir, para que el encargado sepa contra que esta sumando."""
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     destino = sucursal_id or limite
     if destino is None:
         raise HTTPException(
@@ -229,11 +220,14 @@ async def movimientos_de_recepcion(
     await _obtener(conn, recepcion_id, staff)
     filas = await conn.fetch(
         """
-        SELECT m.variante_id, pv.sku, pr.nombre AS producto, m.cantidad,
+        SELECT m.variante_id, pv.sku, pr.nombre AS producto, t.codigo AS talla,
+               c.nombre AS color, c.codigo_hex, m.cantidad,
                m.saldo_anterior, m.saldo_nuevo, m.fecha
         FROM movimiento_inventario m
         JOIN producto_variante pv ON pv.id = m.variante_id
         JOIN producto pr          ON pr.id = pv.producto_id
+        JOIN talla t              ON t.id = pv.talla_id
+        JOIN color c              ON c.id = pv.color_id
         WHERE m.documento_tipo = 'RECEPCION' AND m.documento_id = $1
         ORDER BY m.fecha, m.id
         """,
@@ -253,7 +247,7 @@ async def crear_recepcion(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> RecepcionDetalleOut:
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     sucursal_id = body.sucursal_id or limite or staff["sucursal_id"]
     if sucursal_id is None:
         raise HTTPException(

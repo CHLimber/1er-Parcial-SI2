@@ -26,7 +26,11 @@
     }
 
     @if (cargando()) {
-      <p class="estado">Cargando tus direcciones…</p>
+      <ul class="lista" aria-busy="true" aria-label="Cargando tus direcciones">
+        @for (n of [1, 2]; track n) {
+          <li class="esqueleto tarjeta tarjeta--esqueleto" aria-hidden="true"></li>
+        }
+      </ul>
     } @else if (direcciones().length === 0 && !formularioAbierto()) {
       <p class="estado">
         Todavía no tenés ninguna dirección guardada. Agregá una y vas a poder pedir que te llevemos
@@ -51,13 +55,13 @@
               <p class="tarjeta__sinpin">Sin punto en el mapa: no se puede calcular el envío.</p>
             }
             <div class="tarjeta__acciones">
-              <button type="button" class="enlace" (click)="editar(direccion)">Editar</button>
+              <button type="button" class="enlace" [attr.aria-label]="'Editar dirección ' + direccion.alias" (click)="editar(direccion)">Editar</button>
               @if (!direccion.es_principal) {
                 <button type="button" class="enlace" (click)="marcarPrincipal(direccion)">
                   Hacer principal
                 </button>
               }
-              <button type="button" class="enlace enlace--riesgo" (click)="eliminar(direccion)">
+              <button type="button" class="enlace enlace--riesgo" [attr.aria-label]="'Borrar dirección ' + direccion.alias" (click)="eliminar(direccion)">
                 Borrar
               </button>
             </div>

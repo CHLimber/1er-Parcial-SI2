@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import asyncpg
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
@@ -106,11 +106,10 @@ async def _plan_minimo(conn: asyncpg.Connection, funcion: str) -> str | None:
     )
 
 
-async def exigir_funcion_empresa(
-    conn: asyncpg.Connection, empresa_id: UUID, funcion: str | None
+async def _exigir_plan(
+    conn: asyncpg.Connection, plan: dict | asyncpg.Record | None, funcion: str | None
 ) -> None:
-    """Corta con 402/403 si la empresa no puede usar la funcion."""
-    plan = await plan_de_empresa(conn, empresa_id)
+    """Corta con 402/403 si el plan (ya leido) no deja usar la funcion."""
     bloqueo = evaluar_acceso(plan, funcion)
     if bloqueo is None:
         return
@@ -120,11 +119,21 @@ async def exigir_funcion_empresa(
     raise HTTPException(status_code=bloqueo[0], detail=bloqueo[1])
 
 
+async def exigir_funcion_empresa(
+    conn: asyncpg.Connection, empresa_id: UUID, funcion: str | None
+) -> None:
+    """Corta con 402/403 si la empresa no puede usar la funcion."""
+    await _exigir_plan(conn, await plan_de_empresa(conn, empresa_id), funcion)
+
+
 async def exigir_funcion(conn: asyncpg.Connection, staff: dict, funcion: str | None) -> None:
     """Version para el personal: la empresa es la del usuario. La plataforma pasa siempre."""
     if staff.get("empresa_id") is None:
         return
     await exigir_funcion_empresa(conn, staff["empresa_id"], funcion)
+
+
+_SIN_LEER = object()
 
 
 def requiere_funcion_plan(funcion: str | None, *codigos: str):
@@ -135,10 +144,18 @@ def requiere_funcion_plan(funcion: str | None, *codigos: str):
     con_permiso = requiere_permiso(*codigos)
 
     async def verificar(
+        request: Request,
         staff: dict = Depends(con_permiso),
         conn: asyncpg.Connection = Depends(get_connection),
     ) -> dict:
-        await exigir_funcion(conn, staff, funcion)
+        # get_staff_actual ya leyo el plan junto con el usuario (request.state.plan_empresa; None =
+        # la empresa no tiene suscripcion): no se vuelve a consultar. Sin eso (la dependencia fue
+        # reemplazada, p.ej. en un test) se pide como antes.
+        plan = getattr(request.state, "plan_empresa", _SIN_LEER)
+        if plan is _SIN_LEER:
+            await exigir_funcion(conn, staff, funcion)
+        elif staff.get("empresa_id") is not None:
+            await _exigir_plan(conn, plan, funcion)
         return staff
 
     return verificar
@@ -159,6 +176,30 @@ async def uso_de_empresa(conn: asyncpg.Connection, empresa_id: UUID) -> dict[str
         empresa_id,
     )
     return dict(fila)
+
+
+async def usos_de_empresas(
+    conn: asyncpg.Connection, empresa_ids: list[UUID]
+) -> dict[UUID, dict[str, int]]:
+    """`uso_de_empresa` de varias empresas en UNA consulta (los listados de la plataforma hacian
+    una por empresa). Mismas cuentas que `uso_de_empresa`; las empresas sin nada devuelven 0."""
+    filas = await conn.fetch(
+        """
+        SELECT x.id AS empresa_id,
+          (SELECT COUNT(*) FROM sucursal s WHERE s.empresa_id = x.id AND s.activa)::int AS sucursales,
+          (SELECT COUNT(*) FROM empleado e
+             JOIN usuario u  ON u.id = e.usuario_id
+             JOIN sucursal s ON s.id = e.sucursal_id
+            WHERE s.empresa_id = x.id AND e.activo AND u.activo)::int AS empleados,
+          (SELECT COUNT(*) FROM caja c JOIN sucursal s ON s.id = c.sucursal_id
+            WHERE s.empresa_id = x.id AND c.activa)::int AS cajas
+        FROM unnest($1::uuid[]) AS x(id)
+        """,
+        empresa_ids,
+    )
+    return {
+        f["empresa_id"]: {k: f[k] for k in ("sucursales", "empleados", "cajas")} for f in filas
+    }
 
 
 def evaluar_limite(plan: dict | asyncpg.Record | None, recurso: str, actuales: int) -> str | None:

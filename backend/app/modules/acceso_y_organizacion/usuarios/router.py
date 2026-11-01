@@ -1,3 +1,4 @@
+import logging
 import math
 from datetime import datetime, timezone
 
@@ -5,19 +6,35 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auditoria import registrar_auditoria
+from app.core.config import settings
+from app.core.correo import enviar_correo
 from app.core.db import get_connection
-from app.core.deps import get_current_usuario, obtener_permisos
+from app.core.deps import exigir_empresa_operativa, get_current_usuario, obtener_permisos
 from app.core.plan import funciones_habilitadas, plan_de_empresa
 from app.core.security import create_access_token, hash_password, verify_password
+from app.modules.acceso_y_organizacion.usuarios.recuperacion import (
+    crear_token_recuperacion,
+    huella_coincide,
+    leer_token_recuperacion,
+)
 from app.modules.acceso_y_organizacion.usuarios.schemas import (
     CambiarPasswordRequest,
     LoginRequest,
+    RecuperarPasswordRequest,
+    RecuperarPasswordResponse,
     RegistroRequest,
+    RestablecerPasswordRequest,
     TokenResponse,
     UsuarioOut,
 )
 
 router = APIRouter(prefix="/auth", tags=["usuarios"])
+log = logging.getLogger(__name__)
+
+MENSAJE_RECUPERACION = (
+    "Si el correo corresponde a una cuenta, te enviamos un enlace para elegir una contrasena nueva. "
+    "El enlace vence en {minutos} minutos y sirve una sola vez."
+)
 
 _MAX_INTENTOS_DEFECTO = 5
 _BLOQUEO_MINUTOS_DEFECTO = 15
@@ -180,11 +197,8 @@ async def login(
             ),
         )
 
-    if row["empresa_id"] is not None and not row["empresa_activa"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu empresa esta suspendida en la plataforma: contacta a soporte",
-        )
+    # empresa suspendida (todos afuera) o suscripcion vencida (solo entra el ADMIN a renovar)
+    await exigir_empresa_operativa(conn, row["id"], row["empresa_id"])
 
     await conn.execute(
         "UPDATE usuario SET ultimo_acceso = now(), intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1",
@@ -225,6 +239,10 @@ async def usuario_actual(
     if fila is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
+    # al recargar la pagina, quien ya no puede operar (empresa suspendida o suscripcion vencida)
+    # sale de la sesion en vez de quedar adentro con todo respondiendo 402/403
+    await exigir_empresa_operativa(conn, fila["id"], fila["empresa_id"])
+
     return await _armar_usuario(conn, fila)
 
 
@@ -262,4 +280,103 @@ async def cambiar_password(
             entidad_id=usuario["id"],
             accion="ACTUALIZAR",
             datos_despues={"password": "cambiada por el propio usuario"},
+        )
+
+
+@router.post("/recuperar", response_model=RecuperarPasswordResponse)
+async def recuperar_password(
+    body: RecuperarPasswordRequest,
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> RecuperarPasswordResponse:
+    """Recuperacion de cuenta, paso 1: pide el enlace. Publico, para CLIENTE y STAFF. La
+    respuesta es la misma exista o no el correo, para no revelar quien tiene cuenta. Una cuenta
+    desactivada o de una empresa suspendida tampoco recibe enlace."""
+    respuesta = RecuperarPasswordResponse(
+        mensaje=MENSAJE_RECUPERACION.format(minutos=settings.recuperacion_minutos)
+    )
+    fila = await conn.fetchrow(
+        """
+        SELECT u.id, u.email, u.nombre, u.password_hash
+          FROM usuario u
+          LEFT JOIN empresa em ON em.id = u.empresa_id
+         WHERE u.email = $1 AND u.activo AND (u.empresa_id IS NULL OR em.activa)
+        """,
+        body.email,
+    )
+    if fila is None:
+        return respuesta
+
+    token = crear_token_recuperacion(str(fila["id"]), fila["password_hash"])
+    enlace = f"{settings.frontend_url.rstrip('/')}/restablecer-password?token={token}"
+    enviado = await enviar_correo(
+        fila["email"],
+        "Recupera tu contrasena de FashionStore",
+        (
+            f"Hola {fila['nombre']},\n\n"
+            "Recibimos un pedido para elegir una contrasena nueva en tu cuenta de FashionStore.\n"
+            f"Entra a este enlace (vence en {settings.recuperacion_minutos} minutos y sirve una sola vez):\n\n"
+            f"{enlace}\n\n"
+            "Si no fuiste vos, ignora este correo: tu contrasena actual sigue funcionando."
+        ),
+    )
+    if not enviado:
+        # sin SMTP (o si fallo) el enlace queda en el log del backend para quien opera el sistema
+        log.warning("Recuperacion de contrasena para %s (correo no enviado): %s", fila["email"], enlace)
+    await registrar_auditoria(
+        conn,
+        usuario_id=fila["id"],
+        entidad="usuario",
+        entidad_id=fila["id"],
+        accion="ACTUALIZAR",
+        datos_despues={"recuperacion": "enlace solicitado", "correo_enviado": enviado},
+    )
+    if settings.recuperacion_mostrar_enlace:
+        respuesta.enlace = enlace
+    return respuesta
+
+
+@router.post("/restablecer", status_code=status.HTTP_204_NO_CONTENT)
+async def restablecer_password(
+    body: RestablecerPasswordRequest,
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> None:
+    """Recuperacion de cuenta, paso 2: con el enlace elige la contrasena nueva. Tambien levanta
+    el bloqueo por intentos, porque quien olvido su contrasena casi seguro lo agoto."""
+    enlace_invalido = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="El enlace no es valido o ya vencio: pedi uno nuevo desde 'Olvide mi contrasena'",
+    )
+    datos = leer_token_recuperacion(body.token)
+    if datos is None:
+        raise enlace_invalido
+    usuario_id, huella = datos
+
+    fila = await conn.fetchrow(
+        "SELECT id, password_hash, activo FROM usuario WHERE id = $1::uuid", usuario_id
+    )
+    # la huella cambia con la contrasena: un enlace ya usado (o de una contrasena anterior) no sirve
+    if fila is None or not fila["activo"] or not huella_coincide(fila["password_hash"], huella):
+        raise enlace_invalido
+    if verify_password(body.password_nueva, fila["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="La contrasena nueva no puede ser igual a la actual",
+        )
+
+    async with conn.transaction():
+        await conn.execute(
+            """
+            UPDATE usuario SET password_hash = $2, intentos_fallidos = 0, bloqueado_hasta = NULL
+             WHERE id = $1
+            """,
+            fila["id"],
+            hash_password(body.password_nueva),
+        )
+        await registrar_auditoria(
+            conn,
+            usuario_id=fila["id"],
+            entidad="usuario",
+            entidad_id=fila["id"],
+            accion="ACTUALIZAR",
+            datos_despues={"password": "restablecida con el enlace de recuperacion"},
         )

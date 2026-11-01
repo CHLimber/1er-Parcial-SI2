@@ -7,7 +7,7 @@
 
 .ficha {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: minmax(7rem, 12rem) minmax(0, 1fr);
   gap: 0.35rem 1rem;
   margin: 0 0 1rem;
   font-size: 0.9rem;
@@ -19,11 +19,22 @@
 
 .ficha dd {
   margin: 0;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 30rem) {
   .ficha {
     grid-template-columns: 1fr;
   }
+}
+
+/* Los resumenes son fichas del mismo alto, no etiquetas sueltas que bailan al cambiar un numero. */
+.kpis-sync > .badge {
+  flex: 0 1 auto;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.72rem;
+}
+
+.ficha dt {
+  font-size: 0.82rem;
 }

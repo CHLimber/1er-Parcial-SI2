@@ -19,6 +19,21 @@ class VarianteBuscadaOut(BaseModel):
     cantidad_fisica: int
     cantidad_reservada: int
     disponible: int
+    # umbral de reposicion de esa prenda en la sucursal (0 = sin umbral definido)
+    stock_minimo: int = 0
+
+
+class ResumenInventarioOut(BaseModel):
+    """Foto del inventario de UNA sucursal para los indicadores de la pantalla."""
+
+    sucursal_id: UUID
+    sucursal: str
+    variantes: int
+    unidades_fisicas: int
+    unidades_reservadas: int
+    unidades_disponibles: int
+    agotadas: int  # sin nada disponible
+    stock_bajo: int  # con algo disponible pero en o por debajo del minimo
 
 
 class AjusteIn(BaseModel):

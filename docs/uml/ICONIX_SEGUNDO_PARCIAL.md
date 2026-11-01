@@ -85,7 +85,7 @@ dominio.
 
 ### CU08 Gestionar clientas de la empresa
 
-- **Actor:** Encargado; el Vendedor solo consulta.
+- **Actor:** Encargado; el Cajero solo consulta.
 - **Precondición:** el plan incluye «perfil de clientas» y la suscripción está vigente.
 - **Curso básico:** el Encargado abre «Clientas». El sistema arma la cartera de su sucursal: las
   clientas que compraron o reservaron ahí y las que se agregaron a mano. Para cada una muestra

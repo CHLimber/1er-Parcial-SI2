@@ -52,7 +52,16 @@
     }
 
     @if (cargando() && !datos()) {
-      <p class="estado">Aplicando los modelos a tus ventas…</p>
+      <!-- esqueleto con la forma de los indicadores: al llegar los modelos nada se corre -->
+      <div class="kpis" aria-busy="true" aria-label="Aplicando los modelos a tus ventas">
+        @for (i of [1, 2, 3, 4]; track i) {
+          <div class="kpi kpi--esqueleto">
+            <span class="kpi__etiqueta">Aplicando los modelos…</span>
+            <span class="kpi__valor">—</span>
+            <span class="kpi__detalle">&nbsp;</span>
+          </div>
+        }
+      </div>
     }
 
     @if (datos(); as d) {

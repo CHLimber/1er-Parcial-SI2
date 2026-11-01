@@ -97,6 +97,7 @@
           @if (carrito().length === 0) {
             <p class="estado">Tocá una talla/color para agregarla.</p>
           } @else {
+            <div class="tabla-envoltorio">
             <table class="tabla">
               <tbody>
                 @for (l of carrito(); track l.variante_id) {
@@ -114,6 +115,7 @@
                 }
               </tbody>
             </table>
+            </div>
           }
 
           @if (solapa === 'vender') {
@@ -183,7 +185,7 @@
         <p class="estado">Todavía no registraste operaciones en este equipo.</p>
       } @else {
         <div class="tabla-envoltorio">
-          <table class="tabla">
+          <table class="tabla tabla--ancha">
             <thead>
               <tr>
                 <th>Registrada</th>

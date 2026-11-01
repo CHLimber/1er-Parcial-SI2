@@ -46,3 +46,9 @@ export interface TokenResponse {
   token_type: string;
   usuario: UsuarioOut;
 }
+
+export interface RecuperarPasswordResponse {
+  mensaje: string;
+  /** Solo en modo demostracion del backend (RECUPERACION_MOSTRAR_ENLACE=true). */
+  enlace?: string | null;
+}

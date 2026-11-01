@@ -1,6 +1,6 @@
 <div class="prenda__imagen-cont">
   @if (producto().imagen_url) {
-    <img class="prenda__imagen" [src]="producto().imagen_url" [alt]="producto().nombre" loading="lazy" />
+    <img class="prenda__imagen" [src]="producto().imagen_url" [alt]="producto().nombre" width="300" height="400" loading="lazy" decoding="async" />
   }
   @if (producto().agotado) {
     <span class="prenda__badge">Agotado</span>

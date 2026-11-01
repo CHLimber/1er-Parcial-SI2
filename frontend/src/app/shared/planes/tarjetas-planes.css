@@ -6,13 +6,15 @@
 
 .rejilla {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  /* min(16rem, 100%): en un telefono angosto la tarjeta se achica en vez de desbordar */
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
   gap: 1.25rem;
   align-items: stretch;
 }
 
 .plan {
   position: relative;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   padding: 1.75rem 1.5rem;
@@ -102,6 +104,7 @@
 
 .plan__nombre {
   margin: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
@@ -119,6 +122,7 @@
 .plan__precio {
   margin: 1.25rem 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 0.4rem;
 }
@@ -146,7 +150,17 @@
   color: var(--ink);
 }
 
+/* marca a la izquierda y texto en su propia columna: si el texto baja de renglon, queda
+   alineado con el texto de arriba y no debajo de la marca */
+.plan__lista li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
 .plan__marca {
+  flex: none;
   display: inline-block;
   width: 1.1rem;
   color: var(--flame);
@@ -164,6 +178,8 @@
 
 .plan__boton {
   display: block;
+  box-sizing: border-box;
+  min-height: 2.75rem;
   padding: 0.85rem 1rem;
   border-radius: var(--radius-pill);
   background: var(--ink);
@@ -182,6 +198,9 @@
 /* ---------- estados y pie ---------- */
 
 .estado {
+  /* alto reservado: el aviso "Cargando planes" y la rejilla ya cargada no deberian
+     diferir tanto como para que el pie de la pagina salte */
+  min-height: 12rem;
   padding: 2rem 0;
   color: var(--ink-soft);
 }

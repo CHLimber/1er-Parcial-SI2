@@ -14,7 +14,7 @@ title FashionStore SaaS — Casos de uso (especificacion multitenant)
 actor "Administrador\nde plataforma" as AP
 actor "Administrador\nde empresa" as AE
 actor "Gerente /\nusuario autorizado" as G
-actor "Empleado /\nVendedor" as E
+actor "Empleado /\nCajero" as E
 actor "Cliente" as C
 actor "Sistema de\nsincronizacion\n(temporizador / red)" as SS <<sistema>>
 actor "Servicio de IA\n(Claude API)" as IA <<sistema>>

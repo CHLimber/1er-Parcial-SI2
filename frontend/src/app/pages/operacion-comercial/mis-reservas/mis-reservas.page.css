@@ -94,12 +94,15 @@
 }
 
 .reserva__codigo {
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--ink);
 }
 
 .reserva__estado {
+  flex: none;
   font-family: var(--font-body);
   font-weight: 700;
   font-size: 0.7rem;
@@ -130,6 +133,7 @@
 }
 
 .reserva__linea {
+  overflow-wrap: anywhere;
   margin: 0.4rem 0 0;
   color: var(--ink-soft);
   font-size: 0.88rem;
@@ -140,6 +144,7 @@
 }
 
 .reserva__items {
+  overflow-wrap: anywhere;
   margin: 0.6rem 0 0;
   padding-left: 1.2rem;
   color: var(--ink);
@@ -215,4 +220,9 @@
     flex-wrap: wrap;
     gap: 0.4rem 0.6rem;
   }
+}
+
+/* Filas fantasma mientras llega la lista: reservan el alto y evitan que el contenido salte. */
+.lista--esqueleto {
+  min-height: 0;
 }

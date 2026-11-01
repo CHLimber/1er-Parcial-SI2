@@ -8,6 +8,8 @@
 
   --lateral-ancho: 15.5rem;
   --superior-alto: 3.75rem;
+  /* boton de icono de la barra superior (menu, campana): mismo cuadro en los dos */
+  --boton-icono: 2.75rem;
 }
 
 .app {
@@ -190,7 +192,12 @@
 
 .superior__menu {
   display: none;
-  padding: 0.4rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--boton-icono);
+  height: var(--boton-icono);
+  padding: 0;
   border: 1px solid var(--paper-line);
   border-radius: var(--radius-sm);
   background: var(--white);
@@ -227,6 +234,8 @@
 }
 
 .superior__acciones {
+  /* no se comprime: es la migas (superior__ruta) la que cede y corta con puntos suspensivos */
+  flex: none;
   display: flex;
   align-items: center;
   gap: 0.85rem;
@@ -249,6 +258,8 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-height: var(--boton-icono);
+  max-width: 16rem;
   padding: 0.25rem 0.55rem 0.25rem 0.25rem;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
@@ -266,6 +277,7 @@
 }
 
 .usuario__avatar {
+  flex: none;
   display: grid;
   place-items: center;
   width: 2.1rem;
@@ -282,7 +294,17 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  min-width: 0;
   line-height: 1.15;
+}
+
+/* un nombre largo corta con puntos suspensivos y no estira la barra superior */
+.usuario__nombre,
+.usuario__rol {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usuario__nombre {
@@ -308,7 +330,7 @@
   top: calc(100% + 0.5rem);
   right: 0;
   z-index: 30;
-  width: 15rem;
+  width: min(15rem, calc(100vw - 1.5rem));
   padding: 0.4rem;
   border: 1px solid var(--paper-line);
   border-radius: var(--radius);
@@ -371,6 +393,7 @@
 
 .contenido {
   width: 100%;
+  min-width: 0;
   max-width: 82rem;
   margin: 0 auto;
   padding: clamp(1.25rem, 3vw, 2.25rem) clamp(1rem, 3vw, 2.5rem) 3rem;
@@ -414,7 +437,15 @@
 .encabezado__acciones {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.55rem;
+  /* nunca mas ancho que la pantalla: si no entran, los botones bajan a otra linea */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.encabezado__acciones > * {
+  max-width: 100%;
 }
 
 /* ---------- cajon en pantallas chicas ---------- */
@@ -434,11 +465,18 @@
     z-index: 40;
     width: min(18rem, 86vw);
     transform: translateX(-100%);
-    transition: transform 0.22s ease;
+    /* cerrado queda fuera de pantalla Y fuera del orden de tabulacion (visibility), pero
+       recien despues de terminar de deslizarse: por eso el retardo de 0.22s */
+    visibility: hidden;
+    transition:
+      transform 0.22s ease,
+      visibility 0s linear 0.22s;
   }
 
   .app--menu-abierto .lateral {
     transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
     box-shadow: 0 0 40px rgba(0, 0, 0, 0.35);
   }
 
@@ -483,6 +521,16 @@
 
   .contenido {
     padding: 1.1rem 1rem 2rem;
+  }
+
+  /* Los botones de la cabecera de pagina ocupan el ancho y se reparten la linea: tres
+     botones de largo distinto no se desbordan ni quedan colgados a la izquierda. */
+  .encabezado__acciones {
+    width: 100%;
+  }
+
+  .encabezado__acciones > * {
+    flex: 1 1 auto;
   }
 }
 

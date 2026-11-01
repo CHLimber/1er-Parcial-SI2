@@ -3,6 +3,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
+import { tomarAvisoLogin } from '../../../core/acceso-y-organizacion/auth/aviso-login';
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 
 @Component({
@@ -19,6 +20,8 @@ export class LoginPage {
 
   protected readonly cargando = signal(false);
   protected readonly errorMensaje = signal<string | null>(null);
+  /** Motivo por el que la sesion se cerro sola (empresa suspendida, suscripcion vencida). */
+  protected readonly aviso = signal<string | null>(tomarAvisoLogin());
   protected readonly mostrarPassword = signal(false);
 
   protected readonly form = this.fb.nonNullable.group({
@@ -55,10 +58,11 @@ export class LoginPage {
 
   private interpretarError(error: HttpErrorResponse): string {
     if (error.status === 0) return 'No se pudo conectar con el servidor. Verificá tu conexión.';
-    // 401 (credenciales invalidas) y 429 (cuenta bloqueada por intentos) traen en `detail`
-    // el mensaje puntual del backend, con los intentos restantes o los minutos de bloqueo.
+    // 401 (credenciales invalidas), 402 (suscripcion de la empresa vencida), 403 (empresa
+    // suspendida) y 429 (cuenta bloqueada por intentos) traen en `detail` el mensaje puntual del
+    // backend, con los intentos restantes, los minutos de bloqueo o que hacer.
     const detalle = error.error?.detail;
-    if ((error.status === 401 || error.status === 429) && typeof detalle === 'string') {
+    if ([401, 402, 403, 429].includes(error.status) && typeof detalle === 'string') {
       return detalle;
     }
     if (error.status === 401) return 'Correo o contraseña incorrectos.';

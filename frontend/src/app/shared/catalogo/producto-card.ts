@@ -17,6 +17,9 @@ import { ProductoOut } from '../../core/catalogo-e-inventario/catalogo/catalogo.
     class: 'prenda',
     '[class.prenda--agotada]': 'producto().agotado',
     '(click)': 'ir()',
+    // la tarjeta entera es el enlace al detalle: tiene que poder alcanzarse con el teclado
+    tabindex: '0',
+    '(keydown.enter)': 'ir()',
   },
 })
 export class ProductoCard {

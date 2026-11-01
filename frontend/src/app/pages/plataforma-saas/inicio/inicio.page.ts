@@ -6,6 +6,7 @@ import { TiendaOut } from '../../../core/plataforma-saas/saas/saas.models';
 import { SaasService } from '../../../core/plataforma-saas/saas/saas.service';
 import { elegirTienda } from '../../../core/nucleo/tenant/tienda';
 import { TarjetasPlanes } from '../../../shared/planes/tarjetas-planes';
+import { resumenPrendas, resumenUbicacion } from '../../../shared/tiendas';
 
 interface Paso {
   titulo: string;
@@ -37,6 +38,8 @@ export class InicioPage implements OnInit {
 
   protected readonly tiendas = signal<TiendaOut[]>([]);
   protected readonly cargandoTiendas = signal(true);
+  /** Tarjetas fantasma mientras llegan las tiendas: reservan el alto y evitan el salto. */
+  protected readonly esqueleto = [1, 2, 3];
   protected readonly anio = new Date().getFullYear();
 
   protected readonly conSesion = this.auth.estaAutenticado;
@@ -82,6 +85,9 @@ export class InicioPage implements OnInit {
   }
 
   /** La clienta elige a que tienda entra: se recuerda y sigue al login (o a la tienda si ya entro). */
+  protected readonly resumenUbicacion = resumenUbicacion;
+  protected readonly resumenPrendas = resumenPrendas;
+
   protected entrarATienda(tienda: TiendaOut): void {
     elegirTienda(tienda.slug);
     void this.router.navigateByUrl(this.conSesion() ? this.destino() : '/login');

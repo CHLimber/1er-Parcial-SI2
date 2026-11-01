@@ -1,7 +1,7 @@
 <div class="pagina">
   <main class="contenido">
     @if (cargando()) {
-      <p class="estado">Cargando tu pedido…</p>
+      <p class="estado" role="status">Cargando tu pedido…</p>
     } @else if (noEncontrada() || !venta()) {
       <div class="estado estado--error">
         <p>No encontramos ese pedido.</p>
@@ -27,7 +27,7 @@
           </p>
           <a class="boton" routerLink="/carrito">Volver al carrito</a>
         } @else {
-          <img class="pasarela-card__qr" src="/pago-qr.jpeg" alt="Código QR para pagar el pedido" />
+          <img class="pasarela-card__qr" src="/pago-qr.jpeg" alt="Código QR para pagar el pedido" width="817" height="896" />
 
           @if (v.pago?.informado_en) {
             <p class="pasarela-card__aviso">
@@ -53,7 +53,7 @@
           </label>
 
           @if (error(); as mensaje) {
-            <p class="pasarela-card__error">{{ mensaje }}</p>
+            <p class="pasarela-card__error" role="alert">{{ mensaje }}</p>
           }
 
           <div class="pasarela-card__acciones">

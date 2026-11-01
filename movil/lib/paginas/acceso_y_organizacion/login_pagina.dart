@@ -26,6 +26,13 @@ class _LoginPaginaState extends State<LoginPagina> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    // la sesion se pudo cerrar sola (empresa suspendida, suscripcion vencida): se explica por que
+    _error = context.read<AuthService>().tomarAvisoLogin();
+  }
+
+  @override
   void dispose() {
     _email.dispose();
     _password.dispose();
@@ -128,7 +135,13 @@ class _LoginPaginaState extends State<LoginPagina> {
                               )
                             : const Text('INGRESAR'),
                       ),
-                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _enviando ? null : () => context.go('/recuperar-password'),
+                          child: const Text('Olvidaste tu contrasena?'),
+                        ),
+                      ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

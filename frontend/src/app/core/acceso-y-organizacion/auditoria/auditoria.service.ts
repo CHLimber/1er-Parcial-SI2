@@ -18,10 +18,12 @@ export class AuditoriaService {
     if (filtro.accion) params = params.set('accion', filtro.accion);
     if (filtro.desde) params = params.set('desde', filtro.desde);
     if (filtro.hasta) params = params.set('hasta', filtro.hasta);
+    if (filtro.empresa_id) params = params.set('empresa_id', filtro.empresa_id);
     return this.http.get<AuditoriaPaginadoOut>(this.base, { params });
   }
 
-  entidades(): Observable<string[]> {
-    return this.http.get<string[]>(`${this.base}/entidades`);
+  entidades(empresaId?: string | null): Observable<string[]> {
+    const params = empresaId ? new HttpParams().set('empresa_id', empresaId) : undefined;
+    return this.http.get<string[]>(`${this.base}/entidades`, { params });
   }
 }

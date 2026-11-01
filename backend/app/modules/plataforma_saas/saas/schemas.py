@@ -46,6 +46,10 @@ class PlanIn(BaseModel):
 class TiendaOut(BaseModel):
     slug: str
     nombre: str
+    # para que la clienta elija con datos: donde esta y cuanto tiene publicado
+    sucursales: int = 0
+    ciudades: list[str] = []
+    prendas: int = 0
 
 
 class UsoOut(BaseModel):
@@ -180,3 +184,31 @@ class PagoSuscripcionOut(BaseModel):
     pagado_por: str | None
     creado_en: datetime
     confirmado_en: datetime | None
+
+
+class PersonalEmpresaOut(BaseModel):
+    """Una cuenta de personal de una empresa, vista por la plataforma (SUPERADMIN)."""
+
+    id: UUID
+    email: str
+    nombre: str
+    apellido: str
+    rol: str | None
+    cargo: str | None
+    sucursal: str | None
+    activo: bool
+    bloqueado: bool  # demasiados intentos de login fallidos: se libera solo o con desbloquear
+    ultimo_acceso: datetime | None
+
+
+class PasswordPersonalIn(BaseModel):
+    password: str = Field(max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def password_segura(cls, value: str) -> str:
+        return validar_password(value)
+
+
+class EstadoPersonalIn(BaseModel):
+    activo: bool

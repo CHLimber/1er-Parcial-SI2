@@ -37,7 +37,11 @@ import { ConexionService } from '../../core/operacion-sin-conexion/offline/conex
       bottom: 1rem;
       transform: translateX(-50%);
       z-index: 1000;
+      /* con left: 50% queda solo la mitad de la pantalla de ancho disponible: sin max-content
+         el aviso se partia en renglones angostos aunque hubiera lugar */
+      width: max-content;
       max-width: min(40rem, calc(100vw - 2rem));
+      border-radius: var(--radius-sm);
       padding: 0.6rem 1rem;
       font-size: 0.88rem;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);

@@ -2534,6 +2534,177 @@
         copia, pero cada una guarda el archivo en su propio disco.
 
 ===============================================================================
+ 9. REVISION DE LA PLATAFORMA SAAS Y CU07/CU09/CU10 (pedido 2026-11-01)
+===============================================================================
+
+ HECHO 2026-11-01 (backend, web y movil donde aplica; 236 tests, ng build, flutter analyze;
+ probado en vivo contra el Docker local con scratchpad/vivo.py, 35 chequeos):
+
+ 9.1 SUPERADMIN atiende al personal de las empresas. Backend nuevo
+     plataforma_saas/saas/personal_router.py (permisos empresas.leer / empresas.actualizar):
+     GET /saas/empresas/{id}/usuarios, POST /saas/empresas/{id}/administradores,
+     PATCH /saas/usuarios/{id}/estado, POST /saas/usuarios/{id}/password (tambien desbloquea),
+     POST /saas/usuarios/{id}/desbloquear. Solo cuentas STAFF de una empresa (nunca clientas ni
+     la de la plataforma). Web: seccion "Cuentas de personal" dentro de Gestionar empresa en
+     /panel/empresas. registrar_auditoria acepta empresa_id para que lo que hace la plataforma
+     sobre una empresa quede en la bitacora de ESA empresa; GET /auditoria?empresa_id= ya existia,
+     ahora el panel de auditoria del SUPERADMIN tiene selector de empresa y columna Empresa.
+ 9.2 Recuperacion de cuenta (CLIENTE y STAFF). POST /auth/recuperar (siempre la misma respuesta) y
+     POST /auth/restablecer. El token es un JWT con claim `uso` + huella del hash de contrasena
+     vigente: de un solo uso SIN tabla (en cuanto cambia la contrasena deja de coincidir), vence en
+     RECUPERACION_MINUTOS (30). get_current_usuario rechaza todo token con `uso`. El correo sale por
+     SMTP (app/core/correo.py, SMTP_* en .env.example); sin SMTP_HOST el enlace queda en el log, y
+     con RECUPERACION_MOSTRAR_ENLACE=true se devuelve en la respuesta (SOLO demo; en Railway false).
+     Web: /recuperar-password y /restablecer-password, enlace desde el login. Movil:
+     recuperar_password_pagina.dart (abre el enlace en el navegador).
+     [FALTA] configurar un SMTP real (Gmail con contrasena de aplicacion) para el despliegue.
+ 9.3 Suscripcion vencida / empresa suspendida (core/deps.py::exigir_empresa_operativa, en
+     get_staff_actual, get_cajero_actual, get_encargado_actual, login y /auth/yo): el personal que
+     NO es ADMIN no usa la plataforma (402 + cabecera X-Motivo=SUSCRIPCION_VENCIDA); la empresa
+     suspendida corta a todos (403 + EMPRESA_SUSPENDIDA). El ADMIN entra para renovar. /sync/* queda
+     exento (lo registrado antes del vencimiento se acepta, RN06). Web (authInterceptor) y movil
+     (ApiClient.alBloquearseLaEmpresa) cierran la sesion y el login muestra el motivo; el login
+     ya no dice "Ocurrio un error inesperado" ante 402/403. CORS expone X-Motivo.
+ 9.4 Fecha corrida +1 al guardar un plan: panel-empresas usaba vence_en.slice(0, 10) (fecha UTC)
+     contra un input local; 23:59 en Bolivia ya es el dia siguiente en UTC. Ahora fechaLocal().
+     Validaciones nuevas en PUT /saas/empresas/{id}/plan: ACTIVA/PRUEBA no puede vencer en el
+     pasado (422) ni darse a una empresa suspendida (409); el pago manual a una suspendida tambien
+     da 409. La lista muestra un estado unico (Suspendida > Vencida/Cancelada > En prueba > Activa)
+     y la ficha avisa por que el personal no puede entrar.
+ 9.5 CU07 Elegir tienda: GET /saas/tiendas suma sucursales, ciudades y prendas; la portada y un
+     selector nuevo dentro de la tienda (lista de tarjetas, marca la actual) reemplazan al <select>.
+ 9.6 CU09 Recepcion: la ficha explica el flujo (3 pasos, "el stock no cambia hasta confirmar"),
+     cada linea muestra talla y color con muestra, "Stock hoy" y "Quedara", confirmar pide
+     confirmacion con el impacto y, despues, un recuadro "entro al stock" con la tabla Habia /
+     Entro / Hay ahora y enlace a Inventario. DetalleOut suma codigo_hex y stock_actual;
+     MovimientoOut suma talla, color y codigo_hex.
+ 9.7 CU10 Inventario: indicadores de la sucursal (GET /inventario/resumen), listado inicial con
+     lo que menos hay (GET /inventario/variantes ya no exige texto; filtro ?alerta=agotadas|bajo),
+     estado por prenda, previa del ajuste ("pasara de X a Y") y kardex con Variacion/Antes/Despues.
+ 9.8 Tests: test_saas.py usaba una fecha fija (14/10/2026) y fallaba desde que paso; ahora usa el
+     reloj real. tests/test_bloqueo_y_recuperacion.py nuevo (17 pruebas).
+
+ 9.9 Roles y usuarios reducidos (pedido: "hay muchos roles y usuarios"). Se toman los actores
+     documentados (ducumentacion/CAPITULOS_I_II 2.2 y docs/PARCIALES 1.1): CLIENTE, SUPERADMIN,
+     ADMIN, ENCARGADO y empleado = CAJERO o VENDEDOR. Se elimina ALMACEN (cargo y rol; lo absorbe
+     ENCARGADO, que ya tenia sus permisos): db/01_schema.sql, db/03_datos_iniciales.sql, CARGOS
+     del backend, de la web y del movil, y db/reparaciones/sin_cargo_almacen.sql (aplicada en el
+     Docker local; FALTA en Railway). El seed baja de 22 a 14 cuentas de personal: FashionStore
+     queda con admin, vendedor.scz, cajera.scz, encargada.lapaz, cajero.cbba, encargada.sucre,
+     encargada.tarija y encargado.oruro (cada sucursal conserva una persona porque
+     04_historial_demo.sql genera las ventas con el cajero o encargado de cada sucursal). Se
+     sacaron almacen.scz, cajera.lapaz, encargado.cbba, cajero.sucre, cajera.tarija y
+     cajera.oruro. Una base existente conserva esas cuentas (pueden tener actividad): se
+     desactivan desde CU13 o recreando el volumen (`docker compose down -v`). Esto reemplaza la
+     decision 2.19.1.d ("se mantienen VENDEDOR y ALMACEN"): VENDEDOR si se mantiene.
+     Probado: 01-04 desde cero en un Postgres 16 descartable (14 cuentas, 1037 ventas de
+     historial, cargos {ENCARGADO,CAJERO,VENDEDOR}) y la migracion dos veces sobre el Docker local.
+     No se regeneraron docs/FASHIONSTORE_BD.sql ni docs/bd_documento (los arma armar.py).
+
+ 9.10 Se elimina VENDEDOR (decision: "cajero y vendedor es la misma cosa; nos quedamos con CAJERO,
+     que es mas versatil"). Los roles quedan SUPERADMIN, ADMIN, ENCARGADO y CAJERO (y la clienta sin
+     rol). Mismo patron que 9.9: enum cargo_empleado = ('ENCARGADO','CAJERO') en db/01_schema.sql,
+     rol y matriz de VENDEDOR fuera de db/03_datos_iniciales.sql, CARGOS del backend, de la web y
+     del movil, y db/reparaciones/sin_cargo_vendedor.sql (re-ejecutable; aplicada dos veces en el
+     Docker local; FALTA aplicarla en Railway, despues de sin_cargo_almacen.sql). CAJERO ABSORBE
+     reservas.leer y reservas.actualizar (lo unico que tenia VENDEDOR y no CAJERO; pasa de 8 a 10
+     permisos): ahora el cajero tambien atiende reservas en el piso, y la web/movil ya armaban
+     el menu por permiso (Atender reservas, solapa Reserva de /offline), asi que no hubo que
+     tocar pantallas; el login web sigue mandando al CAJERO a /caja y desde ahi llega a Atender
+     reservas. Sin la cuenta vendedor.scz el seed queda con 7 cuentas de personal en FashionStore
+     (admin, cajera.scz, encargada.lapaz, cajero.cbba, encargada.sucre, encargada.tarija,
+     encargado.oruro). Una base existente conserva vendedor.scz como CAJERO (puede tener
+     actividad): se desactiva desde CU13 o recreando el volumen. Scripts: preparar_escenario_pruebas
+     registra la reserva offline con cajera.scz; e2e_sincronizacion.py perdio el chequeo
+     "vendedor sin caja.crear -> SIN_PERMISO" porque ningun rol del seed lo reproduce (haria falta
+     un rol propio de empresa). Docs: README, movil/README, CLAUDE.md, RAILWAY (seccion "Sin cargo
+     VENDEDOR"), GUIA_PRUEBAS_CU, PARCIALES (actor Empleado = CAJERO), CAPITULOS_I_II y los .puml
+     de actores. "Vendedor" como FILTRO de reportes (venta.registrada_por_id) NO cambia: es quien
+     registro la venta, sea cajero o encargado. No se regeneraron docs/FASHIONSTORE_BD.sql ni
+     docs/bd_documento, ni los .drawio de ducumentacion/UML 2.5 (siguen mostrando el cargo viejo).
+     Probado: 01-04 desde cero en un Postgres 16 descartable (4 roles: ADMIN 3, CAJERO 4,
+     ENCARGADO 5, SUPERADMIN 1 cuentas; cargos {ENCARGADO,CAJERO}; 1057 ventas H-%), migracion
+     dos veces sobre el Docker local (rol_vendedor=0, cajero_con_reservas=2), pytest 236 y ruff
+     verdes, flutter analyze sin issues, y backend reconstruido: cajera.scz inicia sesion con
+     reservas.leer/actualizar y GET /reservas/sucursal responde 200.
+ 9.11 Revision de eficiencia del backend (pedido: "algunos CU tienen redundancia o pasan por varios
+     archivos"). Diagnostico, con lo que tenia razon el usuario y lo que no:
+     SI habia redundancia real, en tres lugares:
+      - Helpers de alcance por sucursal copiados letra por letra: `_sucursal_visible` en
+        inventario, recepciones, reportes, devoluciones y envios/admin_router, y `_mi_sucursal` /
+        `_es_admin` en traspasos. Ahora es `app/core/tenant.py::sucursal_visible`.
+      - 17 INSERT a `notificacion` escritos a mano en 8 archivos; en 3 sitios (reservas x2, alerta
+        de stock bajo) era "traer a los encargados y un INSERT por cada uno". Ahora
+        `app/core/notificaciones/servicio.py::avisar_personal_de_sucursal` (un INSERT ... SELECT
+        sobre empleado) lo usan reservas, traspasos y pagos (`notificar_cajeros`).
+      - La cadena de autenticacion del personal repetia lecturas del mismo usuario en cada request:
+        get_current_usuario (usuario) + get_staff_actual (usuario+rol+empleado) +
+        exigir_empresa_operativa (empresa+suscripcion+rol) + obtener_permisos + (si el endpoint es
+        con plan) plan_de_empresa = 4 consultas, 5 con plan, ANTES de llegar al handler.
+     SI habia N+1: GET /saas/empresas (3 consultas por empresa: admins, suscripcion, uso),
+     GET /saas/suscripciones (1 uso por empresa), GET /envios/mis (1 consulta de eventos por envio,
+     hasta 50) y GET /notificaciones (2 COUNT mas el SELECT).
+     NO era cierto que los flujos "salten por muchos archivos sin motivo": la indireccion es router
+     -> core (deps/tenant/plan, una linea cada uno) y pagos/servicio.py / envios/servicio.py, que
+     existen a proposito porque los comparten 3 routers y evitan ciclos (ver su docstring); no hay
+     capa de repositorio ni de servicio intermedia. Lo unico sin motivo era que reservas importaba
+     `_alertar_stock_bajo` a traves de ventas/router.py: ahora va directo a pagos/servicio.py
+     (`alertar_stock_bajo`, ya publico). Tampoco se tocaron, a proposito: los schemas repetidos
+     entre modulos (regla del proyecto), los 7 `_exigir_cliente` (cada uno responde un `detail`
+     distinto: es contrato de la API) ni los 3 buscadores de variantes (parecen iguales pero cada
+     uno devuelve columnas, orden y limite distintos).
+     CAMBIADO (mismos paths, schemas, codigos y `detail`; 28 tests nuevos en tests/test_rendimiento.py):
+      - core/deps.py: get_staff_actual y _empleado_con_permiso (caja/reservas) resuelven usuario,
+        rol, empleado, empresa, vigencia, permisos y plan con UNA consulta (_SQL_PERSONAL /
+        _SQL_EMPLEADO_OPERATIVO); la decision suspendida/vencida paso a la funcion pura
+        _evaluar_empresa (exigir_empresa_operativa sigue existiendo para login y rutas sueltas).
+        Los chequeos se hacen en el mismo orden de antes (permiso -> empresa -> sucursal).
+        El plan queda en request.state.plan_empresa y core/plan.py::requiere_funcion_plan lo usa
+        sin volver a la base (si la dependencia se reemplaza, p.ej. en un test, consulta como antes).
+        Por request de personal: 4 -> 2 consultas, y 5 -> 2 en endpoints con plan.
+      - core/plan.py::usos_de_empresas + saas/router.py: /saas/empresas pasa de 1+3N a 4 consultas
+        (empresas, admins, suscripciones, usos) y /saas/suscripciones de 1+N a 2.
+      - envios/router.py::armar_envios_out: /envios/mis trae los eventos de todos los envios con
+        ANY($1): 1+N -> 2 consultas.
+      - notificaciones/router.py: GET /notificaciones 3 -> 2 consultas (total y no_leidas juntos con
+        COUNT ... FILTER).
+      - pagos/servicio.py::alertar_stock_bajo (se corre tras CADA venta POS, aprobacion de pago y
+        conversion de reserva): de 3 + N consultas con stock bajo (2 sin) a UNA sentencia con CTE.
+      - reservas/router.py: crear y cancelar reserva avisan a los encargados con 1 sentencia en vez
+        de 1 + N.
+     INDICES (db/reparaciones/indices_rendimiento.sql, ya en db/01_schema.sql al final de cada
+     bloque; solo CREATE INDEX IF NOT EXISTS, sin cambio de semantica): FK sin indice usadas en
+     WHERE/JOIN -- venta_detalle(venta_id) (la mas consultada del sistema), recepcion_detalle,
+     traspaso_detalle, devolucion_detalle (por devolucion y por linea de venta) y reserva_historial;
+     listados por sucursal de recepcion, traspaso (origen y destino), devolucion y
+     movimiento_inventario; venta(reserva_id) y venta(fecha) WHERE estado='PENDIENTE' (job de
+     vencimiento); notificacion(usuario_id, fecha DESC) (GET /notificaciones lista TODAS, el
+     indice existente solo cubre las no leidas); proveedor(empresa_id), producto(proveedor_id) y
+     sesion_caja(empleado_id) WHERE ABIERTA. Con los datos de demo no se nota (tablas chicas): es
+     para que no se degrade al crecer.
+     DESCARTADO a proposito: window function para el total de /auditoria (el COUNT separado no
+     necesita los JOIN ni el orden; con count(*) OVER() seria peor); cache de empresa_publica por
+     slug (una suspension tardaria en notar); fusionar get_current_usuario con get_staff_actual
+     (ahorraria 1 consulta mas, pero cambia el contrato de las dependencias); los INSERT de
+     venta_detalle / fn_mover_inventario linea por linea (son a proposito: un trigger por linea y
+     el manejo de stock agotado por item). Quedan: /auth/yo y login arman UsuarioOut con 2 consultas
+     (plan + permisos), 1 vez por sesion; reportes/_alcance trae las sucursales aparte.
+     PROBADO: pytest 236 -> 264 y ruff verdes; backend reconstruido en el Docker local con el
+     archivo de indices aplicado (dos veces, idempotente) y 01_schema.sql cargado desde cero en una
+     base descartable sin errores; 21 endpoints (admin, superadmin, cliente, sin token) con el
+     mismo status y el mismo cuerpo antes y despues (salvo /auditoria, que crece con cada login de
+     la prueba, y modelo.entrenado_en de /analitica, que se reentrena al reiniciar); consultas por request medidas en proceso
+     contra Postgres: /saas/empresas 13 -> 6 (3 empresas), /saas/suscripciones 7 -> 4,
+     /saas/suscripcion 6 -> 4, /inventario/resumen 6 -> 4, /reportes/indicadores 7 -> 4,
+     /notificaciones 4 -> 3; reserva creada y cancelada en vivo (los encargados reciben ambos
+     avisos) y alertas de stock bajo ejecutadas sobre Postgres real (2 encargados -> 2 avisos con
+     los nombres juntos; sin prendas bajas no inserta). FALTA: aplicar indices_rendimiento.sql en
+     Railway; no se regeneraron docs/FASHIONSTORE_BD.sql ni docs/bd_documento.
+
+ NO se verifico visualmente en un navegador: los cambios de pantalla compilan y la API esta
+ probada, falta mirarlos.
+
+===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)
 ===============================================================================
 

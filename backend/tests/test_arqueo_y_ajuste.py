@@ -97,7 +97,7 @@ def test_resolver_en_efectivo_sin_sesion_de_caja_devuelve_409_sin_vender(cliente
 
 
 def test_resolver_con_tarjeta_no_exige_sesion_de_caja(cliente):
-    # no mueve el cajon: un VENDEDOR (sin permiso de caja) puede cobrarlo
+    # no mueve el cajon: quien no tiene permiso de caja (p.ej. un rol propio de empresa) puede cobrarlo
     conn = _conn_resolver(sesion_abierta=False)
     respuesta = _resolver(cliente, conn, "TARJETA")
     assert respuesta.status_code == 200, respuesta.text

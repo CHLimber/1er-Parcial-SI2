@@ -117,12 +117,16 @@
 
 .detalle {
   display: grid;
-  grid-template-columns: minmax(0, 22rem) 1fr;
+  grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+  align-items: start;
   gap: clamp(1.5rem, 4vw, 3rem);
 }
 
 .detalle__imagen-cont {
-  position: relative;
+  position: sticky;
+  top: 1rem;
+  /* `start` en la grilla: estirada a la altura de la columna de datos, la foto perdia su 3/4 */
+  align-self: start;
   aspect-ratio: 3 / 4;
   overflow: hidden;
   background: #fff;
@@ -156,6 +160,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .detalle__categoria {
@@ -253,7 +259,11 @@
 }
 
 .reserva-accion {
+  position: relative;
   margin-top: 1.5rem;
+  /* Hueco fijo para el mensaje de "agregado" o de error: aparece sin empujar la
+     disponibilidad hacia abajo. */
+  padding-bottom: 1.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -264,6 +274,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+.reserva-accion__confirmacion,
+.reserva-accion__error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 1.6rem);
 }
 
 .reserva-accion__confirmacion {
@@ -327,6 +345,8 @@
 .sucursal__info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .sucursal__nombre {
@@ -359,8 +379,36 @@
 
 @media (max-width: 720px) {
   .detalle {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
+
+  .detalle__imagen-cont {
+    position: relative;
+    top: auto;
+  }
+}
+
+/* Marcadores de la carga (`.esqueleto` global): mantienen la forma de la ficha (foto 3/4 + datos)
+   y no hay salto cuando llega el producto. La foto conserva su caja pero con el fondo del esqueleto. */
+.detalle__imagen-cont.esqueleto {
+  background: var(--paper-line);
+}
+
+.esqueleto--linea {
+  display: block;
+  height: 1rem;
+  border-radius: var(--radius-pill);
+}
+
+.esqueleto--corta {
+  width: 40%;
+}
+
+.esqueleto--titulo {
+  display: block;
+  height: 2.6rem;
+  width: 75%;
+  border-radius: var(--radius-sm);
 }
 
 @media (max-width: 48rem) {

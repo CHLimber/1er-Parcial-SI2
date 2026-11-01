@@ -29,6 +29,7 @@ import 'paginas/plataforma_saas/panel_suscripcion_pagina.dart';
 import 'paginas/catalogo_e_inventario/panel_traspasos_pagina.dart';
 import 'paginas/acceso_y_organizacion/panel_usuarios_pagina.dart';
 import 'paginas/catalogo_e_inventario/producto_detalle_pagina.dart';
+import 'paginas/acceso_y_organizacion/recuperar_password_pagina.dart';
 import 'paginas/acceso_y_organizacion/registro_pagina.dart';
 import 'paginas/operacion_comercial/reservar_pagina.dart';
 import 'paginas/catalogo_e_inventario/tienda_pagina.dart';
@@ -36,7 +37,7 @@ import 'paginas/operacion_sin_conexion/venta_offline_pagina.dart';
 import 'compartido/navegacion_cliente.dart';
 
 /// Rutas que solo puede ver quien NO tiene sesion (espejo de `invitadoGuard`).
-const _rutasDeInvitado = {'/login', '/registro'};
+const _rutasDeInvitado = {'/login', '/registro', '/recuperar-password'};
 
 /// Permisos exigidos por cada pantalla del panel, espejo de `permisoGuard` en
 /// `frontend/src/app/app.routes.ts`. Quien autoriza de verdad siempre es la API.
@@ -119,6 +120,10 @@ GoRouter construirRouter(AuthService auth) {
     routes: [
       GoRoute(path: '/login', builder: (contexto, estado) => const LoginPagina()),
       GoRoute(path: '/registro', builder: (contexto, estado) => const RegistroPagina()),
+      GoRoute(
+        path: '/recuperar-password',
+        builder: (contexto, estado) => const RecuperarPasswordPagina(),
+      ),
 
       // Barra inferior del cliente: las cuatro pantallas que se usan a diario.
       StatefulShellRoute.indexedStack(

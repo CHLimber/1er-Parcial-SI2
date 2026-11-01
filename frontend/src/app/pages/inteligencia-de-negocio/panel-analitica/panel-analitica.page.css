@@ -47,8 +47,43 @@
   white-space: nowrap;
 }
 
-.columnas > section,
+/* ---------- estabilidad ---------- */
+
+/* "Reentrenar modelos" / "Entrenando…": el boton no cambia de ancho. */
+.barra > .boton {
+  min-width: 11rem;
+}
+
+.campo-chico {
+  max-width: 6rem;
+}
+
+/* Los dos paneles lado a lado (segmentos / dias atipicos) y las dos columnas de la evaluacion
+   son tablas: si no entran, se deslizan en vez de aplastarse. */
+.columnas > section.panel,
 .columnas > div {
-  flex: 1 1 24rem;
-  min-width: 0;
+  flex: 1 1 28rem;
+}
+
+.ejemplos {
+  overflow-wrap: anywhere;
+  max-width: 18rem;
+}
+
+.hallazgos li {
+  overflow-wrap: anywhere;
+}
+
+/* Evaluacion de modelos: la tabla de MAE/RMSE/R2/MAPE son cuatro numeros por fila, no necesita
+   los 32rem minimos. */
+.columnas .tabla-envoltorio > .tabla {
+  min-width: 20rem;
+}
+
+.tabla--densa {
+  min-width: 36rem;
+}
+
+.panel > .campo__ayuda {
+  margin: 0 0 0.85rem;
 }

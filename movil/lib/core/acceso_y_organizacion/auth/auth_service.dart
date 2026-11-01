@@ -22,6 +22,7 @@ class AuthService extends ChangeNotifier {
   String? _token;
   UsuarioOut? _usuario;
   bool _listo = false;
+  String? _avisoLogin;
 
   String? get token => _token;
   UsuarioOut? get usuario => _usuario;
@@ -46,6 +47,12 @@ class AuthService extends ChangeNotifier {
     api.alExpirarSesion = () {
       if (estaAutenticado) cerrarSesion();
     };
+    // empresa suspendida o suscripcion vencida: se cierra la sesion y el login explica por que
+    api.alBloquearseLaEmpresa = (mensaje) {
+      if (!estaAutenticado) return;
+      _avisoLogin = mensaje;
+      cerrarSesion();
+    };
 
     final prefs = await SharedPreferences.getInstance();
     final crudo = prefs.getString(_claveSesion);
@@ -67,6 +74,21 @@ class AuthService extends ChangeNotifier {
   Future<UsuarioOut> iniciarSesion(String email, String password) async {
     final respuesta = await api.post('/auth/login', cuerpo: {'email': email, 'password': password});
     return _guardar(respuesta as Map<String, dynamic>);
+  }
+
+  /// Motivo por el que la sesion se cerro sola; se lee una vez (lo muestra el login).
+  String? tomarAvisoLogin() {
+    final aviso = _avisoLogin;
+    _avisoLogin = null;
+    return aviso;
+  }
+
+  /// Recuperacion de cuenta, paso 1: pide el enlace por correo. Responde igual exista o no el
+  /// correo; `enlace` solo viene en el modo demostracion del backend (sin correo configurado).
+  Future<({String mensaje, String? enlace})> recuperarPassword(String email) async {
+    final respuesta = await api.post('/auth/recuperar', cuerpo: {'email': email})
+        as Map<String, dynamic>;
+    return (mensaje: respuesta['mensaje'] as String, enlace: respuesta['enlace'] as String?);
   }
 
   Future<UsuarioOut> registrarse(RegistroRequest datos) async {

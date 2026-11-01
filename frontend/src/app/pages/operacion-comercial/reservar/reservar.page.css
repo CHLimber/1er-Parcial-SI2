@@ -119,11 +119,13 @@
 }
 
 .carrito__nombre {
+  overflow-wrap: anywhere;
   font-weight: 600;
   color: var(--ink);
 }
 
 .carrito__variante {
+  overflow-wrap: anywhere;
   font-size: 0.78rem;
   color: var(--ink-soft);
 }
@@ -165,7 +167,7 @@
 
 .formulario__fila {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
 }
 
@@ -173,6 +175,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .campo label {
@@ -202,6 +205,13 @@
   color: var(--ink);
   font-family: inherit;
   font-size: 0.9rem;
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  width: 100%;
+  min-width: 0;
 }
 
 .campo textarea {
@@ -275,6 +285,7 @@
 }
 
 .confirmacion__linea {
+  overflow-wrap: anywhere;
   margin: 0;
   color: var(--ink-soft);
 }

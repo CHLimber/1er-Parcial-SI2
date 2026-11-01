@@ -1,7 +1,7 @@
 """Ajustes manuales de stock (PENDIENTES.txt 2.6).
 
 fn_mover_inventario() ya acepta el tipo AJUSTE desde que se escribio (db/02_logica.sql) y el
-permiso inventario.actualizar ya estaba sembrado para ADMIN, ENCARGADO y ALMACEN, pero hasta
+permiso inventario.actualizar ya estaba sembrado para ADMIN y ENCARGADO, pero hasta
 ahora ningun endpoint lo disparaba: era la unica forma de corregir un kardex (append-only, ver
 CLAUDE.md) que la aplicacion no exponia. Este modulo no escribe cantidad_fisica/cantidad_reservada
 directamente en ningun momento -- todo pasa por fn_mover_inventario, igual que recepciones.
@@ -17,11 +17,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.auditoria import registrar_auditoria
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
-from app.core.tenant import empresa_de, es_admin_empresa, exigir_sucursal, exigir_variantes
+from app.core.tenant import empresa_de, exigir_sucursal, exigir_variantes, sucursal_visible
 from app.modules.catalogo_e_inventario.inventario.schemas import (
     AjusteIn,
     AjusteOut,
     MovimientoKardexOut,
+    ResumenInventarioOut,
     VarianteBuscadaOut,
 )
 
@@ -31,23 +32,10 @@ puede_ver = requiere_permiso("inventario.leer", "inventario.actualizar")
 puede_ajustar = requiere_permiso("inventario.actualizar")
 
 
-def _sucursal_visible(staff: dict) -> UUID | None:
-    """Mismo criterio que recepciones.py: el ADMIN de la empresa ve y ajusta todas las de su
-    empresa; el resto solo la suya."""
-    if es_admin_empresa(staff):
-        return None
-    if staff["sucursal_id"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    return staff["sucursal_id"]
-
-
 async def _resolver_sucursal(
     conn: asyncpg.Connection, sucursal_id: UUID | None, staff: dict
 ) -> UUID:
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     destino = sucursal_id or limite or staff["sucursal_id"]
     if destino is None:
         raise HTTPException(
@@ -61,15 +49,53 @@ async def _resolver_sucursal(
     return destino
 
 
+@router.get("/resumen", response_model=ResumenInventarioOut)
+async def resumen_de_inventario(
+    sucursal_id: UUID | None = Query(default=None),
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> ResumenInventarioOut:
+    """Indicadores de la sucursal: cuanta ropa hay, cuanta esta comprometida y cuantas prendas
+    estan agotadas o por debajo de su minimo."""
+    destino = await _resolver_sucursal(conn, sucursal_id, staff)
+    fila = await conn.fetchrow(
+        """
+        SELECT s.nombre AS sucursal,
+               COUNT(i.id)::int                                            AS variantes,
+               COALESCE(SUM(i.cantidad_fisica), 0)::int                    AS unidades_fisicas,
+               COALESCE(SUM(i.cantidad_reservada), 0)::int                 AS unidades_reservadas,
+               COALESCE(SUM(i.disponible), 0)::int                         AS unidades_disponibles,
+               COUNT(i.id) FILTER (WHERE i.disponible <= 0)::int           AS agotadas,
+               COUNT(i.id) FILTER (WHERE i.disponible > 0
+                                     AND i.disponible <= i.stock_minimo)::int AS stock_bajo
+        FROM sucursal s
+        LEFT JOIN inventario i ON i.sucursal_id = s.id
+             AND EXISTS (SELECT 1 FROM producto_variante pv JOIN producto pr ON pr.id = pv.producto_id
+                          WHERE pv.id = i.variante_id AND pv.activa AND pr.activo)
+        WHERE s.id = $1
+        GROUP BY s.nombre
+        """,
+        destino,
+    )
+    return ResumenInventarioOut(sucursal_id=destino, **dict(fila))
+
+
 @router.get("/variantes", response_model=list[VarianteBuscadaOut])
 async def buscar_variantes(
-    q: str = Query(min_length=1, description="SKU, codigo de barras o nombre de la prenda"),
+    q: str = Query(default="", max_length=120, description="SKU, codigo de barras o nombre de la prenda"),
     sucursal_id: UUID | None = Query(default=None),
+    alerta: str | None = Query(
+        default=None,
+        pattern="^(agotadas|bajo)$",
+        description="Solo prendas agotadas o con stock bajo (por debajo de su minimo)",
+    ),
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[VarianteBuscadaOut]:
     """Buscador para elegir que ajustar, con el saldo actual de la sucursal destino a la vista
-    (mismo patron que recepciones.buscar_variantes)."""
+    (mismo patron que recepciones.buscar_variantes). Sin texto lista las prendas con menos
+    disponible primero, que es lo que hay que mirar antes que nada; con `alerta` filtra las que
+    necesitan reposicion."""
     destino = await _resolver_sucursal(conn, sucursal_id, staff)
 
     filas = await conn.fetch(
@@ -79,7 +105,8 @@ async def buscar_variantes(
                s.nombre AS sucursal,
                COALESCE(i.cantidad_fisica, 0)    AS cantidad_fisica,
                COALESCE(i.cantidad_reservada, 0) AS cantidad_reservada,
-               COALESCE(i.disponible, 0)         AS disponible
+               COALESCE(i.disponible, 0)         AS disponible,
+               COALESCE(i.stock_minimo, 0)       AS stock_minimo
         FROM producto_variante pv
         JOIN producto pr ON pr.id = pv.producto_id
         JOIN talla t     ON t.id = pv.talla_id
@@ -87,14 +114,19 @@ async def buscar_variantes(
         JOIN sucursal s  ON s.id = $2
         LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
         WHERE pv.activa AND pr.activo AND pr.empresa_id = s.empresa_id
-          AND (pv.sku ILIKE '%' || $1 || '%'
+          AND ($1 = '' OR pv.sku ILIKE '%' || $1 || '%'
                OR pv.codigo_barras ILIKE '%' || $1 || '%'
                OR pr.nombre ILIKE '%' || $1 || '%')
-        ORDER BY pr.nombre, t.orden, c.nombre
-        LIMIT 25
+          AND ($3::text IS NULL
+               OR ($3 = 'agotadas' AND COALESCE(i.disponible, 0) <= 0)
+               OR ($3 = 'bajo' AND COALESCE(i.disponible, 0) > 0
+                               AND COALESCE(i.disponible, 0) <= COALESCE(i.stock_minimo, 0)))
+        ORDER BY COALESCE(i.disponible, 0), pr.nombre, t.orden, c.nombre
+        LIMIT 40
         """,
-        q,
+        q.strip(),
         destino,
+        alerta,
     )
     # sucursal_id no sale del JOIN (la variante puede no tener fila de inventario todavia ahi,
     # ver COALESCE arriba): siempre es la sucursal destino que se resolvio.

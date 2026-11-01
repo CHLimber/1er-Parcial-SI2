@@ -12,9 +12,64 @@
   --radius: 16px;
   --radius-pill: 999px;
 
-  --font-display: 'Bodoni Moda', 'Didot', Georgia, serif;
-  --font-body: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* altura comun de botones, campos y solapas (ver panel-comun.css) */
+  --alto-control: 2.5rem;
+  --alto-control-chico: 2rem;
+
+  /* Cada familia web lleva delante su "Fallback" con metricas ajustadas (ver @font-face
+     de abajo): asi el cambio de fuente de reserva a la web no mueve el texto. */
+  --font-display: 'Bodoni Moda', 'Bodoni Moda Fallback', 'Didot', Georgia, serif;
+  --font-body: 'Work Sans', 'Work Sans Fallback', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ==========================================================================
+   Fuentes de reserva con metricas ajustadas (evitan el salto de layout al cargar)
+   --------------------------------------------------------------------------
+   Las fuentes de Google se cargan con `display=swap`: primero se pinta con la de reserva y
+   al llegar la web el texto cambia de ancho y alto, y todo lo de abajo se corre. Estas tres
+   reglas hacen que Arial / Georgia / Courier New ocupen el MISMO espacio que la fuente
+   final (size-adjust = ancho medio relativo; los overrides igualan el alto de linea).
+   Valores calculados con las tablas hmtx/hhea de cada archivo .ttf.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Work Sans Fallback';
+  src: local('Arial'), local('Liberation Sans'), local('Helvetica Neue'), local('Helvetica');
+  size-adjust: 111.8%;
+  ascent-override: 83.2%;
+  descent-override: 21.7%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Bodoni Moda Fallback';
+  src: local('Georgia');
+  font-weight: 400 700;
+  size-adjust: 108%;
+  ascent-override: 104.2%;
+  descent-override: 37%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'Bodoni Moda Fallback';
+  src: local('Georgia Italic');
+  font-style: italic;
+  font-weight: 400 700;
+  size-adjust: 108%;
+  ascent-override: 104.2%;
+  descent-override: 37%;
+  line-gap-override: 0%;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Fallback';
+  src: local('Courier New'), local('Liberation Mono');
+  size-adjust: 100%;
+  ascent-override: 102%;
+  descent-override: 30%;
+  line-gap-override: 0%;
 }
 
 * {
@@ -26,12 +81,30 @@ body {
   height: 100%;
 }
 
+/* Con el cajon del panel abierto, la pagina de atras no se desliza (ver panel-shell.ts).
+   `scrollbar-gutter: stable` evita el salto de ancho al ocultar la barra. */
+html.cajon-abierto {
+  overflow: hidden;
+}
+
+html {
+  /* Reserva siempre el carril de la barra de scroll: sin esto, al pasar de una pagina corta
+     a una larga (o al cargar la lista) aparece la barra y todo el contenido se corre ~15px. */
+  scrollbar-gutter: stable;
+  /* El ancla de un enlace (#id) no queda tapada por una cabecera pegada arriba. */
+  scroll-padding-top: 4.5rem;
+}
+
 body {
   margin: 0;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
+  /* `clip` y no `hidden`: corta lo que se desborde de lado sin volver a body un contenedor de
+     scroll (hidden rompe los `position: sticky` de adentro). Es la red de seguridad: si un
+     hijo se pasa de ancho, la pagina no se desliza de costado. */
+  overflow-x: clip;
 }
 
 h1,
@@ -49,6 +122,19 @@ input,
 select,
 textarea {
   border-radius: var(--radius-sm);
+}
+
+/* Los campos nativos traen su propia tipografia del sistema: con esto toman la de la app y
+   su alto no depende del sistema operativo. */
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* Un boton deshabilitado no debe cambiar de tamanio ni mostrar cursor de accion. */
+button:disabled {
+  cursor: not-allowed;
 }
 
 a {
@@ -110,6 +196,21 @@ svg {
   max-width: 100%;
 }
 
+/* Con width/height como atributos (para reservar el espacio antes de que cargue la foto),
+   `max-width: 100%` sin esto deformaria la imagen al achicarse. Las clases del proyecto que
+   fijan `height` le ganan (especificidad cero aca). */
+img {
+  height: auto;
+}
+
+/* Un titular largo (nombre de prenda, razon social) corta en vez de ensanchar su tarjeta. */
+h1,
+h2,
+h3,
+h4 {
+  overflow-wrap: anywhere;
+}
+
 /* Un SKU, un mail o una URL larga no tienen donde cortar y estiran la fila entera. */
 body {
   overflow-wrap: break-word;
@@ -139,5 +240,108 @@ body {
   input[type='radio'] {
     width: 1.15rem;
     height: 1.15rem;
+  }
+}
+
+/* ==========================================================================
+   Utilidades compartidas (clases nuevas; las pantallas las usan si las necesitan)
+   ========================================================================== */
+
+/* Una sola linea con puntos suspensivos: nombres, emails y SKU dentro de flex/grid.
+   El padre flex necesita `min-width: 0` (o este mismo elemento, que ya lo trae). */
+.truncar {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Hueco reservado para el mensaje de un campo (error o ayuda). Al validar (en el blur) el mensaje
+   entra en ese hueco en vez de empujar el campo siguiente justo cuando se le hace clic. El margen
+   negativo de abajo es lo que mide el texto (linea + separacion): la altura del campo es la misma
+   con y sin mensaje. Va junto a la clase `campo` de cada pagina de acceso. */
+.campo-reservado {
+  padding-bottom: 1.9rem;
+  margin-bottom: -1.15rem;
+}
+
+.campo-reservado > .campo__error:last-child,
+.campo-reservado > .campo__ayuda:last-child {
+  margin-bottom: -1.4rem;
+}
+
+/* Carrusel: una sola fila de tarjetas deslizable (recomendaciones de la tienda). */
+.carrusel {
+  list-style: none;
+  margin: -0.5rem 0 0;
+  padding: 0.5rem 0 0.75rem;
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.carrusel > li {
+  flex: 0 0 12.5rem;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+@media (max-width: 48rem) {
+  .carrusel > li {
+    flex-basis: 10.5rem;
+  }
+}
+
+/* Esqueleto de carga: reserva el alto del contenido real para que no salte al llegar. Es un
+   pulso (no un brillo que cruza) para que se vea igual en cada pantalla. Se le da el alto con
+   `height` o `min-height` en el sitio de uso; si el elemento ya tiene su propia caja (una
+   tarjeta con fondo y borde), la regla de la pagina manda y de `.esqueleto` queda el pulso. */
+.esqueleto {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: var(--paper-line);
+  animation: esqueleto-latido 1.4s ease-in-out infinite;
+}
+
+/* Tarjeta fantasma: fondo claro y borde, como la tarjeta real. */
+.esqueleto--tarjeta {
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+/* Fila fantasma de una lista (mis compras, mis reservas): dos lineas de texto sobre fondo claro. */
+.esqueleto--fila {
+  position: relative;
+  height: 6.5rem;
+  background: var(--white);
+}
+
+.esqueleto--fila::before,
+.esqueleto--fila::after {
+  content: '';
+  position: absolute;
+  left: 1.25rem;
+  height: 0.8rem;
+  border-radius: var(--radius-pill);
+  background: var(--paper-line);
+}
+
+.esqueleto--fila::before {
+  top: 1.2rem;
+  width: min(9rem, 40%);
+}
+
+.esqueleto--fila::after {
+  top: 3.2rem;
+  width: min(16rem, 70%);
+}
+
+@keyframes esqueleto-latido {
+  50% {
+    opacity: 0.5;
   }
 }

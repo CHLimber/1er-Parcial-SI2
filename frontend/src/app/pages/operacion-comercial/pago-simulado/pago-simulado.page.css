@@ -7,9 +7,10 @@
 .contenido {
   min-height: 100dvh;
   display: flex;
-  align-items: center;
+  /* Arriba y no centrada: si aparece un error o cambia el aviso, la tarjeta no salta. */
+  align-items: flex-start;
   justify-content: center;
-  padding: 1.5rem;
+  padding: clamp(1.25rem, 6vh, 3.5rem) 1.25rem;
 }
 
 .estado {
@@ -24,6 +25,7 @@
 
 .pasarela-card {
   width: min(26rem, 100%);
+  min-width: 0;
   background: var(--white);
   border-radius: var(--radius);
   padding: clamp(1.5rem, 4vw, 2.25rem);
@@ -101,6 +103,9 @@
 /* 2.19.1.c: QR a escanear + referencia opcional del deposito */
 .pasarela-card__qr {
   width: min(16rem, 100%);
+  height: auto;
+  aspect-ratio: 817 / 896;
+  object-fit: contain;
   align-self: center;
   border-radius: var(--radius-sm);
   border: 1px solid var(--paper-line);
@@ -115,6 +120,8 @@
 }
 
 .pasarela-card__campo input {
+  width: 100%;
+  min-width: 0;
   padding: 0.65rem 0.8rem;
   border: 1px solid var(--paper-line);
   border-radius: var(--radius-sm);

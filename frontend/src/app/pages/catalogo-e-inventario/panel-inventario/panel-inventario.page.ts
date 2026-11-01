@@ -6,7 +6,9 @@ import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 import {
   AjusteOut,
+  AlertaInventario,
   MovimientoKardexOut,
+  ResumenInventarioOut,
   VarianteBuscadaOut,
 } from '../../../core/catalogo-e-inventario/inventario/inventario.models';
 import { InventarioService } from '../../../core/catalogo-e-inventario/inventario/inventario.service';
@@ -15,7 +17,7 @@ import { SucursalesService } from '../../../core/acceso-y-organizacion/sucursale
 import { interpretarError } from '../../../shared/errores';
 import { PanelShell } from '../../../shared/panel/panel-shell';
 
-/** Ajustes manuales de stock (PENDIENTES.txt 2.6): buscador + kardex + formulario de ajuste. */
+/** CU10 - Gestionar inventario: indicadores de la sucursal, listado con alertas de stock, buscador, kardex y ajustes manuales (PENDIENTES.txt 2.6). */
 @Component({
   selector: 'app-panel-inventario-page',
   standalone: true,
@@ -35,6 +37,9 @@ export class PanelInventarioPage implements OnInit {
   protected sucursalId = '';
 
   protected termino = '';
+  /** Filtro rapido del listado: todas, agotadas o con stock bajo. */
+  protected alerta: AlertaInventario | null = null;
+  protected readonly resumen = signal<ResumenInventarioOut | null>(null);
   protected readonly resultados = signal<VarianteBuscadaOut[]>([]);
   protected readonly buscando = signal(false);
   protected readonly errorBusqueda = signal<string | null>(null);
@@ -52,28 +57,44 @@ export class PanelInventarioPage implements OnInit {
   ngOnInit(): void {
     // Sin sucursales.actualizar el backend resuelve solo la sucursal del staff (no la
     // conocemos en el frontend, UsuarioOut no la expone) -- no hace falta el selector.
-    if (!this.eligeSucursal) return;
+    if (!this.eligeSucursal) {
+      this.cargarTodo();
+      return;
+    }
 
     this.sucursalesService.listarSucursales().subscribe({
       next: (sucursales) => {
         this.sucursales.set(sucursales);
         this.sucursalId = sucursales[0]?.id ?? '';
+        this.cargarTodo();
       },
       error: () => this.sucursales.set([]),
     });
   }
 
   protected cambiarSucursal(): void {
-    this.resultados.set([]);
     this.limpiarSeleccion();
+    this.cargarTodo();
+  }
+
+  /** Indicadores + listado inicial (lo que mas necesita atencion), sin tener que buscar primero. */
+  private cargarTodo(): void {
+    this.servicio.resumen(this.sucursalId || null).subscribe({
+      next: (resumen) => this.resumen.set(resumen),
+      error: () => this.resumen.set(null),
+    });
+    this.buscar();
+  }
+
+  protected filtrarPor(alerta: AlertaInventario | null): void {
+    this.alerta = alerta;
+    this.buscar();
   }
 
   protected buscar(): void {
-    if (!this.termino.trim()) return;
-
     this.buscando.set(true);
     this.errorBusqueda.set(null);
-    this.servicio.buscarVariantes(this.termino.trim(), this.sucursalId || null).subscribe({
+    this.servicio.buscarVariantes(this.termino.trim(), this.sucursalId || null, this.alerta).subscribe({
       next: (resultados) => {
         this.resultados.set(resultados);
         this.buscando.set(false);
@@ -159,12 +180,45 @@ export class PanelInventarioPage implements OnInit {
           this.motivo = '';
           this.cantidadNueva = resultado.saldo_nuevo;
           this.cargarKardex(actualizada);
+          this.servicio.resumen(this.sucursalId || null).subscribe({
+            next: (resumen) => this.resumen.set(resumen),
+          });
         },
         error: (e: HttpErrorResponse) => {
           this.guardando.set(false);
           this.errorAjuste.set(interpretarError(e));
         },
       });
+  }
+
+  /** Estado de una prenda para el badge del listado. */
+  protected estadoStock(v: VarianteBuscadaOut): { texto: string; clase: 'baja' | 'alerta' | 'ok' } {
+    if (v.disponible <= 0) return { texto: 'Agotada', clase: 'baja' };
+    if (v.disponible <= v.stock_minimo) return { texto: 'Stock bajo', clase: 'alerta' };
+    return { texto: 'Disponible', clase: 'ok' };
+  }
+
+  /** Cuanto cambia el fisico si se guarda lo que se escribio (para avisar antes de guardar). */
+  protected get variacionAjuste(): number | null {
+    const v = this.elegida();
+    if (!v || this.cantidadNueva == null || Number.isNaN(Number(this.cantidadNueva))) return null;
+    return Math.round(Number(this.cantidadNueva)) - v.cantidad_fisica;
+  }
+
+  /** Variacion real del movimiento (siempre nuevo - anterior, sea cual sea el tipo). */
+  protected variacion(m: MovimientoKardexOut): number {
+    return m.saldo_nuevo - m.saldo_anterior;
+  }
+
+  protected etiquetaDocumento(m: MovimientoKardexOut): string {
+    const etiquetas: Record<string, string> = {
+      RECEPCION: 'Recepción de mercadería',
+      VENTA: 'Venta',
+      RESERVA: 'Reserva',
+      TRASPASO: 'Traspaso',
+      DEVOLUCION: 'Devolución',
+    };
+    return m.documento_tipo ? (etiquetas[m.documento_tipo] ?? m.documento_tipo) : '—';
   }
 
   protected etiquetaMovimiento(tipo: string): string {
@@ -176,6 +230,10 @@ export class PanelInventarioPage implements OnInit {
       AJUSTE: 'Ajuste',
       TRASPASO_SALIDA: 'Traspaso (salida)',
       TRASPASO_ENTRADA: 'Traspaso (entrada)',
+      TRASPASO_SAL: 'Traspaso (salida)',
+      TRASPASO_ENT: 'Traspaso (entrada)',
+      DEVOLUCION: 'Devolución',
+      MERMA: 'Merma',
     };
     return etiquetas[tipo] ?? tipo;
   }

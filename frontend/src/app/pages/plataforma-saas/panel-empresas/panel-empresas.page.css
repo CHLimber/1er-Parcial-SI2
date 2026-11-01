@@ -7,14 +7,49 @@
   color: var(--ink-soft);
 }
 
+.aviso-estado {
+  margin: 0.6rem 0;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--flame);
+  background: color-mix(in srgb, var(--flame) 8%, transparent);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.campo__ayuda--error {
+  color: var(--flame);
+}
+
+/* Las dos tarjetas de la solapa Planes dejan de comprimirse a 18rem en un telefono. */
 .planes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .funciones {
   display: grid;
   gap: 0.35rem;
   margin: 0.6rem 0;
+}
+
+.fila--activa td {
+  background: var(--paper);
+}
+
+.planes > .panel {
+  margin-top: 0;
+  min-width: 0;
+}
+
+/* Reserva el alto de la linea de validacion: aparece y desaparece mientras se edita el plan y
+   empujaba el boton "Guardar plan". */
+.mensaje-reservado {
+  min-height: 1.6rem;
+  margin-top: 0.35rem;
+}
+
+.mensaje-reservado > .campo__ayuda {
+  margin: 0;
 }

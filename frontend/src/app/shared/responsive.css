@@ -10,7 +10,36 @@
  * pagina no usa simplemente no aplican.
  *
  * Breakpoints (ver el bloque responsive de `src/styles.css`): 64rem, 48rem, 30rem.
+ *
+ * Especificidad: lo que una pagina puede querer cambiar a proposito (si la cabecera envuelve o
+ * no) va dentro de `:where()`, que no suma especificidad: la pagina decide sin trucos de
+ * selector. Todo lo demas se queda con la especificidad normal para ganarle a la declaracion
+ * base de la pagina.
  */
+
+/* ==========================================================================
+   Base: lo que evita que una fila o una tarjeta aplaste a la de al lado
+   --------------------------------------------------------------------------
+   Un hijo flex sin `min-width: 0` no baja del ancho de su contenido: un nombre de prenda o
+   un mail largo estira la fila y empuja (o aplasta) al resto. Estas clases son las filas
+   de datos que se repiten en carrito, reserva y caja.
+   ========================================================================== */
+
+.carrito__info,
+.ticket__info,
+.cabecera__marca {
+  min-width: 0;
+}
+
+.carrito__info,
+.ticket__info {
+  overflow-wrap: anywhere;
+}
+
+/* La foto de una fila de item no se encoge cuando el nombre es largo. */
+.carrito__imagen {
+  flex: none;
+}
 
 /* ==========================================================================
    Tablet en horizontal
@@ -19,8 +48,11 @@
 @media (max-width: 64rem) {
   /* Las cabeceras son una fila sola de enlaces: a este ancho ya no entran todos y hay
      que dejarlas caer a una segunda linea en vez de comprimirlas hasta lo ilegible. */
-  .cabecera {
+  :where(.cabecera) {
     flex-wrap: wrap;
+  }
+
+  .cabecera {
     row-gap: 0.6rem;
   }
 

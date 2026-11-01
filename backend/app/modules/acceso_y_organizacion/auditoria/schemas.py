@@ -17,6 +17,8 @@ class AuditoriaOut(BaseModel):
     datos_antes: dict[str, Any] | None
     datos_despues: dict[str, Any] | None
     ip: str | None
+    # empresa a la que pertenece la accion (la plataforma ve las de todas)
+    empresa_nombre: str | None = None
 
 
 class AuditoriaPaginadoOut(BaseModel):

@@ -124,13 +124,13 @@
       </section>
     }
 
-    <div class="columnas">
+    <div class="columnas columnas--apilado">
       <section class="panel">
         @if (cargando()) {
           <p class="estado">Cargando empresas…</p>
         } @else {
           <div class="tabla-envoltorio">
-            <table class="tabla">
+            <table class="tabla tabla--ancha">
               <thead>
                 <tr>
                   <th>Empresa</th>
@@ -144,7 +144,7 @@
               </thead>
               <tbody>
                 @for (e of empresas(); track e.id) {
-                  <tr [attr.data-inactivo]="!e.activa">
+                  <tr [attr.data-inactivo]="!e.activa" [class.fila--activa]="elegida()?.id === e.id">
                     <td>
                       <strong>{{ e.nombre }}</strong>
                       <div class="secundario mono">{{ e.slug }} · NIT {{ e.nit }}</div>
@@ -153,9 +153,11 @@
                     <td>
                       @if (e.suscripcion; as s) {
                         <span class="badge" [class.badge--ok]="s.vigente" [class.badge--baja]="!s.vigente">
-                          {{ s.vigente ? (s.estado === 'PRUEBA' ? 'En prueba' : 'Al día') : 'Vencida' }}
+                          {{ s.vigente ? (s.estado === 'PRUEBA' ? 'En prueba' : 'Al día') : s.estado === 'CANCELADA' ? 'Cancelada' : 'Vencida' }}
                         </span>
-                        <div class="secundario">hasta {{ fecha(s.vence_en) }}</div>
+                        <div class="secundario">
+                          {{ s.vigente ? 'vence' : 'venció' }} el {{ fecha(s.vence_en) }}
+                        </div>
                       } @else {
                         —
                       }
@@ -165,12 +167,17 @@
                     </td>
                     <td class="tabla__numero">{{ e.suscripcion?.uso?.empleados ?? 0 }}</td>
                     <td>
-                      <span class="badge" [class.badge--ok]="e.activa" [class.badge--baja]="!e.activa">
-                        {{ e.activa ? 'Activa' : 'Suspendida' }}
+                      <span
+                        class="badge"
+                        [class.badge--ok]="estadoEmpresa(e).clase === 'ok'"
+                        [class.badge--baja]="estadoEmpresa(e).clase === 'baja'"
+                        [class.badge--alerta]="estadoEmpresa(e).clase === 'alerta'"
+                      >
+                        {{ estadoEmpresa(e).texto }}
                       </span>
                     </td>
                     <td class="tabla__acciones">
-                      <button type="button" class="boton boton--chico boton--secundario" (click)="elegir(e)">Gestionar</button>
+                      <button type="button" class="boton boton--chico boton--secundario" (click)="gestionar(e)" [attr.aria-expanded]="elegida()?.id === e.id">Gestionar</button>
                     </td>
                   </tr>
                 }
@@ -181,11 +188,23 @@
       </section>
 
       @if (elegida(); as e) {
-        <section class="panel">
+        <section class="panel" id="detalle-empresa">
           <h2 class="panel__titulo">{{ e.nombre }}</h2>
           <p class="secundario">
             {{ e.razon_social }} · administración: {{ e.administradores.join(', ') || 'sin administrador activo' }}
           </p>
+
+          @if (!e.activa) {
+            <p class="aviso-estado" role="status">
+              Empresa suspendida: su personal no puede iniciar sesión y su tienda no se ve. Para darle un plan
+              vigente o registrar una renovación, reactivala primero.
+            </p>
+          } @else if (e.suscripcion && !e.suscripcion.vigente) {
+            <p class="aviso-estado" role="status">
+              La suscripción {{ e.suscripcion.estado === 'CANCELADA' ? 'está cancelada' : 'venció' }}: el personal que no
+              es administrador no puede usar la plataforma y el administrador solo puede renovar.
+            </p>
+          }
 
           @if (auth.tienePermiso('empresas.actualizar')) {
             <h3 class="subtitulo">Asignar o cambiar plan</h3>
@@ -212,8 +231,13 @@
                 <input id="p-vence" name="p-vence" type="date" [(ngModel)]="venceAsignado" />
               </div>
             </div>
+            <div class="mensaje-reservado">
+              @if (problemaPlan(e); as problema) {
+              <p class="campo__ayuda campo__ayuda--error" role="alert">{{ problema }}</p>
+            }
+            </div>
             <div class="acciones">
-              <button type="button" class="boton" [disabled]="ocupado() || !venceAsignado" (click)="asignarPlan(e)">
+              <button type="button" class="boton" [disabled]="ocupado() || !!problemaPlan(e)" (click)="asignarPlan(e)">
                 Guardar plan
               </button>
             </div>
@@ -237,13 +261,132 @@
               </div>
             </div>
             <div class="acciones">
-              <button type="button" class="boton boton--secundario" [disabled]="ocupado()" (click)="renovar(e)">
+              <button type="button" class="boton boton--secundario" [disabled]="ocupado() || !e.activa" (click)="renovar(e)">
                 Registrar renovación del plan elegido
               </button>
               <button type="button" class="boton" [class.boton--peligro]="e.activa" [disabled]="ocupado()" (click)="cambiarEstado(e)">
                 {{ e.activa ? 'Suspender empresa' : 'Reactivar empresa' }}
               </button>
             </div>
+          }
+
+          @if (auth.tienePermiso('empresas.leer')) {
+            <h3 class="subtitulo">Cuentas de personal</h3>
+            <p class="secundario">
+              Si el administrador de la empresa olvida su contraseña o su cuenta se bloquea, se atiende desde acá.
+            </p>
+            @if (personal().length === 0) {
+              <p class="estado">Esta empresa no tiene cuentas de personal.</p>
+            } @else {
+              <div class="tabla-envoltorio">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Cuenta</th>
+                      <th>Rol</th>
+                      <th>Estado</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (p of personal(); track p.id) {
+                      <tr [attr.data-inactivo]="!p.activo">
+                        <td>
+                          <strong>{{ p.nombre }} {{ p.apellido }}</strong>
+                          <div class="secundario mono">{{ p.email }}</div>
+                          <div class="secundario">
+                            {{ p.ultimo_acceso ? 'Último acceso ' + fecha(p.ultimo_acceso) : 'Nunca ingresó' }}
+                          </div>
+                        </td>
+                        <td>
+                          {{ p.rol ?? '—' }}
+                          @if (p.cargo) {
+                            <div class="secundario">{{ p.cargo }}{{ p.sucursal ? ' · ' + p.sucursal : '' }}</div>
+                          }
+                        </td>
+                        <td>
+                          <span class="badge" [class.badge--ok]="p.activo" [class.badge--baja]="!p.activo">
+                            {{ p.activo ? 'Activa' : 'Desactivada' }}
+                          </span>
+                          @if (p.bloqueado) {
+                            <span class="badge badge--alerta">Bloqueada</span>
+                          }
+                        </td>
+                        <td class="tabla__acciones">
+                          @if (auth.tienePermiso('empresas.actualizar')) {
+                            <button type="button" class="boton boton--chico boton--secundario" (click)="passwordDe = passwordDe === p.id ? null : p.id; passwordNueva = ''">
+                              Restablecer contraseña
+                            </button>
+                            @if (p.bloqueado) {
+                              <button type="button" class="boton boton--chico boton--secundario" [disabled]="ocupado()" (click)="desbloquear(p)">
+                                Desbloquear
+                              </button>
+                            }
+                            <button type="button" class="boton boton--chico boton--secundario" [disabled]="ocupado()" (click)="alternarActivo(e, p)">
+                              {{ p.activo ? 'Desactivar' : 'Reactivar' }}
+                            </button>
+                          }
+                        </td>
+                      </tr>
+                      @if (passwordDe === p.id) {
+                        <tr>
+                          <td colspan="4">
+                            <div class="campo">
+                              <label [for]="'np-' + p.id">Contraseña nueva para {{ p.email }}</label>
+                              <input [id]="'np-' + p.id" [name]="'np-' + p.id" type="password" [(ngModel)]="passwordNueva" autocomplete="new-password" />
+                              <span class="campo__ayuda">8+ caracteres con mayúscula, minúscula, número y símbolo</span>
+                            </div>
+                            <div class="acciones">
+                              <button type="button" class="boton boton--chico" [disabled]="ocupado() || !passwordNueva" (click)="restablecerPassword(p)">
+                                Guardar contraseña
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+
+            @if (auth.tienePermiso('empresas.actualizar')) {
+              <div class="acciones">
+                <button type="button" class="boton boton--secundario" (click)="agregandoAdmin = !agregandoAdmin">
+                  {{ agregandoAdmin ? 'Cancelar' : 'Agregar administrador' }}
+                </button>
+              </div>
+              @if (agregandoAdmin) {
+                <div class="rejilla">
+                  <div class="campo">
+                    <label for="na-email">Email</label>
+                    <input id="na-email" name="na-email" type="email" [(ngModel)]="nuevoAdmin.email" />
+                  </div>
+                  <div class="campo">
+                    <label for="na-nombre">Nombre</label>
+                    <input id="na-nombre" name="na-nombre" [(ngModel)]="nuevoAdmin.nombre" />
+                  </div>
+                  <div class="campo">
+                    <label for="na-apellido">Apellido</label>
+                    <input id="na-apellido" name="na-apellido" [(ngModel)]="nuevoAdmin.apellido" />
+                  </div>
+                  <div class="campo">
+                    <label for="na-pass">Contraseña inicial</label>
+                    <input id="na-pass" name="na-pass" type="password" [(ngModel)]="nuevoAdmin.password" autocomplete="new-password" />
+                  </div>
+                </div>
+                <div class="acciones">
+                  <button
+                    type="button"
+                    class="boton"
+                    [disabled]="ocupado() || !nuevoAdmin.email || !nuevoAdmin.nombre || !nuevoAdmin.apellido || !nuevoAdmin.password"
+                    (click)="agregarAdministrador(e)"
+                  >
+                    Crear administrador
+                  </button>
+                </div>
+              }
+            }
           }
         </section>
       }

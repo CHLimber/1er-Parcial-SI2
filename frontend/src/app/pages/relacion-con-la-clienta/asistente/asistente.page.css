@@ -54,7 +54,9 @@
 
 .chat__mensajes {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
@@ -62,6 +64,8 @@
 }
 
 .burbuja {
+  min-width: 0;
+  overflow-wrap: anywhere;
   max-width: 85%;
   padding: 0.8rem 1rem;
   border-radius: var(--radius);
@@ -149,8 +153,18 @@
   margin: 0.75rem 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(9.5rem, 100%), 1fr));
   gap: 0.6rem;
+}
+
+/* Una burbuja con prendas ocupa un ancho fijo: si se dimensionara por su contenido, la grilla
+   de tarjetas (que no tiene ancho intrinseco) la dejaria angosta y las prendas apiladas. */
+.burbuja:has(> .burbuja__productos) {
+  width: min(100%, 36rem);
+}
+
+.burbuja__productos > li {
+  min-width: 0;
 }
 
 .chat__error {

@@ -97,6 +97,14 @@
 .planes {
   display: grid;
   gap: 0.75rem;
+  /* alto reservado: los planes llegan por red y la tarjeta no debe crecer de golpe */
+  min-height: 16rem;
+  align-content: start;
+}
+
+.plan {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .plan {
@@ -248,6 +256,7 @@
 }
 
 .meses__opcion {
+  position: relative;
   flex: 1 1 5rem;
   padding: 0.65rem 0.5rem;
   border: 2px solid var(--paper-line);

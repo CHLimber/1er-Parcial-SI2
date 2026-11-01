@@ -24,11 +24,11 @@ INSERT INTO rol (nombre, descripcion, es_sistema) VALUES
     ('SUPERADMIN', 'Administracion de la plataforma SaaS: empresas, planes y suscripciones', TRUE),
     ('ADMIN',      'Administracion de una empresa: todo lo de su tenant', TRUE),
     ('ENCARGADO',  'Responsable de una sucursal', TRUE),
-    ('CAJERO',     'Maneja caja, ventas presenciales y verificacion de pagos', TRUE),
-    ('VENDEDOR',   'Atiende clientes y reservas en tienda', TRUE),
-    ('ALMACEN',    'Recibe mercaderia y controla existencias', TRUE);
--- El proveedor no es usuario: sus datos los carga el ADMIN en CU11. VENDEDOR y ALMACEN se
--- mantienen (PENDIENTES 2.19.1.d: la reduccion de actores se descarto).
+    ('CAJERO',     'Maneja caja, ventas presenciales, reservas y verificacion de pagos', TRUE);
+-- El proveedor no es usuario: sus datos los carga el ADMIN en CU11. Roles = actores documentados:
+-- SUPERADMIN, ADMIN, ENCARGADO y el empleado (CAJERO). El viejo ALMACEN (solo recibia mercaderia)
+-- lo absorbe ENCARGADO, que ya tiene todos sus permisos (PENDIENTES 9.9); el viejo VENDEDOR (piso de
+-- venta y vestidores) lo absorbe CAJERO, que es el mas versatil (PENDIENTES 9.10).
 
 -- ---------------------------------------------------------------------
 -- EMPRESAS (TENANTS). Ids fijos para que el seed y los scripts de demo los puedan nombrar.
@@ -162,26 +162,14 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
                     'clientes.leer','clientes.actualizar',
                     'sincronizacion.leer','sincronizacion.actualizar','analitica.leer');
 
--- CAJERO: caja, punto de venta y verificacion de pagos online QR/efectivo (todo cuelga de
--- caja.crear, ver get_cajero_actual en app/core/deps.py)
+-- CAJERO: caja, punto de venta, verificacion de pagos online QR/efectivo (todo cuelga de
+-- caja.crear, ver get_cajero_actual en app/core/deps.py) y, desde que absorbio al VENDEDOR,
+-- tambien atiende reservas en el piso y vestidores (reservas.leer / reservas.actualizar)
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'CAJERO'), p.id
   FROM permiso p
  WHERE p.codigo IN ('catalogo.leer','inventario.leer','caja.leer','caja.crear','caja.actualizar','ventas.crear',
-                    'clientes.leer','sincronizacion.leer');
-
--- ALMACEN: solo el flujo de entrada de mercaderia
-INSERT INTO rol_permiso (rol_id, permiso_id)
-SELECT (SELECT id FROM rol WHERE nombre = 'ALMACEN'), p.id
-  FROM permiso p
- WHERE p.codigo IN ('catalogo.leer','proveedores.leer','inventario.leer','inventario.actualizar',
-                    'recepciones.leer','recepciones.crear','recepciones.actualizar','recepciones.eliminar');
-
--- VENDEDOR: piso de venta y vestidores
-INSERT INTO rol_permiso (rol_id, permiso_id)
-SELECT (SELECT id FROM rol WHERE nombre = 'VENDEDOR'), p.id
-  FROM permiso p
- WHERE p.codigo IN ('catalogo.leer','inventario.leer','reservas.leer','reservas.actualizar',
+                    'reservas.leer','reservas.actualizar',
                     'clientes.leer','sincronizacion.leer');
 
 -- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
@@ -233,26 +221,12 @@ INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, rol_id, email
      'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
     ('cajera.scz@fashionstore.bo',      crypt('demo1234', gen_salt('bf')), 'Camila',  'Rocha',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
-    ('encargado.cbba@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Ruben',   'Mamani',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
-    ('cajera.lapaz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Lucia',   'Condori',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
-    ('vendedor.scz@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Daniela', 'Vargas',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'VENDEDOR'),  TRUE),
-    ('almacen.scz@fashionstore.bo',     crypt('demo1234', gen_salt('bf')), 'Marco',   'Gutierrez',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ALMACEN'),   TRUE),
     ('encargada.sucre@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Paola',   'Arancibia',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
-    ('cajero.sucre@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Diego',   'Salazar',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
     ('encargada.tarija@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Natalia', 'Arce',
      'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
-    ('cajera.tarija@fashionstore.bo',   crypt('demo1234', gen_salt('bf')), 'Gabriela', 'Paz',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE),
     ('encargado.oruro@fashionstore.bo', crypt('demo1234', gen_salt('bf')), 'Hugo',    'Choque',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE),
-    ('cajera.oruro@fashionstore.bo',    crypt('demo1234', gen_salt('bf')), 'Rosa',    'Mamani',
-     'STAFF', (SELECT id FROM rol WHERE nombre = 'CAJERO'),    TRUE);
+     'STAFF', (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), TRUE);
 
 INSERT INTO usuario (email, password_hash, nombre, apellido, tipo, email_verificado) VALUES
     ('cliente@fashionstore.bo',  crypt('demo1234', gen_salt('bf')), 'Cliente', 'Demo',   'CLIENTE', TRUE),
@@ -276,26 +250,12 @@ INSERT INTO empleado (usuario_id, sucursal_id, cargo, fecha_ingreso) VALUES
      (SELECT id FROM sucursal WHERE codigo = 'CB-01'), 'CAJERO', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'cajera.scz@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'CAJERO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'encargado.cbba@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'CB-01'), 'ENCARGADO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'cajera.lapaz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'LP-01'), 'CAJERO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'vendedor.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'VENDEDOR', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'almacen.scz@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SC-01'), 'ALMACEN', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'encargada.sucre@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'SU-01'), 'ENCARGADO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'cajero.sucre@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'SU-01'), 'CAJERO', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'encargada.tarija@fashionstore.bo'),
      (SELECT id FROM sucursal WHERE codigo = 'TJ-01'), 'ENCARGADO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'cajera.tarija@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'TJ-01'), 'CAJERO', CURRENT_DATE),
     ((SELECT id FROM usuario WHERE email = 'encargado.oruro@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'OR-01'), 'ENCARGADO', CURRENT_DATE),
-    ((SELECT id FROM usuario WHERE email = 'cajera.oruro@fashionstore.bo'),
-     (SELECT id FROM sucursal WHERE codigo = 'OR-01'), 'CAJERO', CURRENT_DATE);
+     (SELECT id FROM sucursal WHERE codigo = 'OR-01'), 'ENCARGADO', CURRENT_DATE);
 
 INSERT INTO perfil_cliente (usuario_id, talla_superior_id, talla_inferior_id, talla_calzado_id,
                              color_favorito_id, fecha_nacimiento, puntos_fidelidad, acepta_marketing)

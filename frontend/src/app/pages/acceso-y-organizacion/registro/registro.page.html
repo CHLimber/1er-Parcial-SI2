@@ -1,5 +1,5 @@
 <main class="portal">
-  <section class="marca" aria-hidden="true">
+  <section class="marca">
     <p class="marca__eyebrow">Santa Cruz <span>·</span> La Paz <span>·</span> Cochabamba</p>
 
     <h1 class="marca__wordmark">Fashion<br />Store</h1>
@@ -16,7 +16,7 @@
 
       <form class="formulario" [formGroup]="form" (ngSubmit)="enviar()" novalidate>
         <div class="formulario__fila">
-          <div class="campo">
+          <div class="campo campo-reservado">
             <label for="nombre">Nombre</label>
             <input
               id="nombre"
@@ -31,7 +31,7 @@
             }
           </div>
 
-          <div class="campo">
+          <div class="campo campo-reservado">
             <label for="apellido">Apellido</label>
             <input
               id="apellido"
@@ -47,7 +47,7 @@
           </div>
         </div>
 
-        <div class="campo">
+        <div class="campo campo-reservado">
           <label for="email">Correo electrónico</label>
           <input
             id="email"
@@ -68,7 +68,7 @@
           }
         </div>
 
-        <div class="campo">
+        <div class="campo campo-reservado">
           <label for="telefono">Teléfono <span class="campo__opcional">(opcional)</span></label>
           <input
             id="telefono"
@@ -79,13 +79,13 @@
           />
         </div>
 
-        <div class="campo">
+        <div class="campo campo-reservado">
           <label for="fechaNacimiento">Fecha de nacimiento <span class="campo__opcional">(opcional)</span></label>
           <input id="fechaNacimiento" type="date" formControlName="fechaNacimiento" />
           <p class="campo__ayuda">Nos sirve para recomendarte prendas de tu estilo.</p>
         </div>
 
-        <div class="campo">
+        <div class="campo campo-reservado">
           <label for="password">Contraseña</label>
           <div class="campo__password">
             <input
@@ -111,7 +111,7 @@
           <app-lista-requisitos-password [password]="form.controls.password.value" />
         </div>
 
-        <div class="campo">
+        <div class="campo campo-reservado">
           <label for="confirmarPassword">Confirmar contraseña</label>
           <input
             [type]="mostrarPassword() ? 'text' : 'password'"

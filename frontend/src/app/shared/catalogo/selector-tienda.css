@@ -1,0 +1,141 @@
+/*
+ * Selector de tienda de la clienta (multi-tenant), al lado de la marca en la cabecera de la tienda.
+ * Abre una lista de tarjetas (nombre, ciudades, cuantas prendas) en vez de un <select> pelado.
+ * Se incluye en los `styleUrls` de la pagina antes de `shared/responsive.css`.
+ */
+
+.selector-tienda {
+  position: relative;
+}
+
+.selector-tienda__boton {
+  flex: none;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.selector-tienda__boton:hover {
+  border-color: var(--ink);
+}
+
+.selector-tienda__velo {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.selector-tienda__lista {
+  position: absolute;
+  z-index: 41;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  width: min(22rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.4rem;
+  list-style: none;
+  display: grid;
+  gap: 0.25rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(23, 26, 38, 0.18);
+}
+
+.selector-tienda__tienda {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'inicial nombre actual'
+    'inicial datos datos';
+  column-gap: 0.75rem;
+  align-items: center;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.selector-tienda__tienda:hover {
+  background: var(--paper);
+}
+
+.selector-tienda__tienda--actual {
+  border-color: var(--gold);
+  background: var(--paper);
+}
+
+.selector-tienda__inicial {
+  grid-area: inicial;
+  width: 2.2rem;
+  height: 2.2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--white);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.selector-tienda__nombre {
+  grid-area: nombre;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.selector-tienda__datos {
+  grid-area: datos;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.selector-tienda__actual {
+  grid-area: actual;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--flame-dark);
+}
+
+/* Tablet y telefono: la lista se ancla a la cabecera (no al boton) para no salirse de la pantalla. */
+@media (max-width: 48rem) {
+  .selector-tienda {
+    position: static;
+  }
+
+  .selector-tienda__lista {
+    left: 0.75rem;
+    right: 0.75rem;
+    width: auto;
+    max-height: 70dvh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 30rem) {
+  .selector-tienda__verbo {
+    display: none;
+  }
+
+  .selector-tienda__boton {
+    padding: 0.35rem 0.6rem;
+  }
+}

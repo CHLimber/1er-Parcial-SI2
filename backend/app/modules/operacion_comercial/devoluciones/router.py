@@ -70,9 +70,9 @@ from app.core.deps import requiere_permiso
 from app.core.tenant import (
     empresa_de,
     empresa_de_sucursal,
-    es_admin_empresa,
     exigir_variantes,
     no_encontrado,
+    sucursal_visible,
 )
 from app.modules.operacion_comercial.caja.router import obtener_sesion_abierta
 from app.modules.operacion_comercial.devoluciones.schemas import (
@@ -134,26 +134,13 @@ LEFT JOIN venta vc    ON vc.id = d.venta_cambio_id
 """
 
 
-def _sucursal_visible(staff: dict) -> UUID | None:
-    """Mismo criterio que recepciones: el ADMIN de la empresa ve todas las de su empresa; el
-    resto solo la suya."""
-    if es_admin_empresa(staff):
-        return None
-    if staff["sucursal_id"] is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu usuario no esta asignado a ninguna sucursal",
-        )
-    return staff["sucursal_id"]
-
-
 async def _exigir_alcance(
     conn: asyncpg.Connection, staff: dict, sucursal_id: UUID, que: str
 ) -> None:
     """404 si la sucursal es de otra empresa; 403 si es de la empresa pero no la del usuario."""
     if await empresa_de_sucursal(conn, sucursal_id) != empresa_de(staff):
         raise no_encontrado(f"{que} no existe")
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     if limite is not None and sucursal_id != limite:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{que} es de otra sucursal")
 
@@ -361,7 +348,7 @@ async def listar_devoluciones(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[DevolucionOut]:
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     filas = await conn.fetch(
         SELECT_DEVOLUCION
         + """
@@ -492,7 +479,7 @@ async def cambios_del_mes(
     anio = anio or hoy.year
     mes = mes or hoy.month
     desde, hasta = rango_del_mes(anio, mes)
-    limite = _sucursal_visible(staff)
+    limite = sucursal_visible(staff)
     filas = await conn.fetch(
         """
         SELECT pr.id AS producto_id, pr.nombre AS producto, d.motivo_tipo::text AS motivo_tipo,

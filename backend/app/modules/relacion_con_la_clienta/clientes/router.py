@@ -11,7 +11,7 @@ cualquier tienda); lo que es de cada empresa es la cartera y la ficha.
 El segmento se sugiere del historial en ESA empresa (segmento_sugerido) y la administracion lo
 puede fijar a mano; si no lo fija, vale el sugerido.
 
-Permisos clientes.leer / clientes.actualizar (ENCARGADO; VENDEDOR y CAJERO solo leen) y el plan
+Permisos clientes.leer / clientes.actualizar (ENCARGADO; el CAJERO solo lee) y el plan
 de la empresa tiene que incluir perfiles_clientes. Los datos minimos de la cartera (nombre, email)
 son los que el movil y la PWA bajan para registrar reservas sin conexion.
 """

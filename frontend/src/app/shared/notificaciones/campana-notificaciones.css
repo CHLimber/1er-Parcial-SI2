@@ -77,6 +77,8 @@
 .panel__cabecera {
   position: sticky;
   top: 0;
+  z-index: 1;
+  flex-wrap: wrap;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -145,6 +147,8 @@
   flex-direction: column;
   gap: 0.25rem;
   width: 100%;
+  min-width: 0;
+  font-family: inherit;
   padding: 0.8rem 1rem;
   border: none;
   border-radius: 0;
@@ -159,6 +163,12 @@
   cursor: pointer;
 }
 
+/* dentro de un panel con scroll el aro de foco por defecto queda recortado: va hacia adentro */
+.aviso:focus-visible,
+.panel__mas:focus-visible {
+  outline-offset: -3px;
+}
+
 .aviso--nueva {
   background: rgba(193, 81, 107, 0.07);
 }
@@ -169,6 +179,7 @@
 
 .aviso__meta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 0.5rem;
   font-family: var(--font-mono);
@@ -188,6 +199,7 @@
   align-items: center;
   gap: 0.4rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .aviso__punto {
@@ -201,6 +213,7 @@
 .aviso__mensaje {
   color: var(--ink-soft);
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 /* Telefono: el panel colgado de la campana no entra (la campana no esta en el borde de la

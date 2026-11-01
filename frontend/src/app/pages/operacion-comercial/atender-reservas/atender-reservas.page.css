@@ -6,12 +6,12 @@
 
 .contenido {
   display: grid;
-  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+  grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
 
-@media (max-width: 60rem) {
+@media (max-width: 46rem) {
   .contenido {
     grid-template-columns: 1fr;
   }
@@ -375,5 +375,141 @@
 
   .metodo {
     flex: 1 1 8rem;
+  }
+}
+
+/* ==========================================================================
+   Estabilidad y tablet (revision de layout)
+   --------------------------------------------------------------------------
+   Es la pantalla del encargado con una tablet en la mano: dos pistas fijas hasta 46rem (antes se
+   apilaba a 60rem y el detalle quedaba debajo de toda la cola), cola con scroll propio y todo lo
+   tocable de >= 2.75rem.
+   ========================================================================== */
+
+.cola {
+  min-width: 0;
+  position: sticky;
+  top: 4.75rem;
+}
+
+.lista {
+  max-height: calc(100dvh - 15rem);
+  min-height: 6rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.detalle {
+  min-width: 0;
+  min-height: 24rem;
+}
+
+.filtros {
+  gap: 0.5rem;
+}
+
+.filtro {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+.tarjeta {
+  min-height: 3.5rem;
+  padding: 0.8rem 1rem;
+}
+
+.tarjeta > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ficha {
+  min-width: 0;
+}
+
+.ficha__cliente,
+.ficha__meta,
+.ficha__observaciones,
+.items__info {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.items__fila {
+  min-height: 3.25rem;
+}
+
+.preparar__fila {
+  min-height: 3.25rem;
+}
+
+.preparar__toggle {
+  min-height: 2.75rem;
+  cursor: pointer;
+}
+
+.preparar__toggle input[type='checkbox'] {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: none;
+}
+
+.preparar__motivo,
+.campo input {
+  min-height: 2.75rem;
+}
+
+.metodo {
+  min-height: 3rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.boton {
+  min-height: 2.75rem;
+  min-width: 11rem;
+  font-family: inherit;
+}
+
+.acciones > .boton {
+  flex: 1 1 11rem;
+}
+
+/* El estado del item (PREPARADO, DESCARTADO...) mide igual que el resto: la fila no salta al cambiar. */
+.items__badge {
+  min-width: 6.5rem;
+  text-align: center;
+}
+
+@media (max-width: 46rem) {
+  .cola {
+    position: static;
+  }
+
+  .lista {
+    max-height: 22rem;
+  }
+
+  .detalle {
+    min-height: 0;
+  }
+}
+
+/* Los 7 filtros de la cola: grilla de dos columnas del mismo ancho en vez de botones sueltos que
+   envuelven con anchos desparejos dentro de los 19rem de la cola. */
+.filtros {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.filtro {
+  text-align: center;
+}
+
+@media (max-width: 46rem) {
+  .filtros {
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   }
 }

@@ -3,7 +3,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 
+import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 import { AccionAuditoria, AuditoriaOut, FiltroAuditoria } from '../../../core/acceso-y-organizacion/auditoria/auditoria.models';
+import { SaasService } from '../../../core/plataforma-saas/saas/saas.service';
 import { AuditoriaService } from '../../../core/acceso-y-organizacion/auditoria/auditoria.service';
 import { interpretarError } from '../../../shared/errores';
 import { PanelShell } from '../../../shared/panel/panel-shell';
@@ -43,6 +45,8 @@ interface FilaComparacion {
 })
 export class PanelAuditoriaPage implements OnInit {
   private readonly servicio = inject(AuditoriaService);
+  private readonly saas = inject(SaasService);
+  protected readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly datePipe = inject(DatePipe);
 
@@ -54,10 +58,13 @@ export class PanelAuditoriaPage implements OnInit {
   protected readonly total = signal(0);
   protected readonly pagina = signal(1);
   protected readonly entidades = signal<string[]>([]);
+  /** Solo para la plataforma: las empresas entre las que filtrar. */
+  protected readonly empresas = signal<{ id: string; nombre: string }[]>([]);
   protected readonly filaExpandida = signal<number | null>(null);
   protected readonly mostrarSinCambiosDe = signal<number | null>(null);
 
   protected readonly filtro = this.fb.nonNullable.group({
+    empresa_id: '',
     entidad: '',
     accion: '',
     entidad_id: '',
@@ -70,11 +77,28 @@ export class PanelAuditoriaPage implements OnInit {
   }
 
   ngOnInit(): void {
-    this.servicio.entidades().subscribe({
+    this.cargarEntidades();
+    if (this.auth.esPlataforma()) {
+      this.saas.empresas().subscribe({
+        next: (lista) => this.empresas.set(lista.map((e) => ({ id: e.id, nombre: e.nombre }))),
+        error: () => this.empresas.set([]),
+      });
+    }
+    this.cargar();
+  }
+
+  /** Al cambiar de empresa las entidades ofrecidas son las que esa empresa ya registro. */
+  protected cambiarEmpresa(): void {
+    this.filtro.controls.entidad.setValue('');
+    this.cargarEntidades();
+    this.aplicarFiltro();
+  }
+
+  private cargarEntidades(): void {
+    this.servicio.entidades(this.filtro.getRawValue().empresa_id || null).subscribe({
       next: (valores) => this.entidades.set(valores),
       error: () => this.entidades.set([]),
     });
-    this.cargar();
   }
 
   protected aplicarFiltro(): void {
@@ -159,6 +183,7 @@ export class PanelAuditoriaPage implements OnInit {
   private filtroActual(): FiltroAuditoria {
     const crudo = this.filtro.getRawValue();
     return {
+      empresa_id: crudo.empresa_id || undefined,
       entidad: crudo.entidad || undefined,
       accion: (crudo.accion || undefined) as AccionAuditoria | undefined,
       entidad_id: crudo.entidad_id.trim() || undefined,

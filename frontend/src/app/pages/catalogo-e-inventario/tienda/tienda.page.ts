@@ -13,6 +13,7 @@ import { SaasService } from '../../../core/plataforma-saas/saas/saas.service';
 import { elegirTienda, tiendaActual } from '../../../core/nucleo/tenant/tienda';
 import { ReservaCarritoService } from '../../../core/operacion-comercial/reservas/reserva-carrito.service';
 import { ProductoCard } from '../../../shared/catalogo/producto-card';
+import { resumenPrendas, resumenUbicacion } from '../../../shared/tiendas';
 import { CampanaNotificaciones } from '../../../shared/notificaciones/campana-notificaciones';
 
 @Component({
@@ -20,7 +21,11 @@ import { CampanaNotificaciones } from '../../../shared/notificaciones/campana-no
   standalone: true,
   imports: [CampanaNotificaciones, FormsModule, ProductoCard, RouterLink],
   templateUrl: './tienda.page.html',
-  styleUrls: ['./tienda.page.css', '../../../shared/responsive.css'],
+  styleUrls: [
+    './tienda.page.css',
+    '../../../shared/catalogo/selector-tienda.css',
+    '../../../shared/responsive.css',
+  ],
 })
 export class TiendaPage implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
@@ -35,6 +40,9 @@ export class TiendaPage implements OnInit, OnDestroy {
    * siempre la de su empresa, el backend se la impone por el token). */
   protected readonly tiendas = signal<TiendaOut[]>([]);
   protected readonly tienda = tiendaActual;
+  protected readonly selectorAbierto = signal(false);
+  protected readonly resumenUbicacion = resumenUbicacion;
+  protected readonly resumenPrendas = resumenPrendas;
   protected readonly nombreTienda = computed(
     () => this.auth.usuario()?.empresa ?? this.tiendas().find((t) => t.slug === this.tienda())?.nombre ?? 'FashionStore',
   );
@@ -60,6 +68,12 @@ export class TiendaPage implements OnInit, OnDestroy {
 
   /** CU17: solo tiene sentido para clientes, se llena en silencio (no es critico para la pagina). */
   protected readonly recomendaciones = signal<ProductoRecomendadoOut[]>([]);
+  /** Mientras llegan, el carrusel muestra tarjetas fantasma con el alto real: sin esto el catalogo
+   * baja de golpe cuando aparecen las recomendaciones. */
+  protected readonly cargandoRecomendaciones = signal(false);
+  protected readonly cargandoFiltros = signal(true);
+  /** Marcadores de posicion para las grillas en carga (solo cuentan, no llevan datos). */
+  protected readonly esqueletoGrilla = [1, 2, 3, 4, 5, 6];
 
   protected readonly filtros = signal<FiltrosOut | null>(null);
 
@@ -122,16 +136,30 @@ export class TiendaPage implements OnInit, OnDestroy {
   }
 
   private cargarTienda(): void {
+    this.cargandoFiltros.set(true);
     this.catalogo.obtenerFiltros().subscribe({
-      next: (filtros) => this.filtros.set(filtros),
-      error: () => this.filtros.set(null),
+      next: (filtros) => {
+        this.filtros.set(filtros);
+        this.cargandoFiltros.set(false);
+      },
+      error: () => {
+        this.filtros.set(null);
+        this.cargandoFiltros.set(false);
+      },
     });
     this.buscar();
     if (!this.esStaff()) {
       this.carritoService.refrescar();
+      this.cargandoRecomendaciones.set(true);
       this.recomendacionesServicio.obtener(8).subscribe({
-        next: (productos) => this.recomendaciones.set(productos),
-        error: () => this.recomendaciones.set([]),
+        next: (productos) => {
+          this.recomendaciones.set(productos);
+          this.cargandoRecomendaciones.set(false);
+        },
+        error: () => {
+          this.recomendaciones.set([]);
+          this.cargandoRecomendaciones.set(false);
+        },
       });
     }
   }

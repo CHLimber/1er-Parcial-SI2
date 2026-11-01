@@ -67,7 +67,7 @@
             @for (item of items(); track item.varianteId) {
               <li class="carrito__item">
                 @if (item.imagenUrl) {
-                  <img class="carrito__imagen" [src]="item.imagenUrl" [alt]="item.producto" />
+                  <img class="carrito__imagen" [src]="item.imagenUrl" [alt]="item.producto" width="52" height="64" loading="lazy" />
                 }
                 <div class="carrito__info">
                   <span class="carrito__nombre">{{ item.producto }}</span>
@@ -85,7 +85,7 @@
                     (ngModelChange)="cambiarCantidad(item, $event)"
                   />
                 </div>
-                <button type="button" class="carrito__quitar" (click)="quitarItem(item)" aria-label="Quitar">
+                <button type="button" class="carrito__quitar" (click)="quitarItem(item)" [attr.aria-label]="'Quitar ' + item.producto">
                   ✕
                 </button>
               </li>

@@ -1,23 +1,45 @@
+/*
+ * Tarjeta de prenda. Reglas que mantienen la grilla quieta y pareja:
+ *  - la foto reserva su caja 3/4 con `aspect-ratio`, cargue o no cargue (sin salto);
+ *  - todas las tarjetas de una fila miden lo mismo (la grilla las estira) y el precio queda
+ *    siempre al pie, aunque el nombre ocupe uno o dos renglones;
+ *  - el hover NO mueve ni cambia el tamanio de la tarjeta: solo cambia sombra y aro de color
+ *    (un `box-shadow`, que no ocupa lugar, en vez de sumar pixeles de borde o de desplazar);
+ *  - una tarjeta sola (resultado unico) no se estira a todo el ancho de la grilla.
+ */
 :host {
+  --tarjeta-pad: 1.25rem;
+
   background: var(--white);
   border: 1px solid var(--paper-line);
   border-radius: var(--radius);
   overflow: hidden;
-  padding: 1.25rem;
+  padding: var(--tarjeta-pad);
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   cursor: pointer;
+  /* en una grilla `1fr` un hijo sin esto no baja de su contenido y empuja a las vecinas */
+  min-width: 0;
+  width: 100%;
+  max-width: 26rem;
   transition:
     box-shadow 0.18s ease,
-    transform 0.18s ease,
     border-color 0.18s ease;
 }
 
-:host(:hover) {
-  border-color: var(--flame);
-  box-shadow: 0 12px 24px -12px rgba(46, 37, 48, 0.25);
-  transform: translateY(-3px);
+@media (hover: hover) {
+  :host(:hover) {
+    border-color: var(--flame);
+    box-shadow:
+      0 0 0 1px var(--flame),
+      0 14px 26px -14px rgba(46, 37, 48, 0.3);
+  }
+}
+
+:host(:focus-visible) {
+  outline: 2px solid var(--flame);
+  outline-offset: 2px;
 }
 
 :host(.prenda--agotada) {
@@ -26,13 +48,16 @@
 
 .prenda__imagen-cont {
   position: relative;
-  margin: -1.25rem -1.25rem 0.6rem;
+  margin: calc(var(--tarjeta-pad) * -1) calc(var(--tarjeta-pad) * -1) 0.6rem;
   aspect-ratio: 3 / 4;
   overflow: hidden;
-  background: #fff;
+  /* color de fondo mientras llega la foto, o si la prenda no tiene */
+  background: var(--paper);
 }
 
 .prenda__imagen {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -58,6 +83,12 @@
   font-family: var(--font-body);
   font-size: 0.72rem;
   color: var(--ink-soft);
+  /* ropa con muchas tallas: dos renglones como maximo */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .prenda__categoria {
@@ -67,22 +98,38 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .prenda__nombre {
   font-size: 1.05rem;
+  line-height: 1.3;
   font-weight: 600;
   margin: 0;
   color: var(--ink);
+  /* dos renglones reservados: nombres cortos y largos dan la misma altura de tarjeta */
+  min-height: 2.6em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 
 .prenda__marca {
   font-size: 0.85rem;
   color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .prenda__precio {
-  margin-top: 0.5rem;
+  /* `auto` empuja el precio al pie de la tarjeta, alineado entre vecinas */
+  margin-top: auto;
+  padding-top: 0.5rem;
   font-family: var(--font-display);
   font-style: italic;
   font-weight: 600;
@@ -95,20 +142,22 @@
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--gold);
+  overflow-wrap: anywhere;
 }
 
 /* Telefono: la tarjeta entra de a dos por fila (ver `.grilla` en shared/responsive.css),
    asi que baja el padding y la tipografia para que el nombre de la prenda no ocupe
-   tres renglones. El recuadro de la foto usa los mismos margenes negativos que el
-   padding del host: si uno cambia, el otro tambien. */
+   tres renglones. El recuadro de la foto sigue al padding por la variable. */
 @media (max-width: 30rem) {
   :host {
-    padding: 0.75rem;
+    --tarjeta-pad: 0.75rem;
+
     border-radius: var(--radius-sm);
+    max-width: none;
   }
 
   .prenda__imagen-cont {
-    margin: -0.75rem -0.75rem 0.5rem;
+    margin-bottom: 0.5rem;
   }
 
   .prenda__nombre {
@@ -118,11 +167,5 @@
   .prenda__marca,
   .prenda__precio {
     font-size: 0.85rem;
-  }
-
-  :host(:hover) {
-    /* El hover con desplazamiento no aporta nada en tactil y se queda pegado despues
-       de tocar la tarjeta. */
-    transform: none;
   }
 }

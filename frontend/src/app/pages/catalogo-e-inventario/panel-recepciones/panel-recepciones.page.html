@@ -135,8 +135,32 @@
             </span>
           </p>
 
+          @if (recepcion.estado === 'BORRADOR') {
+            <!-- que hace esta pantalla: el stock recien sube al confirmar -->
+            <ol class="pasos" aria-label="Cómo funciona una recepción">
+              <li class="paso" [class.paso--hecho]="recepcion.detalle.length > 0" [class.paso--activo]="recepcion.detalle.length === 0">
+                <span class="paso__numero">1</span>
+                <span><strong>Cargá lo que llegó</strong> buscando cada prenda por SKU o nombre, con su talla y color.</span>
+              </li>
+              <li class="paso" [class.paso--activo]="recepcion.detalle.length > 0">
+                <span class="paso__numero">2</span>
+                <span><strong>Revisá el impacto</strong>: la tabla muestra cuánto hay hoy y cuánto va a quedar.</span>
+              </li>
+              <li class="paso">
+                <span class="paso__numero">3</span>
+                <span><strong>Confirmá</strong>: recién ahí sube el stock de {{ recepcion.sucursal }}. Mientras es borrador no cambia nada.</span>
+              </li>
+            </ol>
+          }
+
           @if (aviso()) {
-            <p class="exito">{{ aviso() }}</p>
+            <div class="confirmada" role="status">
+              <span class="confirmada__icono" aria-hidden="true">✓</span>
+              <div>
+                <p class="confirmada__titulo">{{ aviso() }}</p>
+                <a class="confirmada__enlace" routerLink="/panel/inventario">Ver el stock y el kardex en Inventario →</a>
+              </div>
+            </div>
           }
           @if (errorDetalle()) {
             <p class="error" role="alert">{{ errorDetalle() }}</p>
@@ -147,8 +171,12 @@
               <thead>
                 <tr>
                   <th>SKU</th>
-                  <th>Prenda</th>
+                  <th>Prenda · talla · color</th>
                   <th class="tabla__numero">Cantidad</th>
+                  @if (recepcion.estado === 'BORRADOR') {
+                    <th class="tabla__numero">Stock hoy</th>
+                    <th class="tabla__numero">Quedará</th>
+                  }
                   <th class="tabla__numero">Costo unit.</th>
                   <th class="tabla__numero">Subtotal</th>
                   @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
@@ -162,9 +190,16 @@
                     <td class="mono">{{ linea.sku }}</td>
                     <td>
                       {{ linea.producto }}
-                      <div class="secundario">{{ linea.talla }} · {{ linea.color }}</div>
+                      <div class="variante">
+                        <span class="punto" [style.background]="linea.codigo_hex"></span>
+                        Talla <strong>{{ linea.talla }}</strong> · {{ linea.color }}
+                      </div>
                     </td>
                     <td class="tabla__numero">{{ linea.cantidad }}</td>
+                    @if (recepcion.estado === 'BORRADOR') {
+                      <td class="tabla__numero">{{ linea.stock_actual }}</td>
+                      <td class="tabla__numero impacto">{{ linea.stock_actual + linea.cantidad }} <span class="impacto__mas">(+{{ linea.cantidad }})</span></td>
+                    }
                     <td class="tabla__numero">{{ precio(linea.costo_unitario) }}</td>
                     <td class="tabla__numero">{{ precio(linea.subtotal) }}</td>
                     @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
@@ -182,13 +217,18 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td colspan="6" class="estado">Todavía no cargaste prendas en esta recepción.</td>
+                    <td colspan="8" class="estado">Todavía no cargaste prendas en esta recepción. Usá el buscador de abajo.</td>
                   </tr>
                 }
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="4"><strong>Total</strong></td>
+                  <td colspan="2"><strong>Total</strong></td>
+                  <td class="tabla__numero"><strong>{{ unidadesCargadas }} u.</strong></td>
+                  @if (recepcion.estado === 'BORRADOR') {
+                    <td colspan="2"></td>
+                  }
+                  <td></td>
                   <td class="tabla__numero"><strong>{{ precio(totalCargado) }}</strong></td>
                   @if (recepcion.estado === 'BORRADOR' && puedeRegistrar) {
                     <td></td>
@@ -229,7 +269,7 @@
                       <span>{{ variante.producto }}</span>
                       <span class="secundario">
                         <span class="punto" [style.background]="variante.codigo_hex"></span>
-                        {{ variante.talla }} · {{ variante.color }} · hoy en sucursal:
+                        Talla {{ variante.talla }} · {{ variante.color }} · hoy en la sucursal:
                         {{ variante.stock_sucursal }}
                       </span>
                     </button>
@@ -241,8 +281,12 @@
             @if (elegida(); as variante) {
               <div class="carga">
                 <p class="estado">
-                  Recibiendo <strong>{{ variante.producto }}</strong> ({{ variante.talla }} ·
-                  {{ variante.color }})
+                  Recibiendo <strong>{{ variante.producto }}</strong> —
+                  <span class="punto" [style.background]="variante.codigo_hex"></span>
+                  talla {{ variante.talla }}, {{ variante.color }}
+                  (SKU <span class="mono">{{ variante.sku }}</span>). En la sucursal hay hoy
+                  <strong>{{ variante.stock_sucursal }}</strong>; quedarán
+                  <strong>{{ variante.stock_sucursal + (cantidad || 0) }}</strong>.
                 </p>
                 <div class="rejilla">
                   <div class="campo">
@@ -303,7 +347,8 @@
           }
 
           @if (recepcion.estado === 'CONFIRMADA') {
-            <h3 class="subtitulo">Movimientos de kardex</h3>
+            <h3 class="subtitulo">Así quedó el stock de {{ recepcion.sucursal }}</h3>
+            <p class="secundario">Cada fila es un asiento del kardex: cuánto había, cuánto entró y cuánto hay ahora.</p>
             @if (movimientos().length === 0) {
               <p class="estado">Sin movimientos registrados.</p>
             } @else {
@@ -312,20 +357,26 @@
                   <thead>
                     <tr>
                       <th>SKU</th>
-                      <th>Prenda</th>
-                      <th class="tabla__numero">Entrada</th>
-                      <th class="tabla__numero">Saldo anterior</th>
-                      <th class="tabla__numero">Saldo nuevo</th>
+                      <th>Prenda · talla · color</th>
+                      <th class="tabla__numero">Había</th>
+                      <th class="tabla__numero">Entró</th>
+                      <th class="tabla__numero">Hay ahora</th>
                     </tr>
                   </thead>
                   <tbody>
                     @for (movimiento of movimientos(); track movimiento.variante_id) {
                       <tr>
                         <td class="mono">{{ movimiento.sku }}</td>
-                        <td>{{ movimiento.producto }}</td>
-                        <td class="tabla__numero">+{{ movimiento.cantidad }}</td>
+                        <td>
+                          {{ movimiento.producto }}
+                          <div class="variante">
+                            <span class="punto" [style.background]="movimiento.codigo_hex"></span>
+                            Talla <strong>{{ movimiento.talla }}</strong> · {{ movimiento.color }}
+                          </div>
+                        </td>
                         <td class="tabla__numero">{{ movimiento.saldo_anterior }}</td>
-                        <td class="tabla__numero">{{ movimiento.saldo_nuevo }}</td>
+                        <td class="tabla__numero impacto__mas">+{{ movimiento.cantidad }}</td>
+                        <td class="tabla__numero impacto">{{ movimiento.saldo_nuevo }}</td>
                       </tr>
                     }
                   </tbody>

@@ -55,7 +55,7 @@ puede_actualizar_roles = requiere_permiso("roles.actualizar")
 puede_eliminar_roles = requiere_permiso("roles.eliminar")
 
 # El ADMIN es un rol, no un cargo: su fila de empleado usa ENCARGADO.
-CARGOS = {"ENCARGADO", "CAJERO", "VENDEDOR", "ALMACEN"}
+CARGOS = {"ENCARGADO", "CAJERO"}
 
 # modulos de permiso que son de la plataforma, no de una empresa
 MODULOS_PLATAFORMA = ("empresas", "planes")

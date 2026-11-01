@@ -13,7 +13,7 @@ from app.core.tenant import empresa_de_sucursal
 from app.modules.operacion_comercial.caja.router import obtener_sesion_abierta
 from app.modules.operacion_comercial.envios.servicio import SinCoordenadas, cotizar
 from app.modules.operacion_comercial.pagos.servicio import (
-    _alertar_stock_bajo,
+    alertar_stock_bajo,
     cancelar_intento_stripe,
     notificar_cajeros,
 )
@@ -984,7 +984,7 @@ async def registrar_venta_pos(
             numero_comprobante,
         )
 
-    await _alertar_stock_bajo(conn, cajero["sucursal_id"], venta["id"])
+    await alertar_stock_bajo(conn, cajero["sucursal_id"], venta["id"])
 
     vuelto = None
     if body.metodo_pago == "EFECTIVO" and body.monto_recibido is not None:

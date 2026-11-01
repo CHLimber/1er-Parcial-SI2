@@ -99,10 +99,27 @@ JOIN sucursal s    ON s.id = e.sucursal_id
 
 
 async def armar_envio_out(conn: asyncpg.Connection, fila: asyncpg.Record) -> EnvioOut:
-    eventos = await conn.fetch(
-        "SELECT estado, nota, fecha FROM envio_evento WHERE envio_id = $1 ORDER BY fecha, id",
-        fila["id"],
-    )
+    return (await armar_envios_out(conn, [fila]))[0]
+
+
+async def armar_envios_out(
+    conn: asyncpg.Connection, filas: list[asyncpg.Record]
+) -> list[EnvioOut]:
+    """Los envios con su linea de tiempo, trayendo los eventos de todos en UNA consulta (antes
+    `/envios/mis` hacia una por envio, hasta 50)."""
+    if not filas:
+        return []
+    por_envio: dict = {}
+    for evento in await conn.fetch(
+        "SELECT envio_id, estado, nota, fecha FROM envio_evento "
+        "WHERE envio_id = ANY($1::uuid[]) ORDER BY fecha, id",
+        [fila["id"] for fila in filas],
+    ):
+        por_envio.setdefault(evento["envio_id"], []).append(evento)
+    return [_envio_out(fila, por_envio.get(fila["id"], [])) for fila in filas]
+
+
+def _envio_out(fila: asyncpg.Record, eventos: list[asyncpg.Record]) -> EnvioOut:
     return EnvioOut(
         id=fila["id"],
         venta_id=fila["venta_id"],
@@ -138,7 +155,7 @@ async def mis_envios(
         SELECT_ENVIO + " WHERE v.usuario_id = $1 ORDER BY e.creado_en DESC LIMIT 50",
         usuario["id"],
     )
-    return [await armar_envio_out(conn, fila) for fila in filas]
+    return await armar_envios_out(conn, filas)
 
 
 @router.get("/venta/{venta_id}", response_model=EnvioOut)

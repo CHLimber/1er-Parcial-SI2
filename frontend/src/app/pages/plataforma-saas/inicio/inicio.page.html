@@ -98,7 +98,11 @@
     <p class="seccion__texto">Cada tienda tiene su propio catálogo, sus sucursales y sus promociones.</p>
 
     @if (cargandoTiendas()) {
-      <p class="vacio">Cargando tiendas…</p>
+      <ul class="tiendas" aria-busy="true" aria-label="Cargando tiendas">
+        @for (n of esqueleto; track n) {
+          <li class="esqueleto tienda tienda--esqueleto" aria-hidden="true"></li>
+        }
+      </ul>
     } @else {
       <ul class="tiendas">
         @for (tienda of tiendas(); track tienda.slug) {
@@ -106,11 +110,13 @@
             <button type="button" class="tienda" (click)="entrarATienda(tienda)">
               <span class="tienda__inicial" aria-hidden="true">{{ tienda.nombre.charAt(0) }}</span>
               <span class="tienda__nombre">{{ tienda.nombre }}</span>
-              <span class="tienda__ir">{{ conSesion() ? 'Entrar' : 'Ingresar' }} →</span>
+              <span class="tienda__datos tienda__datos--ubicacion">{{ resumenUbicacion(tienda) }}</span>
+              <span class="tienda__datos tienda__datos--prendas">{{ resumenPrendas(tienda) }} en la vitrina</span>
+              <span class="tienda__ir">{{ conSesion() ? 'Entrar a la tienda' : 'Ingresar para comprar' }} →</span>
             </button>
           </li>
         } @empty {
-          <li class="vacio">Todavía no hay tiendas publicadas.</li>
+          <li class="vacio vacio--tarjeta">Todavía no hay tiendas publicadas.</li>
         }
       </ul>
     }

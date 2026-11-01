@@ -1,6 +1,6 @@
 .resumen {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
   gap: 1rem;
 }
 
@@ -30,4 +30,34 @@
 .tabla .secundario {
   display: block;
   max-width: 16rem;
+}
+
+/* Cada dato del resumen en su propia celda: el valor largo ("diaria a las 02:00") no empuja a
+   los vecinos. */
+.resumen > div {
+  min-width: 0;
+}
+
+.resumen__valor {
+  overflow-wrap: anywhere;
+}
+
+/* Titulo + botones de la cabecera del panel: envuelven juntos en vez de comprimir el titulo. */
+.panel > .barra {
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.panel > .barra > .campo {
+  align-self: flex-end;
+}
+
+.tabla td .badge + .secundario,
+.tabla td .secundario + .secundario {
+  margin-top: 0.25rem;
+}
+
+/* El texto de "archivo no disponible" / error no cambia el alto de la fila de golpe. */
+.tabla .secundario {
+  overflow-wrap: anywhere;
 }

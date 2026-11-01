@@ -23,6 +23,22 @@ export const routes: Routes = [
     canActivate: [invitadoGuard],
   },
   {
+    // Recuperacion de cuenta: pedir el enlace (publica) y elegir la contraseña nueva con el token
+    path: 'recuperar-password',
+    loadComponent: () =>
+      import('./pages/acceso-y-organizacion/recuperar-password/recuperar-password.page').then(
+        (m) => m.RecuperarPasswordPage,
+      ),
+    canActivate: [invitadoGuard],
+  },
+  {
+    path: 'restablecer-password',
+    loadComponent: () =>
+      import('./pages/acceso-y-organizacion/recuperar-password/restablecer-password.page').then(
+        (m) => m.RestablecerPasswordPage,
+      ),
+  },
+  {
     // Publica: la vitrina de planes del SaaS, antes de tener cuenta
     path: 'planes',
     loadComponent: () => import('./pages/plataforma-saas/planes/planes.page').then((m) => m.PlanesPage),

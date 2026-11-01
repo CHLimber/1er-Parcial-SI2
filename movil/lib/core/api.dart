@@ -49,6 +49,10 @@ class ApiClient {
   /// Se dispara cuando la API responde 401: la sesion guardada ya no sirve.
   void Function()? alExpirarSesion;
 
+  /// Se dispara cuando la API corta a TODO el personal de la empresa (empresa suspendida o
+  /// suscripcion vencida: cabecera `X-Motivo`). Recibe el mensaje para mostrarlo en el login.
+  void Function(String mensaje)? alBloquearseLaEmpresa;
+
   Uri _uri(String ruta, [Map<String, dynamic>? query]) {
     final parametros = <String, String>{};
     query?.forEach((clave, valor) {
@@ -175,10 +179,13 @@ class ApiClient {
     // cuando la contrasena ACTUAL esta mal, no porque la sesion haya vencido -- ese
     // llamado pasa `notificarSesionExpirada: false` para no cerrar la sesion sola.
     if (respuesta.statusCode == 401 && notificarSesionExpirada) alExpirarSesion?.call();
-    throw ApiException(
-      mensajeDesdeCuerpo(cuerpo, respuesta.statusCode),
-      statusCode: respuesta.statusCode,
-    );
+    final mensaje = mensajeDesdeCuerpo(cuerpo, respuesta.statusCode);
+    final motivo = respuesta.headers['x-motivo'];
+    final conSesion = (obtenerToken() ?? '').isNotEmpty;
+    if (conSesion && (motivo == 'EMPRESA_SUSPENDIDA' || motivo == 'SUSCRIPCION_VENCIDA')) {
+      alBloquearseLaEmpresa?.call(mensaje);
+    }
+    throw ApiException(mensaje, statusCode: respuesta.statusCode);
   }
 }
 

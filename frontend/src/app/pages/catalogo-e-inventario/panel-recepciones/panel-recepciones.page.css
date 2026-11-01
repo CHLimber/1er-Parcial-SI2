@@ -145,3 +145,143 @@ tfoot td {
     max-height: 12rem;
   }
 }
+
+/* ---------- explicacion del flujo ---------- */
+
+.pasos {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.paso {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.paso__numero {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--paper-line);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.paso--activo {
+  border-color: var(--gold);
+  color: var(--ink);
+}
+
+.paso--activo .paso__numero {
+  background: var(--gold);
+}
+
+.paso--hecho .paso__numero {
+  background: var(--ink);
+  color: var(--white);
+}
+
+/* ---------- lo que se ve despues de confirmar ---------- */
+
+.confirmada {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--gold);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+}
+
+.confirmada__icono {
+  flex: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 700;
+}
+
+.confirmada__titulo {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+.confirmada__enlace {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---------- variante e impacto en stock ---------- */
+
+.variante {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.impacto {
+  font-weight: 700;
+}
+
+.impacto__mas {
+  font-weight: 600;
+  color: var(--flame-dark);
+}
+
+/* ---------- estabilidad (compartido con traspasos, devoluciones, clientas y sincronizacion) ---------- */
+
+.buscador__campo {
+  min-width: 0;
+}
+
+/* La lista de resultados y la de tarjetas no cambian de ancho segun el texto que traen. */
+.lista,
+.resultados {
+  min-width: 0;
+}
+
+.lista > li,
+.resultados > li {
+  min-width: 0;
+}
+
+.carga .rejilla {
+  align-items: end;
+}
+
+.confirmada > div {
+  min-width: 0;
+}
+
+.confirmada__titulo {
+  overflow-wrap: anywhere;
+}
+
+/* La fila de "no hay lineas" ocupa todo el ancho sin deformar las demas columnas. */
+td.estado {
+  padding: 1.25rem 0.75rem;
+  text-align: center;
+}

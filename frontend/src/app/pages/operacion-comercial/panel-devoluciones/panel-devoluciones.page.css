@@ -43,3 +43,42 @@
   letter-spacing: 0.04em;
   padding: 0 0.3rem;
 }
+
+@media (pointer: coarse) {
+  .cantidad {
+    min-height: 2.5rem;
+    width: 5rem;
+  }
+}
+
+.cantidad {
+  flex: none;
+}
+
+/* Un <fieldset> tiene `min-width: min-content` por defecto: con textos largos empujaba la ficha
+   mas alla del panel. */
+.condiciones {
+  min-width: 0;
+}
+
+.check {
+  min-height: 2rem;
+}
+
+/* El selector de "se lleva a cambio" vive en una celda: ancho fijo para que la columna no se
+   mueva al elegir una opcion con texto mas largo. */
+.tabla select {
+  width: 12rem;
+  max-width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.ficha--venta {
+  min-width: 0;
+}

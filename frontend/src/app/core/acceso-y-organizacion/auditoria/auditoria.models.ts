@@ -12,6 +12,8 @@ export interface AuditoriaOut {
   datos_antes: Record<string, unknown> | null;
   datos_despues: Record<string, unknown> | null;
   ip: string | null;
+  /** Empresa de la acción (la plataforma ve las de todas). */
+  empresa_nombre: string | null;
 }
 
 export interface AuditoriaPaginadoOut {
@@ -28,4 +30,6 @@ export interface FiltroAuditoria {
   accion?: AccionAuditoria | null;
   desde?: string | null;
   hasta?: string | null;
+  /** Solo la plataforma (SUPERADMIN) filtra por empresa. */
+  empresa_id?: string | null;
 }

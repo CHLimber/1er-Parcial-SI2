@@ -31,7 +31,7 @@
           @for (item of c.items; track item.id) {
             <li class="carrito__item">
               @if (item.imagen_url) {
-                <img class="carrito__imagen" [src]="item.imagen_url" [alt]="item.producto" />
+                <img class="carrito__imagen" [src]="item.imagen_url" [alt]="item.producto" width="52" height="64" loading="lazy" />
               }
               <div class="carrito__info">
                 <span class="carrito__nombre">{{ item.producto }}</span>
@@ -50,7 +50,7 @@
                 />
               </div>
               <span class="carrito__subtotal">{{ formatearPrecio(item.subtotal) }}</span>
-              <button type="button" class="carrito__quitar" (click)="quitarItem(item)" aria-label="Quitar">
+              <button type="button" class="carrito__quitar" (click)="quitarItem(item)" [attr.aria-label]="'Quitar ' + item.producto">
                 ✕
               </button>
             </li>
@@ -124,7 +124,10 @@
               }
 
               @if (cotizando()) {
-                <p class="envio__estado">Calculando la tarifa del envío…</p>
+                <p class="envio__estado" role="status">Calculando la tarifa del envío…</p>
+                @if (!cotizacion()) {
+                  <div class="envio__mapa-esqueleto" aria-hidden="true"></div>
+                }
               } @else if (cotizacion(); as cot) {
                 <div class="envio">
                   @if (cot.es_gratis) {
@@ -248,7 +251,7 @@
             }
             @case ('QR') {
               <div class="qr-preview">
-                <img src="pago-qr.jpeg" alt="Código QR para pagar" class="qr-preview__imagen" />
+                <img src="/pago-qr.jpeg" alt="Código QR para pagar" class="qr-preview__imagen" width="817" height="896" />
                 <p class="campo__ayuda">
                   Tocá "Pagar con QR" para generar tu pedido, escaneá el código desde tu app bancaria y
                   avisanos que pagaste. La sucursal verifica el depósito y recién ahí confirma tu compra.

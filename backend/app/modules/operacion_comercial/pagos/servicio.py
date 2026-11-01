@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 import asyncpg
 import stripe
 
+from app.core.notificaciones.servicio import avisar_personal_de_sucursal
 from app.modules.operacion_comercial.envios.servicio import crear_envio_de_venta
 
 logger = logging.getLogger(__name__)
@@ -137,7 +138,7 @@ async def confirmar_aprobado(conn: asyncpg.Connection, pago_id: UUID, venta: dic
             envio_id,
         )
 
-    await _alertar_stock_bajo(conn, venta["sucursal_id"], venta["id"])
+    await alertar_stock_bajo(conn, venta["sucursal_id"], venta["id"])
 
     return {"venta_estado": "PAGADA", "pago_estado": "APROBADO", "mensaje": "Pago confirmado"}
 
@@ -337,54 +338,34 @@ async def notificar_cajeros(
 ) -> None:
     """Avisa a los cajeros activos de la sucursal que tienen un pago online por verificar
     (checkout en EFECTIVO o pago QR informado por la clienta)."""
+    await avisar_personal_de_sucursal(
+        conn, sucursal_id, "CAJERO", "VENTA", titulo, mensaje, "VENTA", venta_id
+    )
+
+
+async def alertar_stock_bajo(conn: asyncpg.Connection, sucursal_id: UUID, venta_id: UUID) -> None:
+    """Avisa a los encargados de la sucursal si alguna prenda de la venta quedo en o bajo su stock
+    minimo. Una sola sentencia: detecta las prendas bajas (sin traer antes los ids de la venta) y
+    solo inserta si hay alguna, un aviso por encargado."""
     await conn.execute(
         """
+        WITH bajos AS (
+            SELECT DISTINCT p.nombre AS producto
+            FROM venta_detalle vd
+            JOIN inventario i ON i.variante_id = vd.variante_id AND i.sucursal_id = $1
+            JOIN producto_variante pv ON pv.id = vd.variante_id
+            JOIN producto p ON p.id = pv.producto_id
+            WHERE vd.venta_id = $2 AND i.disponible <= i.stock_minimo
+        ), aviso AS (
+            SELECT string_agg(producto, ', ' ORDER BY producto) AS nombres FROM bajos
+        )
         INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-        SELECT e.usuario_id, 'VENTA', $2, $3, 'VENTA', $4
-        FROM empleado e
-        WHERE e.sucursal_id = $1 AND e.activo AND e.cargo = 'CAJERO'
+        SELECT e.usuario_id, 'STOCK', 'Stock bajo el minimo',
+               'Quedo poco stock de: ' || aviso.nombres, 'VENTA', $2
+        FROM empleado e, aviso
+        WHERE e.sucursal_id = $1 AND e.activo AND e.cargo = 'ENCARGADO'
+          AND aviso.nombres IS NOT NULL
         """,
         sucursal_id,
-        titulo,
-        mensaje,
         venta_id,
     )
-
-
-async def _alertar_stock_bajo(conn: asyncpg.Connection, sucursal_id: UUID, venta_id: UUID) -> None:
-    variante_ids = [
-        fila["variante_id"]
-        for fila in await conn.fetch(
-            "SELECT variante_id FROM venta_detalle WHERE venta_id = $1", venta_id
-        )
-    ]
-    bajos = await conn.fetch(
-        """
-        SELECT DISTINCT p.nombre AS producto
-        FROM inventario i
-        JOIN producto_variante pv ON pv.id = i.variante_id
-        JOIN producto p ON p.id = pv.producto_id
-        WHERE i.sucursal_id = $1 AND i.variante_id = ANY($2::uuid[])
-          AND i.disponible <= i.stock_minimo
-        """,
-        sucursal_id,
-        variante_ids,
-    )
-    if not bajos:
-        return
-
-    encargados = await conn.fetch(
-        "SELECT usuario_id FROM empleado WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'",
-        sucursal_id,
-    )
-    nombres = ", ".join(fila["producto"] for fila in bajos)
-    for encargado in encargados:
-        await conn.execute(
-            """
-            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-            VALUES ($1, 'STOCK', 'Stock bajo el minimo', $2, 'VENTA', $3)
-            """,
-            encargado["usuario_id"],
-            f"Quedo poco stock de: {nombres}",
-            venta_id,
-        )

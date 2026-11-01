@@ -130,7 +130,7 @@ class RolOut {
 }
 
 /// Cargos posibles de `empleado.cargo` (ENUM del esquema).
-const List<String> cargosEmpleado = ['ENCARGADO', 'CAJERO', 'VENDEDOR', 'ALMACEN'];
+const List<String> cargosEmpleado = ['ENCARGADO', 'CAJERO'];
 
 /// CU13: Gestionar Usuarios y Roles. La API autoriza por codigo de permiso, no por rol.
 class UsuariosAdminService {

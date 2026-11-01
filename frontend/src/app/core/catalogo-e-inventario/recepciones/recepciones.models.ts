@@ -21,9 +21,12 @@ export interface DetalleOut {
   producto: string;
   talla: string;
   color: string;
+  codigo_hex: string;
   cantidad: number;
   costo_unitario: number;
   subtotal: number;
+  /** Stock fisico en la sucursal que recibe, antes de confirmar. */
+  stock_actual: number;
 }
 
 export interface RecepcionOut {
@@ -63,6 +66,9 @@ export interface MovimientoOut {
   variante_id: string;
   sku: string;
   producto: string;
+  talla: string;
+  color: string;
+  codigo_hex: string;
   cantidad: number;
   saldo_anterior: number;
   saldo_nuevo: number;

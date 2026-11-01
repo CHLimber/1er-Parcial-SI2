@@ -71,3 +71,52 @@
   font-size: 1.1rem;
   margin: 0.75rem 0;
 }
+
+/* ---------- estabilidad y toque ---------- */
+
+/* La tira de estado no cambia de alto cuando cambian los contadores o el texto del catalogo. */
+.estado-sync {
+  min-height: 3.5rem;
+}
+
+.estado-sync > * {
+  min-width: 0;
+}
+
+.estado-sync .acciones {
+  flex: 0 1 auto;
+}
+
+/* Carrito: la tabla de lineas no se comprime; se desliza si no entra. */
+.columnas .tabla-envoltorio > .tabla {
+  min-width: 18rem;
+}
+
+.cantidad {
+  min-width: 8.5rem;
+}
+
+.catalogo__item > div:first-child {
+  overflow-wrap: anywhere;
+}
+
+.variante {
+  min-height: 2.25rem;
+  text-align: left;
+}
+
+@media (pointer: coarse) {
+  .variante {
+    min-height: 2.75rem;
+    padding-inline: 0.7rem;
+  }
+}
+
+.total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--paper-line);
+}

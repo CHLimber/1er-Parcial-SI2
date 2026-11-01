@@ -45,3 +45,14 @@
   flex-wrap: wrap;
   margin-bottom: 0.5rem;
 }
+
+@media (pointer: coarse) {
+  .cantidad {
+    min-height: 2.5rem;
+    width: 5rem;
+  }
+}
+
+.cantidad {
+  flex: none;
+}

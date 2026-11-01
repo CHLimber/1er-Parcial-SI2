@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.db import get_connection
 from app.core.deps import get_current_usuario, get_encargado_actual
 from app.core.mutex import mutex_variante
+from app.core.notificaciones.servicio import avisar_personal_de_sucursal
 from app.modules.operacion_comercial.caja.router import obtener_sesion_abierta
+from app.modules.operacion_comercial.pagos.servicio import alertar_stock_bajo
 from app.modules.operacion_comercial.reservas.schemas import (
     CancelarReservaIn,
     ClienteBreveOut,
@@ -23,7 +25,7 @@ from app.modules.operacion_comercial.reservas.schemas import (
     ResolverReservaIn,
     ResolverReservaOut,
 )
-from app.modules.operacion_comercial.ventas.router import IVA_TASA, _alertar_stock_bajo
+from app.modules.operacion_comercial.ventas.router import IVA_TASA
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
 
@@ -316,27 +318,17 @@ async def _crear_reserva_pendiente(
                 },
             )
 
-        empleados = await conn.fetch(
-            """
-            SELECT usuario_id FROM empleado
-            WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'
-            """,
+        await avisar_personal_de_sucursal(
+            conn,
             body.sucursal_id,
-        )
-        mensaje = (
+            "ENCARGADO",
+            "RESERVA",
+            "Nueva reserva de vestidor",
             f"Nueva reserva {codigo} para el {body.fecha_visita} a las {body.hora_visita}, "
-            f"{len(items_confirmados)} prenda(s). Pendiente de tu confirmacion."
+            f"{len(items_confirmados)} prenda(s). Pendiente de tu confirmacion.",
+            "RESERVA",
+            reserva["id"],
         )
-        for empleado in empleados:
-            await conn.execute(
-                """
-                INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-                VALUES ($1, 'RESERVA', 'Nueva reserva de vestidor', $2, 'RESERVA', $3)
-                """,
-                empleado["usuario_id"],
-                mensaje,
-                reserva["id"],
-            )
 
     return ReservaOut(
         id=reserva["id"],
@@ -517,24 +509,19 @@ async def cancelar_reserva(
             reserva_id,
         )
 
-        encargados = await conn.fetch(
-            "SELECT usuario_id FROM empleado "
-            "WHERE sucursal_id = $1 AND activo AND cargo = 'ENCARGADO'",
-            reserva["sucursal_id"],
-        )
         mensaje = f"El cliente cancelo la reserva {reserva['codigo']}; el stock ya se libero."
         if motivo_cliente:
             mensaje += f" Motivo: {motivo_cliente}"
-        for encargado in encargados:
-            await conn.execute(
-                """
-                INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-                VALUES ($1, 'RESERVA', 'Reserva cancelada por el cliente', $2, 'RESERVA', $3)
-                """,
-                encargado["usuario_id"],
-                mensaje,
-                reserva_id,
-            )
+        await avisar_personal_de_sucursal(
+            conn,
+            reserva["sucursal_id"],
+            "ENCARGADO",
+            "RESERVA",
+            "Reserva cancelada por el cliente",
+            mensaje,
+            "RESERVA",
+            reserva_id,
+        )
 
         fila = await conn.fetchrow(
             """
@@ -1028,7 +1015,7 @@ async def resolver_reserva(
         reserva_final = await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"])
 
     if venta_id is not None:
-        await _alertar_stock_bajo(conn, reserva["sucursal_id"], venta_id)
+        await alertar_stock_bajo(conn, reserva["sucursal_id"], venta_id)
 
     return ResolverReservaOut(
         reserva=await _reserva_staff_out(conn, reserva_final),

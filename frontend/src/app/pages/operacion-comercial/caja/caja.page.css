@@ -5,7 +5,7 @@
 }
 
 .contenido {
-  max-width: 46rem;
+  max-width: 72rem;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -386,4 +386,214 @@
 
 .boton--peligro {
   background: var(--flame-dark);
+}
+
+/* ==========================================================================
+   Estabilidad y mostrador/tablet (revision de layout)
+   --------------------------------------------------------------------------
+   - `.contenido` mide 72rem y cada bloque pone su propio tope: antes todo vivia en una columna de
+     46rem y en una tablet el ticket y el cobro iban uno debajo del otro.
+   - El POS es una grilla de dos pistas fijas: ticket a la izquierda, cobro a la derecha. Cobro no
+     existe hasta que hay una prenda, pero la pista ya esta reservada y el ticket no se corre.
+   - Todo lo que se toca con el dedo mide >= 2.75rem.
+   ========================================================================== */
+
+.contenido > .formulario {
+  max-width: 34rem;
+}
+
+.contenido > .comprobante {
+  max-width: 42rem;
+}
+
+.contenido > .verificar {
+  max-width: 56rem;
+}
+
+.pos {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(19rem, 1fr);
+  gap: 1.25rem 1.5rem;
+  align-items: start;
+}
+
+.pos__izquierda {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.pos__derecha {
+  position: sticky;
+  top: 4.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+/* En el cobro el resumen se ve como un recibo: lineas con el importe a la derecha, total grande. */
+.pos__derecha .resumen {
+  align-self: stretch;
+  text-align: left;
+  gap: 0.35rem;
+  padding: 1rem 1.25rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+}
+
+.pos__derecha .resumen p {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+}
+
+.pos__derecha .resumen__total {
+  margin-top: 0.35rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--paper-line);
+  font-size: 1.35rem;
+}
+
+.pos__derecha .formulario {
+  max-width: none;
+}
+
+.pos__derecha .campo input {
+  min-height: 3rem;
+  font-size: 1.05rem;
+}
+
+.vuelto {
+  min-height: 1.5rem;
+  margin: 0;
+}
+
+.metodo {
+  min-height: 3rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.boton {
+  min-height: 2.75rem;
+  min-width: 8rem;
+  font-family: inherit;
+}
+
+.boton--secundario {
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--paper-line);
+}
+
+.boton--secundario:hover {
+  background: var(--paper);
+  color: var(--flame-dark);
+}
+
+.boton--cobrar {
+  align-self: stretch;
+  min-height: 3.4rem;
+  font-size: 1rem;
+}
+
+.pos__busqueda input {
+  min-height: 3rem;
+  min-width: 0;
+}
+
+.pos__busqueda .boton {
+  min-width: 8.5rem;
+}
+
+.ticket__item {
+  min-width: 0;
+}
+
+.ticket__nombre,
+.ticket__variante {
+  overflow-wrap: anywhere;
+}
+
+.ticket__cantidad-input input {
+  width: 4.25rem;
+  min-height: 2.75rem;
+}
+
+.ticket__subtotal {
+  min-width: 6rem;
+}
+
+.ticket__quitar {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: grid;
+  place-items: center;
+}
+
+.campo input,
+.campo select {
+  min-height: 2.75rem;
+}
+
+.verificar__cabecera {
+  flex-wrap: wrap;
+}
+
+.verificar__secundario {
+  min-height: 2.75rem;
+  min-width: 7.5rem;
+  font-family: inherit;
+}
+
+.verificar__pedido {
+  min-width: 0;
+}
+
+.verificar__linea,
+.verificar__items li {
+  overflow-wrap: anywhere;
+}
+
+.verificar__acciones .boton {
+  min-width: 11rem;
+}
+
+.formulario > .boton {
+  align-self: stretch;
+}
+
+@media (max-width: 64rem) {
+  /* Tablet: el cobro baja debajo del ticket, ya sin quedar pegado (sticky) a la barra. */
+  .pos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pos__derecha {
+    position: static;
+  }
+}
+
+@media (max-width: 30rem) {
+  .ticket__item {
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+
+  .ticket__info {
+    flex: 1 1 100%;
+  }
+
+  .ticket__subtotal {
+    margin-left: auto;
+  }
+
+  .verificar__acciones .boton,
+  .verificar__secundario {
+    flex: 1 1 100%;
+  }
 }

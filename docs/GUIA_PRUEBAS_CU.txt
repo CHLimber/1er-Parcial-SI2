@@ -1,0 +1,480 @@
+﻿==============================================================================
+ FASHIONSTORE - GUIA DE PRUEBAS DE LOS 30 CASOS DE USO
+==============================================================================
+
+INDICE RAPIDO: QUE ES CADA CASO DE USO  (quien lo hace -> que hace)
+
+PLATAFORMA SAAS (administra la plataforma, no una tienda)
+ CU01 Gestionar empresas ............ SUPERADMIN registra una empresa con su administrador, la edita o la suspende.
+ CU02 Asignar/cambiar plan .......... SUPERADMIN le pone a una empresa un plan (Basico/Profesional) con fechas de inicio y vencimiento.
+ CU03 Configurar planes y limites ... SUPERADMIN define cuantas sucursales, personas y cajas permite cada plan y que funciones incluye.
+ CU04 Consultar suscripcion ......... ADMIN de empresa ve su plan, vencimiento, uso e historial de pagos (SUPERADMIN ve todas).
+ CU05 Renovar suscripcion ........... Se paga la renovacion con Stripe o el SUPERADMIN registra un pago manual (efectivo/transferencia).
+
+ACCESO Y ORGANIZACION
+ CU06 Gestionar sucursales y cajas .. ADMIN crea/edita/desactiva sucursales y cajas; el plan limita cuantas.
+
+RELACION CON LA CLIENTA
+ CU07 Elegir tienda ................. La clienta elige en que empresa (tienda) compra; todo lo demas queda aislado a esa tienda.
+ CU08 Gestionar clientas ............ Personal consulta la cartera de clientas, su ficha y edita su perfil (no existe en plan Basico).
+
+CATALOGO E INVENTARIO
+ CU09 Registrar recepcion ........... Entra mercaderia del proveedor: se arma la recepcion y al confirmarla sube el stock.
+ CU10 Gestionar inventario .......... Productos y variantes, existencias por sucursal, kardex, ajustes de stock y traspasos entre sucursales.
+ CU11 Sugerir traspasos ............. El sistema propone mover prendas hacia donde crece la demanda (no existe en plan Basico).
+
+OPERACION COMERCIAL
+ CU12 Reservar prendas .............. La clienta reserva prendas para probarlas en el vestidor; el encargado confirma/rechaza y la atiende.
+ CU13 Pagar con pasarela ............ La clienta paga online (Stripe, QR o efectivo); cajera aprueba QR/efectivo; se entrega el pedido o se envia.
+ CU14 Venta presencial .............. La cajera abre caja, vende en mostrador (efectivo/tarjeta/QR), emite comprobante y cierra caja con arqueo.
+ CU15 Devolucion con reintegro ...... El encargado registra una devolucion, la aprueba o rechaza y se reintegra el dinero.
+ CU16 Cambios de prenda ............. Devolucion de talla/color + venta nueva vinculada; nota de devolucion y lista de cambios del mes.
+
+OPERACION SIN CONEXION (con la red cortada)
+ CU17 Descargar datos offline ....... Baja el catalogo, clientas y caja de la sucursal para trabajar sin internet.
+ CU18 Catalogo sin conexion ......... Consulta el catalogo descargado; avisa si esta desactualizado.
+ CU19 Reserva sin conexion .......... Registra una reserva sin red; al sincronizar nace CONFIRMADA.
+ CU20 Venta de contado sin conexion . Registra una venta sin red; el servidor la revalida al sincronizar.
+ CU21 Operaciones locales ........... Lista las operaciones guardadas en el equipo y su estado; permite archivar las cerradas.
+ CU22 Sincronizar pendientes ........ Al volver la red, envia las operaciones; es idempotente (no duplica).
+ CU23 Resolver conflicto ............ Encargado/admin decide: reintentar, aceptar precio actual o descartar una operacion en conflicto.
+ CU24 Supervisar sincronizacion ..... Encargado/admin ve el log de operaciones sincronizadas de la sucursal/empresa.
+
+INTELIGENCIA DE NEGOCIO
+ CU25 Perdidas por sucursal ......... Mermas, defectos, faltantes de traspaso y de caja por sucursal.
+ CU26 Reporte en lenguaje natural ... Se pide un reporte escribiendolo o dictandolo; Claude (IA) consulta la base y responde tabla o grafico (solo Profesional).
+ CU27 Exportar reporte .............. Baja el reporte a Excel o PDF.
+ CU28 Dashboard analitico ........... Demanda prevista, segmentos de clientas y dias atipicos con machine learning (solo Profesional).
+ CU29 Entrenar modelos de ML ........ SUPERADMIN reentrena los modelos con datos sinteticos y ve sus metricas.
+
+COPIAS DE SEGURIDAD
+ CU30 Copias de seguridad ........... Copia general automatica diaria (SUPERADMIN) y copia manual por empresa (ADMIN); se descarga como zip.
+
+Credenciales: TODAS las cuentas usan la contrasena  demo1234
+Web: http://localhost:3000     API/Swagger: http://localhost:8081/docs
+
+==============================================================================
+ GUIA DETALLADA (credenciales, estado inicial, orden, pasos de cada CU)
+==============================================================================
+
+Guía para recorrer a mano, paso a paso, CU01-CU29 (catálogo de PARCIALES.md) más CU30 (copias de
+seguridad). Cada caso dice quién entra, qué hacer, qué hace el sistema por dentro y qué
+tendría que pasar, con una línea Notas: para tus anotaciones.
+
+El escenario lo arma scripts/preparar_escenario_pruebas.py sobre el seed (db/01-04): deja casos
+pendientes para cada flujo, así no hay que fabricar datos antes de probar.
+
+---
+
+==============================================================================
+1. ACCESOS
+==============================================================================
+
+ - Qué  |  Dónde
+ - Web (tienda y panel)  |  http://localhost:3000
+ - API y documentación interactiva (Swagger)  |  http://localhost:8081/docs
+ - Postgres  |  localhost:5433, usuario/clave/base fashionstore
+ - App móvil  |  movil/README.md (backend primero; emulador usa 10.0.2.2:8081)
+
+Todas las cuentas usan la contraseña demo1234.
+
+PERSONAL
+
+ - Email  |  Rol / cargo  |  Tienda y sucursal  |  Para probar
+ - superadmin@fashionstore.bo  |  SUPERADMIN  |  Plataforma (sin empresa)  |  CU01-CU05, CU29, CU30 general
+ - admin@fashionstore.bo  |  ADMIN + ENCARGADO de Equipetrol  |  FashionStore, SC-01  |  Casi todo el panel; es el "encargado" de los casos de abajo
+ - cajera.scz@fashionstore.bo  |  CAJERO  |  FashionStore, SC-01  |  Caja, POS, pagos online, reservas en vestidor, sin conexión (venta y reserva)
+ - encargada.lapaz@fashionstore.bo  |  ENCARGADO  |  FashionStore, LP-01  |  Recibe el traspaso en tránsito
+ - encargada.sucre@, encargada.tarija@, encargado.oruro@ fashionstore.bo  |  ENCARGADO  |  SU-01, TJ-01, OR-01  |  Alcance por sucursal (403 al pedir otra)
+ - cajero.cbba@fashionstore.bo  |  CAJERO  |  CB-01  |  Caja de otra sucursal
+ - admin@andina.bo  |  ADMIN  |  Boutique Andina, plan Básico, 2 de 2 sucursales  |  Límite del plan (CU06), funciones bloqueadas (CU11, CU26, CU28)
+ - admin@modaurbana.bo  |  ADMIN  |  Moda Urbana, suscripción vencida  |  402 por suscripción vencida, renovar (CU05)
+
+CLIENTAS
+
+cliente@fashionstore.bo, cliente2@fashionstore.bo y clienta01@demo.bo … clienta40@demo.bo.
+Cada una elige tienda (header X-Empresa; la web lo hace al elegir la tienda en la portada).
+
+STRIPE (MODO PRUEBA)
+
+Tarjeta 4242 4242 4242 4242, cualquier fecha futura, cualquier CVC y código postal. Rechazo:
+4000 0000 0000 0002.
+
+---
+
+==============================================================================
+2. CÓMO QUEDÓ EL ESCENARIO (QUÉ HAY ESPERANDO)
+==============================================================================
+
+ - Cosa  |  Dato  |  Para qué CU
+ - Caja de Equipetrol  |  Cerrada (hoy ya tuvo una sesión con 4 ventas)  |  CU14 (abrirla), CU13, CU15
+ - Ventas POS de hoy  |  V-9D637538E5 (efectivo), V-A5BF9C367E (tarjeta), V-2E22DB7788 (QR), V-588E6B666A (efectivo)  |  CU15, CU16
+ - Reservas  |  RES-11DD3C85EB PENDIENTE (clienta01), RES-D9D77DEB77 PENDIENTE (cliente@), RES-F3759F95B5 CONFIRMADA (clienta02), RES-C1BBD7AC5C CONFIRMADA (clienta03), RES-6306AE8244 CONFIRMADA (offline, clienta10). Visita: mañana  |  CU12, CU19
+ - Pago efectivo por aprobar  |  V-34A64808B6 (clienta04, retiro)  |  CU13
+ - Pago QR informado por aprobar  |  V-2A0314ED3A (clienta05, retiro)  |  CU13
+ - Pedido por retirar (PAGADA)  |  V-9D073266C2 (clienta07)  |  CU13 → entrega
+ - Pedido a domicilio (PAGADA)  |  V-C43ECA09D3 (clienta08), envío PENDIENTE  |  CU13, envíos
+ - Devoluciones  |  NDV-000001 (DEFECTO sobre V-9D637538E5), NDV-000002 (TALLA XS→S, Blazer Entallado, sobre V-A5BF9C367E), ambas SOLICITADA  |  CU15, CU16
+ - Recepción  |  GR-ESC-065415 BORRADOR, 3 líneas de Textiles Andinos  |  CU09
+ - Traspasos  |  T-ED417A6CB6 SOLICITADO (Equipetrol → La Paz), T-D6DDEF1194 EN_TRANSITO hacia La Paz  |  CU10
+ - Operaciones offline  |  3 CONFLICTO (precio, stock, sin caja), 1 venta y 1 reserva CONFIRMADAS, 1 reserva RECHAZADA (cajera sin permiso de reservas)  |  CU21-CU24
+ - Historial  |  60 días de ventas POS en las 6 sucursales + mermas  |  CU11, CU25, CU26, CU28
+ - Empresas  |  FashionStore (Profesional, 6 sucursales), Boutique Andina (Básico), Moda Urbana (vencida)  |  CU01-CU05
+
+  NOTA: Ojo: la base tiene empresas sobrantes de pruebas anteriores (Casa Aurora ×2, Casa Luna, Gaturro,
+  NOTA: Boutique Sol). Aparecen en /panel/empresas; ignoralas o suspendelas.
+
+---
+
+==============================================================================
+3. ORDEN RECOMENDADO
+==============================================================================
+
+Algunos casos dependen de otros. Seguí este orden y no te trabás:
+
+1. Plataforma (CU01-CU05) con superadmin y admin@andina.bo.
+2. Sucursales y clientas (CU06, CU08) con admin@fashionstore.bo.
+3. Cliente en la tienda (CU07, CU12, CU13): elegir tienda, reservar, comprar con Stripe.
+4. Caja primero: cajera.scz abre caja (CU14) → después aprobá los pagos pendientes (CU13) y entregá el pedido por retirar.
+5. Devoluciones (CU15, CU16) con la caja abierta (el reintegro en efectivo la necesita).
+6. Inventario (CU09, CU10, CU11).
+7. Sin conexión (CU17-CU24).
+8. Inteligencia de negocio (CU25-CU29) y copias (CU30).
+
+---
+
+==============================================================================
+4. LOS CASOS DE USO
+==============================================================================
+
+PLATAFORMA SAAS
+
+------------------------------------------------------------------------------
+CU01 Gestionar empresas
+------------------------------------------------------------------------------
+- Entra: superadmin@fashionstore.bo → /panel/empresas.
+- Pasos: 1) Mirá la lista (estado, plan, vencimiento). 2) Registrar empresa: nombre, razón social, NIT, slug (ej. mi-boutique), plan, días de prueba, datos del administrador (con contraseña que cumpla la política) y, opcional, primera sucursal. 3) Gestionar una empresa: editar datos. 4) Suspenderla y reactivarla.
+- Por dentro: crea el tenant (empresa), su suscripción en PRUEBA, su ADMIN con empleado y, si se pidió, sucursal + caja. Suspender corta el acceso de esa empresa y la saca de /saas/tiendas. Se audita todo.
+- Debería pasar: loguearte con el admin nuevo; la empresa suspendida no aparece como tienda para la clienta (CU07) y su personal no entra.
+- Notas:
+
+------------------------------------------------------------------------------
+CU02 Asignar o cambiar el plan de una empresa
+------------------------------------------------------------------------------
+- Entra: superadmin → /panel/empresas → Gestionar → Guardar plan.
+- Pasos: cambiá Boutique Andina de Básico a Profesional con fecha de inicio y vencimiento; después devolvela a Básico.
+- Por dentro: actualiza suscripcion (plan, estado, inicio, vence_en). Las funciones del plan se leen en cada petición, no hay que reiniciar nada.
+- Debería pasar: admin@andina.bo ve aparecer (o desaparecer) Traspasos, Analítica ML y Clientas. Con vencimiento pasado, su operación da 402.
+- Notas:
+
+------------------------------------------------------------------------------
+CU03 Configurar planes y límites
+------------------------------------------------------------------------------
+- Entra: superadmin → /panel/empresas (sección de planes).
+- Pasos: cambiá el límite de sucursales o cajas del plan Básico y probá que se aplica (ver CU06).
+- Por dentro: PUT /saas/planes/{codigo}; exigir_limite consulta el plan vigente al crear sucursales, personal y cajas.
+- Debería pasar: con Básico en 2 sucursales, admin@andina.bo (ya tiene 2) no puede crear una tercera.
+- Notas:
+
+------------------------------------------------------------------------------
+CU04 Consultar suscripción y plan contratado
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/suscripcion; también superadmin (ve todas).
+- Pasos: mirá plan, estado, vencimiento, uso (sucursales, personal, cajas) e historial de pagos. Repetí con admin@modaurbana.bo (vencida).
+- Por dentro: GET /saas/suscripcion (la de la empresa del token) y GET /saas/suscripciones (plataforma).
+- Debería pasar: FashionStore: Profesional vigente, 6 de 10 sucursales. Moda Urbana: VENCIDA.
+- Notas:
+
+------------------------------------------------------------------------------
+CU05 Renovar suscripción
+------------------------------------------------------------------------------
+- Entra: admin@modaurbana.bo → /panel/suscripcion; o superadmin para pago manual.
+- Pasos: A) Con Stripe: elegí plan y meses → te lleva al Checkout de Stripe → tarjeta de prueba → vuelve a /panel/suscripcion?sesion=… y se activa. B) Manual (superadmin): registrá un pago EFECTIVO o TRANSFERENCIA sobre la empresa.
+- Por dentro: POST /saas/suscripcion/checkout crea el pago PENDIENTE y la sesión de Stripe; al volver, POST /saas/pagos/verificar consulta a Stripe y activa. El manual escribe el pago y extiende el vencimiento sin Stripe.
+- Debería pasar: estado ACTIVA con nuevo vencimiento y el pago en el historial. Antes de renovar, Moda Urbana recibe 402 al operar.
+- Notas:
+
+ACCESO Y ORGANIZACIÓN
+
+------------------------------------------------------------------------------
+CU06 Gestionar sucursales y cajas
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/sucursales. Para el límite: admin@andina.bo.
+- Pasos: 1) Nueva sucursal (código, nombre, ciudad, dirección, horario, vestidores, coordenadas). 2) Agregale una caja. 3) Desactivala. 4) Con admin@andina.bo intentá crear una tercera sucursal.
+- Por dentro: valida el límite del plan; el código es único por empresa. Una sucursal no es un tenant: comparte catálogo con las demás de la empresa.
+- Debería pasar: Andina recibe error de límite de plan; FashionStore sí puede (6 de 10).
+- Notas:
+
+RELACIÓN CON LA CLIENTA
+
+------------------------------------------------------------------------------
+CU07 Elegir tienda
+------------------------------------------------------------------------------
+- Entra: sin sesión (o clienta) → http://localhost:3000/.
+- Pasos: en la portada, Tiendas: elegí FashionStore, Boutique Andina; seguí al login con cliente@fashionstore.bo. Cambiá de tienda y mirá que el catálogo cambia.
+- Por dentro: GET /saas/tiendas (solo empresas con suscripción vigente). elegirTienda guarda el slug y el interceptor manda X-Empresa en cada llamada. Un recurso de otra empresa responde 404.
+- Debería pasar: Moda Urbana (vencida) no aparece. El carrito y las reservas son por tienda.
+- Notas:
+
+------------------------------------------------------------------------------
+CU08 Gestionar clientas de la empresa
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo o cajera.scz → /panel/clientes.
+- Pasos: buscá una clienta, abrí su ficha (compras, reservas), editá su perfil (talla, preferencias), Agregar clienta. Con admin@andina.bo (Básico) la sección no está.
+- Por dentro: /clientes es por empresa (cliente_perfil_tenant); la cuenta es de la plataforma, el perfil es del tenant. Función perfiles_clientes del plan.
+- Debería pasar: la cartera de FashionStore no muestra a las de otras tiendas; Básico no accede.
+- Notas:
+
+CATÁLOGO E INVENTARIO
+
+------------------------------------------------------------------------------
+CU09 Registrar recepción de mercadería
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo (encargado de Equipetrol) → /panel/recepciones.
+- Pasos: 1) Abrí GR-ESC-065415 (BORRADOR, 3 líneas). 2) Editá una cantidad, borrá y agregá una línea (buscá por SKU). 3) Confirmar. 4) Hacé una nueva con Nueva recepción y anulala antes de confirmar.
+- Por dentro: confirmar solo hace UPDATE recepcion SET estado='CONFIRMADA'; el trigger tg_confirmar_recepcion llama a fn_mover_inventario (ENTRADA) por línea y escribe el kardex. Confirmada no se edita ni anula: se corrige con un ajuste.
+- Debería pasar: el stock de Equipetrol sube; en CU10 el kardex de esas variantes muestra la ENTRADA.
+- Notas:
+
+------------------------------------------------------------------------------
+CU10 Gestionar inventario (productos, existencias, kardex, ajustes, traspasos)
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/catalogo, /panel/inventario, /panel/traspasos.
+- Pasos:
+  1. *Productos y variantes:* crear un producto con variantes (talla × color) y foto; desactivarlo.
+  2. *Existencias consolidadas:* ver el stock por sucursal de una variante.
+  3. *Kardex:* abrí una variante y mirá cada movimiento (ENTRADA, VENTA, TRASPASO…).
+  4. *Ajuste:* poné una cantidad física nueva con motivo; ver el movimiento AJUSTE.
+  5. *Traspasos:* a) Abrí T-ED417A6CB6 (SOLICITADO) → Despachar. b) Entrá como encargada.lapaz@fashionstore.bo → T-D6DDEF1194 (EN_TRANSITO) → Recibir con una cantidad menor a la enviada (genera faltante). c) Creá uno nuevo y Anulalo.
+- Por dentro: fn_mover_inventario es el único punto de escritura de stock (bloquea con FOR UPDATE, valida y escribe el kardex append-only). Despachar = TRASPASO_SAL en origen; recibir = TRASPASO_ENT en destino por lo recibido. Lo no recibido queda como faltante y alimenta CU25.
+- Debería pasar: el stock sale de origen al despachar y entra en destino al recibir; el kardex de ambas sucursales cuadra; encargada.lapaz no puede despachar uno de Equipetrol.
+- Notas:
+
+------------------------------------------------------------------------------
+CU11 Sugerir traspasos según la demanda
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/traspasos → botón Sugerencias por demanda. Con admin@andina.bo (Básico) la función está bloqueada (403).
+- Pasos: mirá las sugerencias (qué variante, desde qué sucursal sobra, hacia cuál hace falta) y creá un traspaso desde una de ellas.
+- Por dentro: GET /traspasos/sugerencias compara demanda creciente (ventas recientes) contra cobertura de stock por sucursal.
+- Debería pasar: las sugerencias salen del historial de 60 días; al aceptar una, se arma el traspaso precargado.
+- Notas:
+
+OPERACIÓN COMERCIAL
+
+------------------------------------------------------------------------------
+CU12 Reservar prendas
+------------------------------------------------------------------------------
+- Entra: cliente@fashionstore.bo (clienta) y, para atender, admin@fashionstore.bo.
+- Pasos: 1) Clienta: tienda → una prenda → Reservar → sucursal Equipetrol, fecha y hora, confirmar; queda PENDIENTE. 2) En /mis-reservas cancelá RES-D9D77DEB77. 3) Encargado: /atender-reservas → confirmar RES-11DD3C85EB y rechazar otra con motivo. 4) Con RES-F3759F95B5 (CONFIRMADA): Preparar (marcar qué prendas están disponibles) → Presente (asignar vestidor) → Resolver (qué prendas compró; cobra con un método). 5) RES-C1BBD7AC5C: No presentada.
+- Por dentro: crear la reserva compromete stock (cantidad_reservada sube) sin descontarlo. La vigencia corre desde la hora de visita. Rechazar o cancelar libera el compromiso; al resolver con compra, el trigger libera el compromiso y descuenta (venta ENTREGADA). fn_expirar_reservas() libera las vencidas (job cada minuto).
+- Debería pasar: v_disponibilidad baja al reservar y vuelve al cancelar; la clienta recibe notificaciones (campana) en cada cambio de estado.
+- Notas:
+
+------------------------------------------------------------------------------
+CU13 Pagar con pasarela electrónica (Stripe o QR)
+------------------------------------------------------------------------------
+- Entra: clienta + cajera.scz (con caja abierta, ver CU14).
+- Pasos:
+  1. *Stripe:* cliente@fashionstore.bo agrega una prenda al carrito → /carrito → retiro en sucursal → pagar con tarjeta → 4242… → vuelve a /compra/{id} con estado PAGADA.
+  2. *QR:* otra clienta paga por QR → en /pago-simulado/{id} ve el QR y pulsa ya pagué → queda a la espera.
+  3. *Efectivo/QR por aprobar:* cajera.scz → /caja → pagos pendientes → aprobar V-34A64808B6 (efectivo) y V-2A0314ED3A (QR, informado); rechazar uno que crees nuevo.
+  4. *Retiro:* /caja → pedidos por retirar → Entregar pedido V-9D073266C2 (pasa a ENTREGADA).
+  5. *Domicilio:* clienta08 (V-C43ECA09D3): ver /mis-compras → seguimiento del envío (estado PENDIENTE).
+- Por dentro: el checkout crea venta + pago PENDIENTE sin tocar stock. Solo cuando el pago se aprueba (webhook de Stripe POST /pagos/webhook/stripe o cajera) se inserta venta_detalle y el trigger descuenta el stock. Si el stock o el carrito cambiaron, la venta se anula (REEMBOLSADO si ya cobró, RECHAZADO si era efectivo). Webhook idempotente por evento_pasarela. Los pedidos sin pagar se anulan solos a las 48 h.
+- Debería pasar: el stock baja recién al aprobar; un QR rechazado deja la venta RECHAZADA y libera el carrito.
+- Notas:
+
+------------------------------------------------------------------------------
+CU14 Registrar venta presencial
+------------------------------------------------------------------------------
+- Entra: cajera.scz@fashionstore.bo → /caja.
+- Pasos: 1) Abrir caja (monto inicial Bs 100). 2) Nueva venta: buscá por SKU/nombre, sumá 2-3 prendas, método EFECTIVO con monto recibido (muestra vuelto). 3) Otra venta con TARJETA y otra con QR. 4) Imprimí/mirá el comprobante. 5) Cerrar caja declarando el monto contado (probá uno distinto del sistema para ver la diferencia).
+- Por dentro: POST /ventas/pos inserta venta ENTREGADA + venta_detalle y comprobante; el trigger descuenta stock. El IVA es 13 %. Exige caja abierta. El arqueo suma efectivo menos devoluciones en efectivo.
+- Debería pasar: IVA y total correctos, número de comprobante correlativo, diferencia de arqueo registrada (alimenta "faltante de caja" en CU25).
+- Notas:
+
+------------------------------------------------------------------------------
+CU15 Registrar devolución con reintegro
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/devoluciones. Antes: cajera.scz abre caja (el reintegro en efectivo la exige).
+- Pasos: 1) Abrí NDV-000001 (DEFECTO, venta en efectivo) → Aprobar y reingresar al stock. 2) Nueva devolución: buscá la venta V-2E22DB7788 por número, elegí línea y cantidad, motivo NO_GUSTO → y Rechazar con motivo. 3) Probá una venta antigua del historial: sale "fuera de plazo" (30 días).
+- Por dentro: al aprobar, tg_devolucion_stock reingresa el stock (tipo DEVOLUCION) y revalida el tope contra lo vendido. El reintegro va por donde entró la plata: STRIPE con reembolso parcial por la API, EFECTIVO resta del arqueo de la caja abierta, el resto queda registrado. Los reportes son netos de devoluciones aprobadas.
+- Debería pasar: el stock sube, el arqueo de caja baja por el efectivo devuelto, NDV-000001 queda APROBADA. Sin caja abierta, aprobar una devolución en efectivo da error.
+- Notas:
+
+------------------------------------------------------------------------------
+CU16 Gestionar cambios de prenda
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/devoluciones; la venta nueva la hace cajera.scz.
+- Pasos: 1) Abrí NDV-000002 (cambio TALLA XS → S del Blazer Entallado) y Aprobar y reingresar al stock. 2) Con la caja abierta, cajera.scz hace una venta POS de ese Blazer en talla S. 3) Volvé a la devolución y vinculá el número de esa venta nueva (cambio). 4) Imprimir nota de devolución (NDV-…). 5) Cambios del mes: lista de prendas con cambio solicitado.
+- Por dentro: no hay un flujo propio: cambio = devolución aprobada + venta nueva vinculada (POST /devoluciones/{id}/cambio). TALLA/COLOR usan el plazo cambio_plazo_dias (15) y exigen condiciones (con etiqueta, sin uso, con comprobante). Solo ADMIN y ENCARGADO tienen devoluciones.*.
+- Debería pasar: la nota con número correlativo; "cambios del mes" cuenta la prenda; vincular dos veces la misma devolución da 409.
+- Notas:
+
+OPERACIÓN SIN CONEXIÓN
+
+  NOTA: Se prueba en /offline ("Vender sin conexión"), con cajera.scz (venta y reserva).
+  NOTA: Para cortar la red usá Chrome → DevTools (F12) → pestaña Network → Offline.
+
+------------------------------------------------------------------------------
+CU17 Descargar datos para operar sin conexión
+------------------------------------------------------------------------------
+- Entra: cajera.scz → /offline (con caja abierta).
+- Pasos: pulsá Descargar con red. Mirá la fecha del paquete. Instalá la PWA desde el navegador (opcional).
+- Por dentro: GET /sync/catalogo baja catálogo con existencias de la sucursal, clientas y la sesión de caja; lo guarda en IndexedDB. La PWA usa @angular/service-worker.
+- Debería pasar: catálogo visible con la red cortada.
+- Notas:
+
+------------------------------------------------------------------------------
+CU18 Consultar catálogo sin conexión
+------------------------------------------------------------------------------
+- Pasos: con red cortada, abrí /offline: buscá prendas y variantes. Si el paquete es viejo muestra aviso de desactualizado.
+- Por dentro: todo se lee de IndexedDB (cache local), sin llamadas.
+- Notas:
+
+------------------------------------------------------------------------------
+CU19 Registrar reserva sin conexión
+------------------------------------------------------------------------------
+- Entra: cajera.scz (el cajero absorbió al vendedor, tiene reservas.actualizar). Si tu log trae una operación RECHAZADA por SIN_PERMISO es de una prueba anterior por API, con un usuario sin permiso.
+- Pasos: sin red, solapa Reserva: elegí clienta, fecha, hora y prendas → registrar. Queda local como PENDIENTE de envío.
+- Por dentro: guarda la operación con UUID del cliente. Al sincronizar, la reserva offline nace CONFIRMADA (distinto de CU12, que nace PENDIENTE) y va directo al vestidor.
+- Notas:
+
+------------------------------------------------------------------------------
+CU20 Registrar venta de contado sin conexión
+------------------------------------------------------------------------------
+- Entra: cajera.scz.
+- Pasos: sin red, solapa Venta de contado: sumá prendas → registrar. Es siempre de contado.
+- Por dentro: guarda precio y total locales; el servidor los revalida al sincronizar.
+- Notas:
+
+------------------------------------------------------------------------------
+CU21 Consultar operaciones locales y su estado
+------------------------------------------------------------------------------
+- Pasos: solapa Operaciones: ves cada operación con su estado (pendiente, confirmada, conflicto, rechazada). Archivar las cerradas.
+- Por dentro: una operación local nunca se borra por enviarse ni al cerrar sesión; solo se archiva a mano.
+- Notas:
+
+------------------------------------------------------------------------------
+CU22 Sincronizar operaciones pendientes
+------------------------------------------------------------------------------
+- Pasos: reconectá la red (DevTools → Online). Se sincroniza solo, o pulsá Sincronizar. Reenviá a propósito la misma operación y mirá que no se duplique.
+- Por dentro: POST /sync/operaciones, idempotente (mismo id = mismo resultado) con estado CONFIRMADA / RECHAZADA / CONFLICTO + codigo_motivo: PRECIO_CAMBIADO, STOCK_INSUFICIENTE, SIN_CAJA_ABIERTA, SIN_PERMISO, etc. Lo registrado antes de vencer la suscripción se acepta; lo de después, no.
+- Debería pasar: una sola venta por operación y el stock descontado una vez.
+- Notas:
+
+------------------------------------------------------------------------------
+CU23 Resolver conflicto de sincronización
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/sincronizacion (la cajera no puede aceptar precio: 403).
+- Pasos: hay 3 conflictos abiertos. 1) PRECIO_CAMBIADO → Aceptar el precio actual. 2) STOCK_INSUFICIENTE → Descartar con nota. 3) SIN_CAJA_ABIERTA → primero cajera.scz abre caja, luego Reintentar.
+- Por dentro: POST /sync/operaciones/{id}/resolver (REINTENTAR, ACEPTAR_PRECIO_ACTUAL, DESCARTAR); una operación ya resuelta da 409. La venta queda a nombre de la cajera que la registró.
+- Notas:
+
+------------------------------------------------------------------------------
+CU24 Supervisar la sincronización de la sucursal
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/sincronizacion.
+- Pasos: filtrá por estado y sucursal, abrí el detalle (payload, resultado, intentos, quién resolvió).
+- Por dentro: GET /sync/operaciones; el encargado ve su sucursal, el admin toda la empresa.
+- Notas:
+
+INTELIGENCIA DE NEGOCIO
+
+------------------------------------------------------------------------------
+CU25 Consultar pérdidas por sucursal
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/reportes → reportes dinámicos → tipo Pérdidas por sucursal (mermas, defectos, faltantes).
+- Pasos: mirá por sucursal: mermas, defectos devueltos, faltante de traspaso (el que generaste en CU10), faltante de caja (arqueo de CU14) y total.
+- Por dentro: GET /reportes/perdidas suma movimiento_inventario (mermas), devoluciones por defecto, traspasos recibidos con menos y diferencias de caja.
+- Notas:
+
+------------------------------------------------------------------------------
+CU26 Solicitar reporte en lenguaje natural
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/reportes → Reporte con IA (solo plan Profesional; Andina da 403).
+- Pasos: escribí "ventas por sucursal de los últimos 30 días" o dictalo con el micrófono (Chrome). Probá un pedido ambiguo ("mostrame cosas") y uno fuera de alcance. Mirá que sale tabla o gráfico.
+- Por dentro: POST /reportes/consulta-ia manda la conversación a Claude (claude-haiku-4-5) con herramientas que consultan Postgres en vivo; no inventa cifras. Sin ANTHROPIC_API_KEY responde 503.
+- Notas:
+
+------------------------------------------------------------------------------
+CU27 Exportar reporte a Excel o PDF
+------------------------------------------------------------------------------
+- Pasos: en un reporte, Exportar Excel y Exportar PDF; abrí ambos archivos y compará las cifras con la pantalla.
+- Por dentro: se genera en el navegador a partir de las filas ya consultadas.
+- Notas:
+
+------------------------------------------------------------------------------
+CU28 Consultar dashboard analítico
+------------------------------------------------------------------------------
+- Entra: admin@fashionstore.bo → /panel/analitica (solo Profesional).
+- Pasos: mirá demanda prevista por sucursal, segmentos de clientas (KMeans) y días atípicos (IsolationForest) sobre las ventas reales.
+- Por dentro: GET /analitica/dashboard aplica los modelos entrenados a las ventas de la empresa.
+- Notas:
+
+------------------------------------------------------------------------------
+CU29 Entrenar y evaluar modelos de ML
+------------------------------------------------------------------------------
+- Entra: superadmin → /panel/analitica.
+- Pasos: Reentrenar; mirá métricas (MAE, RMSE, R², MAPE de Random Forest vs. regresión lineal), Ver muestra de los datos sintéticos y Descargar CSV.
+- Por dentro: POST /analitica/entrenar genera datos sintéticos con semilla (42) y entrena scikit-learn.
+- Notas:
+
+COPIAS DE SEGURIDAD
+
+------------------------------------------------------------------------------
+CU30 Gestionar copias de seguridad
+------------------------------------------------------------------------------
+- Entra: superadmin (general) y admin@fashionstore.bo (su empresa) → /panel/backups.
+- Pasos: 1) Superadmin: ver la programación (diaria 02:00 hora de Bolivia, próxima ejecución), lanzar una general a mano, Descargar el zip, Eliminar una. 2) Admin: lanzar la copia de su empresa y descargarla; abrí el zip: datos/<tabla>.ndjson.
+- Por dentro: zip de NDJSON por tabla (no pg_dump, porque no filtra por tenant). La de empresa no lleva password_hash. Responde 202 y corre en segundo plano. Retención: 7 automáticas y 10 manuales.
+- Debería pasar: la copia de FashionStore no contiene filas de Andina. (No hay restauración ni pantalla móvil todavía.)
+- Notas:
+
+---
+
+==============================================================================
+5. EXTRAS (NO ESTÁN EN LOS 30, PERO CONVIENE RECORRERLOS)
+==============================================================================
+
+ - Qué  |  Cómo
+ - Registro de clienta / login / bloqueo  |  /registro; 5 intentos fallidos bloquean 15 min; el checklist de contraseña se ve en vivo
+ - Cambiar contraseña  |  Cuenta → Cambiar contraseña (401 = actual incorrecta)
+ - Carrito y direcciones  |  /mis-direcciones (mapa, arrastrar el pin), /carrito con entrega a domicilio y cotización
+ - Recomendaciones  |  /tienda como clienta: "Recomendado para vos"
+ - Asistente (Claude)  |  /asistente: "busco un vestido para una boda en Santa Cruz" (texto o voz)
+ - Notificaciones  |  La campana, en clienta y en personal
+ - Auditoría  |  admin@fashionstore.bo → /panel/auditoria (cada acción de esta guía deja rastro)
+ - Usuarios y roles  |  /panel/usuarios: crear un rol, asignarle permisos, entrar con ese usuario y ver que el menú cambia
+ - Vestidor virtual (RA)  |  Solo móvil (movil/README.md)
+ - Móvil  |  Los mismos CU contra la misma API; build y usuarios en movil/README.md
+
+---
+
+==============================================================================
+6. COSAS QUE YA NOTÉ MIENTRAS ARMABA EL ESCENARIO
+==============================================================================
+
+Para que las tengas en la lista de mejoras sin repetirlas:
+
+1. Los envíos a domicilio no tienen pantalla. /admin/envios existe en el backend (listar y cambiar estado PENDIENTE → DESPACHADO → ENTREGADO/FALLIDO), pero ni la web ni el móvil lo consumen. El envío de V-C43ECA09D3 solo se puede mover desde Swagger (/docs, POST /admin/envios/{id}/estado). CLAUDE.md menciona un panel-envios que no existe.
+2. La operación RECHAZADA (SIN_PERMISO) que pueda haber en el log de sincronización no salió de la web: fue una prueba por API con un usuario sin permiso. Desde que el cajero absorbió al vendedor, ningún rol del seed la reproduce desde la pantalla.
+3. La reserva sin conexión nace CONFIRMADA y la online nace PENDIENTE (documentado en PARCIALES.md); conviene confirmar que es lo que quieren.
+4. Datos sobrantes: cinco empresas de pruebas anteriores ensucian /panel/empresas y la portada.
+5. El pedido de la clienta se bloquea si tiene un pago pendiente en caja: el carrito no se puede modificar hasta que se cobre o se anule (probalo con clienta04).
+
+---
+
+==============================================================================
+7. VOLVER A EMPEZAR
+==============================================================================
+
+- Repetir el escenario sobre la misma base (suma datos, no es idempotente):
+  python scripts/preparar_escenario_pruebas.py http://localhost:8081 --forzar
+- Dejar todo de cero (borra los volúmenes de Docker):
+  bash
+  docker compose down -v
+  docker compose up --build
+  python scripts/preparar_escenario_pruebas.py http://localhost:8081
+  
+  Tras un down -v el primer up suele reportar db is unhealthy (el .sh de db/); volvé a correr docker compose up -d.

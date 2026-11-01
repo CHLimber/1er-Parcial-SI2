@@ -93,10 +93,12 @@
   margin: 0 0 2rem;
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr));
 }
 
 .tarjeta {
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: var(--white);
   border: 1px solid var(--paper-line);
   border-radius: var(--radius);
@@ -186,12 +188,13 @@
 .campos {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
 }
 
 .campo {
   display: grid;
   gap: 0.35rem;
+  min-width: 0;
 }
 
 .campo label,
@@ -210,6 +213,8 @@
 
 .campo input,
 .campo select {
+  width: 100%;
+  min-width: 0;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--paper-line);
   background: var(--paper);
@@ -261,7 +266,18 @@
 }
 
 .mapa {
+  display: block;
   height: 18rem;
+  min-height: 0;
+}
+
+.buscador .boton {
+  min-width: 6.5rem;
+}
+
+/* Tarjetas fantasma de la carga: mismo alto aproximado que una direccion real. */
+.tarjeta--esqueleto {
+  min-height: 7.5rem;
 }
 
 .principal {

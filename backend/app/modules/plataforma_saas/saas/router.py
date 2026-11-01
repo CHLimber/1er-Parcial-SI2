@@ -31,7 +31,7 @@ from app.core.auditoria import registrar_auditoria
 from app.core.config import settings
 from app.core.db import get_connection
 from app.core.deps import requiere_permiso
-from app.core.plan import RECURSOS_PLAN, esta_vigente, uso_de_empresa
+from app.core.plan import RECURSOS_PLAN, esta_vigente, uso_de_empresa, usos_de_empresas
 from app.core.security import hash_password
 from app.core.tenant import es_plataforma, no_encontrado
 from app.modules.plataforma_saas.saas import servicio
@@ -56,6 +56,9 @@ from app.modules.plataforma_saas.saas.schemas import (
 router = APIRouter(prefix="/saas", tags=["saas"])
 
 stripe.api_key = settings.stripe_secret_key
+
+# estados de suscripcion con los que una empresa puede operar (con la fecha de vencimiento a futuro)
+ESTADOS_VIGENTES = ("PRUEBA", "ACTIVA")
 
 puede_ver = requiere_permiso("suscripciones.leer", "suscripciones.actualizar")
 puede_pagar = requiere_permiso("suscripciones.actualizar")
@@ -101,6 +104,10 @@ def _plan_out(fila: asyncpg.Record) -> PlanOut:
 
 
 async def _armar(conn: asyncpg.Connection, fila: asyncpg.Record) -> SuscripcionOut:
+    return _armar_con_uso(fila, await uso_de_empresa(conn, fila["empresa_id"]))
+
+
+def _armar_con_uso(fila: asyncpg.Record, uso: dict[str, int]) -> SuscripcionOut:
     ahora = datetime.now(timezone.utc)
     return SuscripcionOut(
         empresa_id=fila["empresa_id"],
@@ -113,13 +120,26 @@ async def _armar(conn: asyncpg.Connection, fila: asyncpg.Record) -> SuscripcionO
         inicio=fila["inicio"],
         vence_en=fila["vence_en"],
         dias_restantes=max((fila["vence_en"] - ahora).days, 0),
-        uso=UsoOut(**await uso_de_empresa(conn, fila["empresa_id"])),
+        uso=UsoOut(**uso),
     )
 
 
 async def _suscripcion(conn: asyncpg.Connection, empresa_id: UUID) -> SuscripcionOut | None:
     fila = await conn.fetchrow(SELECT_SUSCRIPCION + "WHERE su.empresa_id = $1", empresa_id)
     return await _armar(conn, fila) if fila else None
+
+
+async def _suscripciones_de(
+    conn: asyncpg.Connection, filas: list[asyncpg.Record]
+) -> dict[UUID, SuscripcionOut]:
+    """Arma varias suscripciones con una sola consulta de uso (en el orden de `filas`)."""
+    if not filas:
+        return {}
+    usos = await usos_de_empresas(conn, [f["empresa_id"] for f in filas])
+    sin_uso = {"sucursales": 0, "empleados": 0, "cajas": 0}
+    return {
+        f["empresa_id"]: _armar_con_uso(f, usos.get(f["empresa_id"], sin_uso)) for f in filas
+    }
 
 
 def _empresa_objetivo(staff: dict, pedida: UUID | None) -> UUID:
@@ -178,7 +198,12 @@ async def listar_tiendas(conn: asyncpg.Connection = Depends(get_connection)) -> 
     registrada que todavia no pago, o con la suscripcion vencida, no se ofrece."""
     filas = await conn.fetch(
         """
-        SELECT e.slug, e.nombre
+        SELECT e.slug, e.nombre,
+               (SELECT COUNT(*) FROM sucursal s WHERE s.empresa_id = e.id AND s.activa)::int AS sucursales,
+               COALESCE((SELECT array_agg(DISTINCT s.ciudad::text ORDER BY s.ciudad::text)
+                           FROM sucursal s WHERE s.empresa_id = e.id AND s.activa),
+                        ARRAY[]::text[]) AS ciudades,
+               (SELECT COUNT(*) FROM producto p WHERE p.empresa_id = e.id AND p.activo)::int AS prendas
         FROM empresa e
         JOIN suscripcion su ON su.empresa_id = e.id
         WHERE e.activa AND su.estado IN ('PRUEBA', 'ACTIVA') AND su.vence_en > now()
@@ -251,10 +276,16 @@ async def _empresa_out(conn: asyncpg.Connection, fila: asyncpg.Record) -> Empres
         """,
         fila["id"],
     )
+    return _empresa_con(fila, [a["email"] for a in admins], await _suscripcion(conn, fila["id"]))
+
+
+def _empresa_con(
+    fila: asyncpg.Record, administradores: list[str], suscripcion: SuscripcionOut | None
+) -> EmpresaOut:
     return EmpresaOut(
         **{k: fila[k] for k in EmpresaOut.model_fields if k not in ("administradores", "suscripcion")},
-        administradores=[a["email"] for a in admins],
-        suscripcion=await _suscripcion(conn, fila["id"]),
+        administradores=administradores,
+        suscripcion=suscripcion,
     )
 
 
@@ -271,7 +302,23 @@ async def listar_empresas(
     _staff: dict = Depends(plataforma_ver),
 ) -> list[EmpresaOut]:
     filas = await conn.fetch("SELECT * FROM empresa ORDER BY activa DESC, nombre")
-    return [await _empresa_out(conn, f) for f in filas]
+    if not filas:
+        return []
+    # 4 consultas en total sin importar cuantas empresas haya (antes: 1 + 3 por empresa)
+    ids = [f["id"] for f in filas]
+    admins: dict[UUID, list[str]] = {}
+    for a in await conn.fetch(
+        """
+        SELECT u.empresa_id, u.email FROM usuario u JOIN rol r ON r.id = u.rol_id
+         WHERE u.empresa_id = ANY($1::uuid[]) AND r.nombre = 'ADMIN' AND u.activo ORDER BY u.email
+        """,
+        ids,
+    ):
+        admins.setdefault(a["empresa_id"], []).append(a["email"])
+    suscripciones = await _suscripciones_de(
+        conn, await conn.fetch(SELECT_SUSCRIPCION + "WHERE su.empresa_id = ANY($1::uuid[])", ids)
+    )
+    return [_empresa_con(f, admins.get(f["id"], []), suscripciones.get(f["id"])) for f in filas]
 
 
 @router.get("/empresas/{empresa_id}", response_model=EmpresaOut)
@@ -364,6 +411,7 @@ async def _crear_empresa(
                 entidad_id=empresa_id,
                 accion="CREAR",
                 datos_despues=body.model_dump(mode="json", exclude={"administrador": {"password"}}),
+                empresa_id=empresa_id,
             )
     except asyncpg.UniqueViolationError as error:
         detalle = {
@@ -432,6 +480,7 @@ async def editar_empresa(
             accion="ACTUALIZAR",
             datos_antes=antes.model_dump(mode="json", include=set(EmpresaDatosIn.model_fields)),
             datos_despues=body.model_dump(mode="json"),
+            empresa_id=empresa_id,
         )
     return await _obtener_empresa(conn, empresa_id)
 
@@ -456,6 +505,7 @@ async def cambiar_estado_empresa(
             accion="ACTUALIZAR" if body.activa else "ELIMINAR",
             datos_antes={"activa": antes.activa},
             datos_despues={"activa": body.activa},
+            empresa_id=empresa_id,
         )
     return await _obtener_empresa(conn, empresa_id)
 
@@ -469,14 +519,31 @@ async def asignar_plan(
 ) -> SuscripcionOut:
     """CU02 - Asignar / cambiar plan con fecha de inicio y vencimiento (administrativo, sin
     cobro). Para registrar un cobro recibido esta POST /saas/suscripciones/{id}/pago-manual."""
-    await _obtener_empresa(conn, empresa_id)
+    empresa = await _obtener_empresa(conn, empresa_id)
     plan = await _plan_por_codigo(conn, body.plan_codigo)
-    inicio = body.inicio or datetime.now(timezone.utc)
+    ahora = datetime.now(timezone.utc)
+    inicio = body.inicio or ahora
     if body.vence_en <= inicio:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="El vencimiento tiene que ser posterior al inicio",
         )
+    # coherencia entre estado, fecha y empresa: una suscripcion "vigente" tiene que tener dias
+    # por delante y una empresa suspendida no puede quedar con un plan vigente
+    if body.estado in ESTADOS_VIGENTES:
+        if body.vence_en <= ahora:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Una suscripcion en estado {body.estado} no puede vencer en el pasado: "
+                    "elegi una fecha futura o marcala como Vencida"
+                ),
+            )
+        if not empresa.activa:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La empresa esta suspendida: reactivala antes de darle un plan vigente",
+            )
     await _exigir_entra_en_plan(conn, empresa_id, plan)
     antes = await _suscripcion(conn, empresa_id)
     async with conn.transaction():
@@ -506,6 +573,7 @@ async def asignar_plan(
                 else None
             ),
             datos_despues=body.model_dump(mode="json"),
+            empresa_id=empresa_id,
         )
     return await _suscripcion(conn, empresa_id)
 
@@ -540,7 +608,7 @@ async def listar_suscripciones(
         filas = await conn.fetch(
             SELECT_SUSCRIPCION + "WHERE su.empresa_id = $1", staff["empresa_id"]
         )
-    return [await _armar(conn, f) for f in filas]
+    return list((await _suscripciones_de(conn, filas)).values())
 
 
 @router.get("/pagos", response_model=list[PagoSuscripcionOut])
@@ -683,7 +751,12 @@ async def registrar_pago_manual(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo la administracion de la plataforma registra pagos manuales",
         )
-    await _obtener_empresa(conn, empresa_id)
+    empresa = await _obtener_empresa(conn, empresa_id)
+    if not empresa.activa:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La empresa esta suspendida: reactivala antes de registrar una renovacion",
+        )
     plan = await _plan_por_codigo(conn, body.plan_codigo)
     await _exigir_entra_en_plan(conn, empresa_id, plan)
     pago = await _crear_pago(conn, empresa_id, plan, body.meses, body.metodo, staff)
@@ -696,5 +769,6 @@ async def registrar_pago_manual(
         accion="ACTUALIZAR",
         datos_despues={"plan": plan["codigo"], "meses": body.meses, "metodo": body.metodo,
                        "monto": pago["monto"]},
+        empresa_id=empresa_id,
     )
     return await _suscripcion(conn, empresa_id)

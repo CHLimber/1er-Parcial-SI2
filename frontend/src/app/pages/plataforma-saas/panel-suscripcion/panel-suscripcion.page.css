@@ -1,6 +1,6 @@
 .resumen {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
   gap: 1rem;
 }
 
@@ -20,7 +20,7 @@
 
 .planes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
   gap: 1rem;
 }
 
@@ -82,4 +82,23 @@
 
 .fila--activa td {
   background: var(--paper);
+}
+
+.resumen > div {
+  min-width: 0;
+}
+
+.resumen__valor {
+  overflow-wrap: anywhere;
+}
+
+/* El texto del boton ("Cambiar a Profesional · Bs 3.000") no cabe en una linea de 15rem: se
+   parte en lugar de salirse de la tarjeta. */
+.plan {
+  min-width: 0;
+}
+
+.plan .acciones > .boton {
+  width: 100%;
+  white-space: normal;
 }
