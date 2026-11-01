@@ -37,6 +37,8 @@ from app.modules.operacion_comercial.pagos.router import router as pagos_router
 from app.modules.operacion_comercial.reservas.router import router as reservas_router
 from app.modules.operacion_comercial.ventas.router import router as ventas_router
 from app.modules.operacion_sin_conexion.sincronizacion.router import router as sincronizacion_router
+from app.modules.plataforma_saas.backups.router import router as backups_router
+from app.modules.plataforma_saas.backups.servicio import job_backup_automatico
 from app.modules.plataforma_saas.saas.router import router as saas_router
 from app.modules.relacion_con_la_clienta.asistente.router import router as asistente_router
 from app.modules.relacion_con_la_clienta.clientes.router import router as clientes_router
@@ -52,10 +54,12 @@ async def lifespan(app: FastAPI):
     tarea_expirar_reservas = asyncio.create_task(
         job_expirar_reservas(settings.expirar_reservas_intervalo_segundos)
     )
+    tarea_backup = asyncio.create_task(job_backup_automatico())
     yield
-    tarea_expirar_reservas.cancel()
-    with suppress(asyncio.CancelledError):
-        await tarea_expirar_reservas
+    for tarea in (tarea_expirar_reservas, tarea_backup):
+        tarea.cancel()
+        with suppress(asyncio.CancelledError):
+            await tarea
     await disconnect_pool()
 
 
@@ -129,6 +133,7 @@ app.include_router(notificaciones_router)
 app.include_router(devoluciones_router)
 app.include_router(traspasos_router)
 app.include_router(saas_router)
+app.include_router(backups_router)
 app.include_router(clientes_router)
 app.include_router(sincronizacion_router)
 app.include_router(analitica_router)

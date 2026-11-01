@@ -1,16 +1,8 @@
-<div class="pagina">
-  <header class="cabecera">
-    <span class="cabecera__marca">FashionStore · Atender reservas</span>
-    <div class="cabecera__acciones">
-      @if (auth.usuario(); as u) {
-        <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
-      }
-      <app-campana-notificaciones />
-      <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
-    </div>
-  </header>
-
-  <main class="contenido">
+<app-panel-shell
+  titulo="Reservas"
+  bajada="Confirmá las reservas de tu sucursal, prepará las prendas y registrá si la clienta se presentó."
+>
+  <div class="contenido">
     <aside class="cola">
       <div class="filtros">
         @for (filtro of filtros; track filtro.valor) {
@@ -232,5 +224,5 @@
         }
       }
     </section>
-  </main>
-</div>
+  </div>
+</app-panel-shell>

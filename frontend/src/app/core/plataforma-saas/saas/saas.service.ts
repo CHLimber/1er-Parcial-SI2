@@ -14,6 +14,7 @@ import {
   PagoSuscripcionOut,
   PlanIn,
   PlanOut,
+  RegistroEmpresaIn,
   SuscripcionOut,
   TiendaOut,
 } from './saas.models';
@@ -31,6 +32,11 @@ export class SaasService {
   /** Publico: tiendas activas para el selector de la vitrina. */
   tiendas(): Observable<TiendaOut[]> {
     return this.http.get<TiendaOut[]>(`${this.base}/tiendas`);
+  }
+
+  /** Publico: una empresa se registra sola desde la pagina de planes y queda en prueba. */
+  registrarEmpresaPublica(datos: RegistroEmpresaIn): Observable<SuscripcionOut> {
+    return this.http.post<SuscripcionOut>(`${this.base}/registro`, datos);
   }
 
   /** La de mi empresa; la plataforma pasa `empresaId`. */

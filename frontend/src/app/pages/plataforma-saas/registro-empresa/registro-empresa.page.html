@@ -1,0 +1,373 @@
+<main class="portal">
+  <section class="marca" aria-hidden="true">
+    <p class="marca__eyebrow">Para tiendas de moda</p>
+
+    <h1 class="marca__wordmark">Fashion<br />Store</h1>
+
+    <p class="marca__linea">
+      Registrá tu empresa en cinco pasos. Al final pagás tu plan con tarjeta y empezás a vender.
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="tarjeta tarjeta--ancha">
+      <ol class="pasos" aria-label="Progreso del registro">
+        @for (p of pasos; track p.corto; let i = $index) {
+          <li
+            class="pasos__item"
+            [class.pasos__item--actual]="i === paso()"
+            [class.pasos__item--hecho]="i < paso()"
+            [attr.aria-current]="i === paso() ? 'step' : null"
+          >
+            <button
+              type="button"
+              class="pasos__boton"
+              [attr.aria-label]="'Paso ' + (i + 1) + ': ' + p.corto"
+              [attr.title]="p.corto"
+              [disabled]="i >= paso() || cargando()"
+              (click)="volverA(i)"
+            >
+              <span class="pasos__numero">{{ i < paso() ? '✓' : i + 1 }}</span>
+              <span class="pasos__texto">{{ p.corto }}</span>
+            </button>
+          </li>
+        }
+      </ol>
+
+      <h2 class="tarjeta__titulo" #titulo tabindex="-1">{{ pasos[paso()].titulo }}</h2>
+
+      <form class="formulario" [formGroup]="form" (ngSubmit)="enviar()" novalidate>
+        @switch (paso()) {
+          <!-- ===== 1. plan ===== -->
+          @case (0) {
+            <p class="tarjeta__subtitulo">Podés cambiarlo cuando quieras desde Mi suscripción.</p>
+            <div class="planes" role="radiogroup" aria-label="Plan">
+              @for (plan of planes(); track plan.codigo) {
+                <button
+                  type="button"
+                  class="plan"
+                  role="radio"
+                  [attr.aria-checked]="form.controls.plan.value === plan.codigo"
+                  [class.plan--elegido]="form.controls.plan.value === plan.codigo"
+                  (click)="elegirPlan(plan.codigo)"
+                >
+                  <span class="plan__nombre">{{ plan.nombre }}</span>
+                  <span class="plan__precio">{{ precio(plan) }}<small> / mes</small></span>
+                  <span class="plan__topes">{{ topes(plan) }}</span>
+                  @if (plan.descripcion) {
+                    <span class="plan__texto">{{ plan.descripcion }}</span>
+                  }
+                </button>
+              }
+            </div>
+            <p class="campo__ayuda"><a routerLink="/planes" target="_blank">Comparar los planes en detalle</a></p>
+          }
+
+          <!-- ===== 2. empresa ===== -->
+          @case (1) {
+            <div class="campo">
+              <label for="nombre">Nombre comercial</label>
+              <input
+                id="nombre"
+                type="text"
+                formControlName="nombre"
+                autocomplete="organization"
+                placeholder="Boutique Sol"
+                [attr.aria-invalid]="form.controls.nombre.invalid && form.controls.nombre.touched"
+              />
+              @if (form.controls.nombre.touched && form.controls.nombre.invalid) {
+                <p class="campo__error">Ingresá el nombre de tu empresa.</p>
+              }
+            </div>
+
+            <div class="formulario__fila">
+              <div class="campo">
+                <label for="razonSocial">Razón social</label>
+                <input
+                  id="razonSocial"
+                  type="text"
+                  formControlName="razonSocial"
+                  placeholder="Boutique Sol S.R.L."
+                  [attr.aria-invalid]="form.controls.razonSocial.invalid && form.controls.razonSocial.touched"
+                />
+                @if (form.controls.razonSocial.touched && form.controls.razonSocial.invalid) {
+                  <p class="campo__error">Ingresá la razón social.</p>
+                }
+              </div>
+
+              <div class="campo">
+                <label for="nit">NIT</label>
+                <input
+                  id="nit"
+                  type="text"
+                  inputmode="numeric"
+                  formControlName="nit"
+                  placeholder="1023456019"
+                  [attr.aria-invalid]="form.controls.nit.invalid && form.controls.nit.touched"
+                />
+                @if (form.controls.nit.touched && form.controls.nit.invalid) {
+                  <p class="campo__error">Ingresá el NIT.</p>
+                }
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="slug">Identificador de tu tienda</label>
+              <input
+                id="slug"
+                type="text"
+                formControlName="slug"
+                autocapitalize="none"
+                placeholder="boutique-sol"
+                (input)="slugEscrito()"
+                [attr.aria-invalid]="form.controls.slug.invalid && form.controls.slug.touched"
+              />
+              @if (form.controls.slug.touched && form.controls.slug.invalid) {
+                <p class="campo__error">Usá minúsculas, números y guiones (mínimo 2 caracteres).</p>
+              } @else {
+                <p class="campo__ayuda">Es el nombre corto con el que tus clientas encuentran tu tienda.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="telefono">Teléfono <span class="campo__opcional">(opcional)</span></label>
+              <input id="telefono" type="tel" formControlName="telefono" autocomplete="tel" placeholder="+591 700 00000" />
+            </div>
+          }
+
+          <!-- ===== 3. sucursal ===== -->
+          @case (2) {
+            <p class="tarjeta__subtitulo">Después podés agregar el resto desde el panel.</p>
+
+            <div class="formulario__fila">
+              <div class="campo">
+                <label for="sucursalCodigo">Código</label>
+                <input
+                  id="sucursalCodigo"
+                  type="text"
+                  formControlName="sucursalCodigo"
+                  placeholder="SC-01"
+                  [attr.aria-invalid]="form.controls.sucursalCodigo.invalid && form.controls.sucursalCodigo.touched"
+                />
+                @if (form.controls.sucursalCodigo.touched && form.controls.sucursalCodigo.invalid) {
+                  <p class="campo__error">Ingresá un código (mín. 2 caracteres).</p>
+                }
+              </div>
+
+              <div class="campo">
+                <label for="sucursalNombre">Nombre</label>
+                <input
+                  id="sucursalNombre"
+                  type="text"
+                  formControlName="sucursalNombre"
+                  [attr.aria-invalid]="form.controls.sucursalNombre.invalid && form.controls.sucursalNombre.touched"
+                />
+                @if (form.controls.sucursalNombre.touched && form.controls.sucursalNombre.invalid) {
+                  <p class="campo__error">Ingresá el nombre.</p>
+                }
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="sucursalCiudad">Ciudad</label>
+              <select id="sucursalCiudad" formControlName="sucursalCiudad">
+                @for (ciudad of ciudades; track ciudad[0]) {
+                  <option [value]="ciudad[0]">{{ ciudad[1] }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="campo">
+              <label for="sucursalDireccion">Dirección</label>
+              <input
+                id="sucursalDireccion"
+                type="text"
+                formControlName="sucursalDireccion"
+                autocomplete="street-address"
+                placeholder="Av. Banzer 123"
+                [attr.aria-invalid]="form.controls.sucursalDireccion.invalid && form.controls.sucursalDireccion.touched"
+              />
+              @if (form.controls.sucursalDireccion.touched && form.controls.sucursalDireccion.invalid) {
+                <p class="campo__error">Ingresá la dirección.</p>
+              }
+            </div>
+          }
+
+          <!-- ===== 4. cuenta del administrador ===== -->
+          @case (3) {
+            <p class="tarjeta__subtitulo">Con esta cuenta vas a administrar tu empresa.</p>
+
+            <div class="formulario__fila">
+              <div class="campo">
+                <label for="nombreAdmin">Nombre</label>
+                <input
+                  id="nombreAdmin"
+                  type="text"
+                  formControlName="nombreAdmin"
+                  autocomplete="given-name"
+                  [attr.aria-invalid]="form.controls.nombreAdmin.invalid && form.controls.nombreAdmin.touched"
+                />
+                @if (form.controls.nombreAdmin.touched && form.controls.nombreAdmin.invalid) {
+                  <p class="campo__error">Ingresá tu nombre.</p>
+                }
+              </div>
+
+              <div class="campo">
+                <label for="apellidoAdmin">Apellido</label>
+                <input
+                  id="apellidoAdmin"
+                  type="text"
+                  formControlName="apellidoAdmin"
+                  autocomplete="family-name"
+                  [attr.aria-invalid]="form.controls.apellidoAdmin.invalid && form.controls.apellidoAdmin.touched"
+                />
+                @if (form.controls.apellidoAdmin.touched && form.controls.apellidoAdmin.invalid) {
+                  <p class="campo__error">Ingresá tu apellido.</p>
+                }
+              </div>
+            </div>
+
+            <div class="campo">
+              <label for="email">Correo electrónico</label>
+              <input
+                id="email"
+                type="email"
+                formControlName="email"
+                autocomplete="email"
+                placeholder="nombre@empresa.com"
+                [attr.aria-invalid]="form.controls.email.invalid && form.controls.email.touched"
+              />
+              @if (form.controls.email.touched && form.controls.email.invalid) {
+                <p class="campo__error">
+                  @if (form.controls.email.hasError('required')) {
+                    Ingresá tu correo.
+                  } @else {
+                    Ese correo no parece válido.
+                  }
+                </p>
+              } @else {
+                <p class="campo__ayuda">Con este correo vas a iniciar sesión.</p>
+              }
+            </div>
+
+            <div class="campo">
+              <label for="password">Contraseña</label>
+              <div class="campo__password">
+                <input
+                  [type]="mostrarPassword() ? 'text' : 'password'"
+                  id="password"
+                  formControlName="password"
+                  autocomplete="new-password"
+                  placeholder="········"
+                  [attr.aria-invalid]="form.controls.password.invalid && form.controls.password.touched"
+                />
+                <button
+                  type="button"
+                  class="campo__alternar"
+                  (click)="alternarPassword()"
+                  [attr.aria-pressed]="mostrarPassword()"
+                >
+                  {{ mostrarPassword() ? 'Ocultar' : 'Mostrar' }}
+                </button>
+              </div>
+              @if (form.controls.password.touched && form.controls.password.hasError('required')) {
+                <p class="campo__error">Ingresá una contraseña.</p>
+              }
+              <app-lista-requisitos-password [password]="form.controls.password.value" />
+            </div>
+
+            <div class="campo">
+              <label for="confirmarPassword">Confirmar contraseña</label>
+              <input
+                [type]="mostrarPassword() ? 'text' : 'password'"
+                id="confirmarPassword"
+                formControlName="confirmarPassword"
+                autocomplete="new-password"
+                placeholder="········"
+                [attr.aria-invalid]="
+                  form.controls.confirmarPassword.touched &&
+                  (form.controls.confirmarPassword.invalid || form.errors?.['passwordsDistintos'])
+                "
+              />
+              @if (form.controls.confirmarPassword.touched && form.errors?.['passwordsDistintos']) {
+                <p class="campo__error">Las contraseñas no coinciden.</p>
+              }
+            </div>
+          }
+
+          <!-- ===== 5. resumen y pago ===== -->
+          @case (4) {
+            <dl class="resumen">
+              <div class="resumen__fila">
+                <dt>Plan</dt>
+                <dd>{{ planElegido()?.nombre }} · {{ precio(planElegido()) }} / mes</dd>
+                <button type="button" class="resumen__editar" (click)="volverA(0)" [disabled]="registrada()">Editar</button>
+              </div>
+              <div class="resumen__fila">
+                <dt>Empresa</dt>
+                <dd>{{ form.controls.nombre.value }} <span class="resumen__tenue">({{ form.controls.slug.value }})</span></dd>
+                <button type="button" class="resumen__editar" (click)="volverA(1)" [disabled]="registrada()">Editar</button>
+              </div>
+              <div class="resumen__fila">
+                <dt>Sucursal</dt>
+                <dd>
+                  {{ form.controls.sucursalNombre.value }} · {{ nombreCiudad(form.controls.sucursalCiudad.value) }}
+                </dd>
+                <button type="button" class="resumen__editar" (click)="volverA(2)" [disabled]="registrada()">Editar</button>
+              </div>
+              <div class="resumen__fila">
+                <dt>Cuenta</dt>
+                <dd>{{ form.controls.nombreAdmin.value }} {{ form.controls.apellidoAdmin.value }}
+                  <span class="resumen__tenue">{{ form.controls.email.value }}</span></dd>
+                <button type="button" class="resumen__editar" (click)="volverA(3)" [disabled]="registrada()">Editar</button>
+              </div>
+            </dl>
+
+            <fieldset class="meses">
+              <legend>Período a pagar</legend>
+              @for (m of opcionesMeses; track m) {
+                <label class="meses__opcion" [class.meses__opcion--elegida]="meses() === m">
+                  <input type="radio" name="meses" [value]="m" [checked]="meses() === m" (change)="meses.set(m)" />
+                  {{ m }} {{ m === 1 ? 'mes' : 'meses' }}
+                </label>
+              }
+            </fieldset>
+
+            <div class="total">
+              <span>Total a pagar hoy</span>
+              <strong>{{ bs(total()) }}</strong>
+            </div>
+            <p class="campo__ayuda">
+              Pagás con tarjeta en la página segura de Stripe. Cuando el pago se confirma, tu plan se activa
+              y podés empezar a cargar tu catálogo.
+            </p>
+          }
+        }
+
+        @if (errorMensaje()) {
+          <p class="formulario__error" role="alert">{{ errorMensaje() }}</p>
+          @if (registrada()) {
+            <a class="enlace-suscripcion" routerLink="/panel/suscripcion">Ir a Mi suscripción</a>
+          }
+        }
+
+        <div class="acciones">
+          @if (paso() > 0) {
+            <button type="button" class="boton boton--secundario" (click)="atras()" [disabled]="cargando()">Atrás</button>
+          }
+          @if (esUltimo()) {
+            <button type="submit" class="boton" [disabled]="cargando() || !planElegido()">
+              {{ cargando() ? 'Redirigiendo a Stripe…' : 'Pagar ' + bs(total()) + ' con Stripe' }}
+            </button>
+          } @else {
+            <button type="submit" class="boton">Siguiente</button>
+          }
+        </div>
+
+        <p class="formulario__enlace">
+          ¿Ya tenés cuenta? <a routerLink="/login">Iniciá sesión</a>
+        </p>
+      </form>
+    </div>
+  </section>
+</main>

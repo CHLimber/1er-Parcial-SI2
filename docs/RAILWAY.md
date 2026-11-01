@@ -78,6 +78,13 @@ Los archivos que ya quedaron preparados para esto:
    el filesystem del contenedor no es persistente. Las imagenes agregadas por URL externa (el
    endpoint sin `/subir`, o el seed de picsum.photos) no se ven afectadas por esto.
 
+6. **Volume para las copias de seguridad (CU30):** agregá otro volumen montado en `/app/backups`
+   (o apuntá `BACKUPS_DIR` a donde lo montes). Sin esto las copias (la automatica diaria y las
+   manuales) se pierden en cada deploy y la pantalla las muestra como "archivo no disponible".
+   Antes de desplegar el backend con CU30, aplicá `db/reparaciones/backups.sql` (crea la tabla
+   `backup` y los permisos `backups.*`). La hora de la copia automatica se cambia con
+   `BACKUP_AUTO_HORA` (HH:MM, hora de Bolivia) y se apaga con `BACKUP_AUTO_ACTIVO=false`.
+
 **Nota Stripe (CU06):** `stripe listen` es solo para desarrollo local. En produccion, andá a
 [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/webhooks), agregá un
 endpoint apuntando a `https://<url-del-backend>/pagos/webhook/stripe` y copiá el "Signing secret"

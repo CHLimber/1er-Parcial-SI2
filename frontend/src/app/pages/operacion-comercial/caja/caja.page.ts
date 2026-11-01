@@ -17,7 +17,7 @@ import {
 import { CajaService } from '../../../core/operacion-comercial/caja/caja.service';
 import { MetodoPagoPos, VentaPosOut } from '../../../core/operacion-comercial/ventas/ventas.models';
 import { VentasService } from '../../../core/operacion-comercial/ventas/ventas.service';
-import { CampanaNotificaciones } from '../../../shared/notificaciones/campana-notificaciones';
+import { PanelShell } from '../../../shared/panel/panel-shell';
 import { interpretarError } from '../../../shared/errores';
 
 const IVA_TASA = 0.13;
@@ -29,7 +29,7 @@ interface TicketItem extends VarianteBusquedaOut {
 @Component({
   selector: 'app-caja-page',
   standalone: true,
-  imports: [FormsModule, DatePipe, CampanaNotificaciones],
+  imports: [FormsModule, DatePipe, PanelShell],
   templateUrl: './caja.page.html',
   styleUrls: ['./caja.page.css', '../../../shared/responsive.css'],
 })

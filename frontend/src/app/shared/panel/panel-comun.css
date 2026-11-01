@@ -18,7 +18,8 @@
 .panel {
   background: var(--white);
   border: 1px solid var(--paper-line);
-  padding: 1.25rem;
+  border-radius: var(--radius);
+  padding: 1.35rem;
 }
 
 .panel + .panel {
@@ -27,11 +28,11 @@
 
 .panel__titulo {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: 1.25rem;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.3rem;
   color: var(--ink);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.85rem;
 }
 
 /*
@@ -96,23 +97,33 @@
 
 .campo > label,
 .campo__etiqueta {
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   color: var(--ink-soft);
 }
 
 .campo input,
 .campo select,
 .campo textarea {
-  padding: 0.55rem 0.65rem;
+  padding: 0.55rem 0.7rem;
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
   background: var(--white);
   color: var(--ink);
   font-family: inherit;
   font-size: 0.9rem;
   width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus {
+  border-color: var(--ink);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(193, 81, 107, 0.18);
 }
 
 .campo textarea {
@@ -160,7 +171,8 @@
 
 .boton {
   padding: 0.6rem 1.1rem;
-  border: none;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
   background: var(--ink);
   color: var(--white);
   font-family: inherit;
@@ -168,10 +180,12 @@
   font-size: 0.85rem;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .boton:hover:not(:disabled) {
   background: var(--flame);
+  border-color: var(--flame);
 }
 
 .boton:disabled {
@@ -218,39 +232,48 @@
   overflow-x: auto;
 }
 
+/* Tabla limpia: encabezado con fondo suave y solo lineas horizontales entre filas. */
 .tabla {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.88rem;
 }
 
 .tabla th {
   text-align: left;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.09em;
   color: var(--ink-soft);
-  padding: 0.5rem 0.6rem;
+  background: var(--paper);
+  padding: 0.65rem 0.75rem;
   border-bottom: 1px solid var(--paper-line);
-  border-right: 1px solid var(--paper-line);
   white-space: nowrap;
 }
 
+.tabla th:first-child {
+  border-top-left-radius: var(--radius-sm);
+}
+
+.tabla th:last-child {
+  border-top-right-radius: var(--radius-sm);
+}
+
 .tabla td {
-  padding: 0.6rem;
+  padding: 0.75rem;
   border-bottom: 1px solid var(--paper-line);
-  border-right: 1px solid var(--paper-line);
   vertical-align: middle;
   color: var(--ink);
 }
 
-.tabla th:last-child,
-.tabla td:last-child {
-  border-right: none;
+.tabla tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .tabla tbody tr:hover {
-  background: var(--paper);
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
 }
 
 .tabla tr[data-inactivo='true'] td {
@@ -270,6 +293,17 @@
   justify-content: flex-end;
 }
 
+/* en una celda, `display: flex` la saca de la tabla y el borde de la fila queda desfasado */
+td.tabla__acciones {
+  display: table-cell;
+  text-align: right;
+  white-space: nowrap;
+}
+
+td.tabla__acciones > * + * {
+  margin-left: 0.4rem;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: 0.8rem;
@@ -285,11 +319,12 @@
 .badge {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.18rem 0.45rem;
+  letter-spacing: 0.05em;
+  padding: 0.2rem 0.55rem;
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius-pill);
   color: var(--ink-soft);
   white-space: nowrap;
 }
@@ -323,6 +358,7 @@
 
 .aviso {
   border-left: 3px solid var(--flame);
+  border-radius: var(--radius-sm);
   background: var(--paper);
   padding: 0.6rem 0.8rem;
   font-size: 0.85rem;
@@ -332,6 +368,7 @@
 
 .exito {
   border-left: 3px solid var(--gold);
+  border-radius: var(--radius-sm);
   background: var(--paper);
   padding: 0.6rem 0.8rem;
   font-size: 0.85rem;
@@ -371,13 +408,20 @@
 
 .solapa {
   border: 1px solid var(--paper-line);
+  border-radius: var(--radius-pill);
   background: var(--white);
   color: var(--ink-soft);
   font-family: inherit;
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 0.5rem 0.95rem;
+  padding: 0.5rem 1.05rem;
   cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.solapa:hover:not(.solapa--activa) {
+  background: var(--paper);
+  color: var(--ink);
 }
 
 .solapa--activa {

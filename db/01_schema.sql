@@ -65,6 +65,9 @@ CREATE TYPE accion_auditoria  AS ENUM ('CREAR','ACTUALIZAR','ELIMINAR','LOGIN');
 -- 'registrada localmente' y 'enviada' viven solo en el cliente; el servidor decide estos tres.
 CREATE TYPE estado_operacion_sync AS ENUM ('CONFIRMADA','RECHAZADA','CONFLICTO');
 CREATE TYPE tipo_operacion_sync   AS ENUM ('VENTA','RESERVA');
+-- Copias de seguridad (bloque 8): quien las dispara y en que va el proceso.
+CREATE TYPE tipo_backup   AS ENUM ('AUTOMATICO','MANUAL');
+CREATE TYPE estado_backup AS ENUM ('EN_CURSO','COMPLETADO','FALLIDO');
  
  
 -- =====================================================================
@@ -217,7 +220,7 @@ CREATE INDEX ix_sesion_usuario ON sesion_token(usuario_id) WHERE NOT revocado;
 CREATE TABLE sucursal (
     id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     empresa_id          UUID         NOT NULL REFERENCES empresa(id),
-    codigo              VARCHAR(20)  NOT NULL UNIQUE,
+    codigo              VARCHAR(20)  NOT NULL,
     nombre              VARCHAR(120) NOT NULL,
     ciudad              ciudad_bo    NOT NULL,
     direccion           VARCHAR(250) NOT NULL,
@@ -227,7 +230,9 @@ CREATE TABLE sucursal (
     hora_apertura       TIME,
     hora_cierre         TIME,
     cantidad_vestidores INT          NOT NULL DEFAULT 0,
-    activa              BOOLEAN      NOT NULL DEFAULT TRUE
+    activa              BOOLEAN      NOT NULL DEFAULT TRUE,
+    -- el codigo identifica a la sucursal DENTRO de su empresa: dos empresas pueden tener su "SC-01"
+    CONSTRAINT sucursal_empresa_codigo_key UNIQUE (empresa_id, codigo)
 );
 CREATE INDEX ix_sucursal_empresa ON sucursal(empresa_id) WHERE activa;
  
@@ -967,3 +972,37 @@ COMMENT ON TABLE operacion_sync IS
     'CONFIRMADA = se creo la venta/reserva; RECHAZADA = no se puede aplicar nunca (suscripcion '
     'vencida, sucursal ajena, prenda de otra empresa); CONFLICTO = los datos locales quedaron '
     'viejos (stock, precio, prenda inactiva) y alguien del personal decide que hacer.';
+
+
+-- Copias de seguridad. Una fila por copia: empresa_id NULL = copia GENERAL de la plataforma (todas
+-- las empresas, la dispara el job diario o el SUPERADMIN); con empresa_id = copia de ESA empresa
+-- (la dispara su administrador o el SUPERADMIN). El archivo (zip con un .ndjson por tabla) vive
+-- en BACKUPS_DIR, no en la base: aca solo queda el registro para listarlo, descargarlo y saber
+-- cuando se hizo (RF de "ver cuando corre el automatico"). Ver app/modules/plataforma_saas/backups.
+CREATE TABLE backup (
+    id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    empresa_id    UUID          REFERENCES empresa(id) ON DELETE CASCADE,
+    tipo          tipo_backup   NOT NULL,
+    estado        estado_backup NOT NULL DEFAULT 'EN_CURSO',
+    iniciado_en   TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    terminado_en  TIMESTAMPTZ,
+    creado_por_id UUID          REFERENCES usuario(id) ON DELETE SET NULL,  -- NULL = el sistema
+    archivo       VARCHAR(200),                       -- ruta relativa a BACKUPS_DIR
+    tamano_bytes  BIGINT,
+    total_tablas  INT,
+    total_filas   BIGINT,
+    sha256        CHAR(64),
+    detalle       JSONB,                              -- {"tablas": {"venta": 120, ...}}
+    error         VARCHAR(500),
+    -- la copia automatica es siempre la general de la plataforma
+    CONSTRAINT ck_backup_automatico_general CHECK (tipo <> 'AUTOMATICO' OR empresa_id IS NULL)
+);
+CREATE INDEX ix_backup_empresa ON backup(empresa_id, iniciado_en DESC);
+-- Una sola copia en curso por alcance (la general y la de cada empresa): evita dos corridas
+-- simultaneas (doble clic, dos instancias del backend) sin necesitar un candado en memoria.
+CREATE UNIQUE INDEX ux_backup_en_curso
+    ON backup ((COALESCE(empresa_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+    WHERE estado = 'EN_CURSO';
+COMMENT ON TABLE backup IS
+    'Registro de copias de seguridad. empresa_id NULL = general de la plataforma; el archivo vive '
+    'en disco (BACKUPS_DIR) y la copia de una empresa NO incluye el hash de las contrasenas.';

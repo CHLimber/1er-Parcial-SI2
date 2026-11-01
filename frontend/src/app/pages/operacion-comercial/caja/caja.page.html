@@ -1,24 +1,19 @@
-<div class="pagina">
-  <header class="cabecera">
-    <span class="cabecera__marca">FashionStore · Caja</span>
-    <div class="cabecera__acciones">
-      @if (auth.usuario(); as u) {
-        <span class="cabecera__usuario">{{ u.nombre }} {{ u.apellido }}</span>
-      }
-      <app-campana-notificaciones />
-      @if (sesion() && !cerrandoCaja() && !comprobante()) {
-        <button type="button" class="cabecera__salir" (click)="abrirCierreCaja()">Cerrar caja</button>
-      }
-      <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
-    </div>
-  </header>
+<app-panel-shell
+  titulo="Caja"
+  bajada="Abrí tu sesión, registrá las ventas del mostrador y verificá los pagos online y retiros pendientes."
+>
+  <div acciones>
+    @if (sesion() && !cerrandoCaja() && !comprobante()) {
+      <button type="button" class="boton" (click)="abrirCierreCaja()">Cerrar caja</button>
+    }
+  </div>
 
-  <main class="contenido">
+  <div class="contenido">
     @if (cargando()) {
       <p class="estado">Cargando caja…</p>
     } @else if (!sesion()) {
       <section class="formulario">
-        <h1 class="titulo">Abrir sesión de caja</h1>
+        <h2 class="titulo">Abrir sesión de caja</h2>
         <p class="estado">Necesitás abrir una caja antes de registrar ventas.</p>
 
         @if (cajas().length === 0) {
@@ -58,7 +53,7 @@
       </section>
     } @else if (comprobante(); as c) {
       <section class="comprobante">
-        <h1 class="titulo">Venta registrada</h1>
+        <h2 class="titulo">Venta registrada</h2>
         <p class="comprobante__numero">Comprobante {{ c.comprobante_numero }} · Venta {{ c.numero }}</p>
 
         <ul class="ticket__lista">
@@ -94,7 +89,7 @@
     } @else if (cerrandoCaja()) {
       <section class="formulario">
         @if (cierreResultado(); as r) {
-          <h1 class="titulo">Caja cerrada</h1>
+          <h2 class="titulo">Caja cerrada</h2>
           <p class="comprobante__numero">{{ r.caja_nombre }} · cerrada {{ r.cerrada_en | date: 'short' }}</p>
 
           <div class="resumen">
@@ -111,7 +106,7 @@
         } @else if (cargandoArqueo()) {
           <p class="estado">Calculando arqueo…</p>
         } @else if (arqueo(); as a) {
-          <h1 class="titulo">Cerrar caja</h1>
+          <h2 class="titulo">Cerrar caja</h2>
           <p class="estado">Contá el efectivo del cajón y declarás cuánto hay antes de cerrar la sesión.</p>
 
           <div class="resumen">
@@ -428,5 +423,5 @@
         }
       </section>
     }
-  </main>
-</div>
+  </div>
+</app-panel-shell>

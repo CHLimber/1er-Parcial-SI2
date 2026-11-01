@@ -55,6 +55,7 @@ chk("admin Andina plan Basico sin IA", u_an["plan"] == "Basico" and "ia_reportes
 chk("superadmin sin empresa", u_sa["empresa_id"] is None and "empresas.leer" in u_sa["permisos"])
 chk("moda urbana vencida -> sin funciones", u_mu["funciones_plan"] == [])
 
+SOLO_PROFESIONAL = {"/clientes", "/traspasos/sugerencias"}
 print("== datos propios")
 for nombre, h, suc, prod in [("FS", fs, 6, 42), ("Andina", an, 2, 4)]:
     r = c.get("/admin/sucursales", headers=h)
@@ -73,7 +74,9 @@ for nombre, h, suc, prod in [("FS", fs, 6, 42), ("Andina", an, 2, 4)]:
                  "/devoluciones/cambios-mes", "/auditoria/entidades", "/saas/pagos",
                  ]:
         r = c.get(ruta, headers=h)
-        chk(f"{nombre} GET {ruta}", r.status_code == 200, f"{r.status_code} {r.text[:300]}")
+        # perfiles de clientas y traspasos son del plan Profesional: Andina (Basico) recibe 403
+        esperado = 403 if nombre == "Andina" and ruta in SOLO_PROFESIONAL else 200
+        chk(f"{nombre} GET {ruta}", r.status_code == esperado, f"{r.status_code} {r.text[:300]}")
     r = c.get("/reportes/ventas-por-sucursal", headers=h)
     chk(f"{nombre} ventas-por-sucursal solo propias", r.status_code == 200 and len(r.json()) <= suc,
         r.text[:200])

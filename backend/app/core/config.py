@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     # frontend la elige con el header X-Empresa (o ?empresa=slug); sin ninguno se usa esta.
     empresa_por_defecto: str = "fashionstore"
 
+    # Copias de seguridad (app/modules/plataforma_saas/backups/). backups_dir es relativo al WORKDIR
+    # del contenedor (/app), montado como volumen en docker-compose; en Railway hace falta un
+    # Volume propio en esa ruta o las copias se pierden con cada redeploy. La copia automatica
+    # (general de la plataforma) corre una vez al dia a backup_auto_hora, hora de Bolivia (UTC-4,
+    # sin horario de verano) en formato HH:MM, y conserva las ultimas backup_auto_retencion; las
+    # manuales (por empresa o general) conservan las ultimas backup_manual_retencion de cada alcance.
+    backups_dir: str = "backups"
+    backup_auto_activo: bool = True
+    backup_auto_hora: str = "02:00"
+    backup_auto_retencion: int = 7
+    backup_manual_retencion: int = 10
+
     # Modulo G (app/modules/inteligencia_de_negocio/analitica/): donde se guardan los modelos entrenados (joblib).
     modelos_dir: str = "modelos_ml"
 

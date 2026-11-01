@@ -2467,6 +2467,73 @@
       decision 7.2 (actor de CU29).
 
 ===============================================================================
+ 8. COPIAS DE SEGURIDAD (CU30, pedido 2026-11-01)
+===============================================================================
+ Un caso de uso NUEVO, fuera del catalogo CU01-CU29 de docs/PARCIALES.md: hay que sumarlo
+ a la documentacion (catalogo, narrativa, diagramas) como CU30. En el codigo y los
+ comentarios ya se llama CU30.
+
+[8.1] [HECHO backend + web 2026-11-01] Dos servicios de respaldo sobre la tabla `backup`:
+      - GENERAL (todas las empresas): automatica, una vez al dia (BACKUP_AUTO_HORA, por
+        defecto 02:00 hora de Bolivia) con `job_backup_automatico` en el lifespan. Si el
+        backend estaba apagado a esa hora, la copia del dia corre apenas vuelve; una
+        corrida fallida se reintenta (maximo 3 por dia, cada 30 min). El SUPERADMIN ve
+        cuando corre (hora, proxima ejecucion, ultima copia y su estado) y el historial, y
+        tambien puede lanzar una general a mano.
+      - POR EMPRESA: manual. La lanza el ADMIN de la empresa (la suya) o el SUPERADMIN (la
+        que elija). Solo lleva las filas de esa empresa (tablas.py: filtro por tenant de
+        cada tabla) y NO lleva password_hash. La clienta es de la plataforma
+        (usuario.empresa_id NULL): entra a la copia de una empresa si compro, reservo o
+        esta en su cartera.
+      Pestana "Copias de seguridad" (/panel/backups): para el SUPERADMIN, solapas "Copia
+      automatica" y "Copias por empresa"; para el ADMIN, solo las de su empresa. Lista con
+      estado, tamano, filas, duracion y quien la hizo; descargar (zip) y eliminar.
+      Permisos nuevos backups.leer/crear/eliminar (ADMIN y SUPERADMIN). Las copias NO
+      dependen de que la suscripcion este al dia (una empresa vencida igual se lleva sus
+      datos) ni del plan. Crear y eliminar quedan en la bitacora (CU19).
+[8.2] Decisiones de diseno (para la narrativa):
+      - Formato: zip con meta.json y datos/<tabla>.ndjson (una fila JSON por linea, to_jsonb).
+        No pg_dump: no sabe filtrar por empresa y exige la misma version de Postgres que el
+        servidor (en Railway cambia). Se lee en una transaccion REPEATABLE READ de solo
+        lectura: foto consistente sin bloquear las ventas.
+      - La copia manual responde 202 con la copia EN_CURSO y sigue en segundo plano; la web
+        se refresca sola cada 3 s. Una sola copia en curso por alcance (indice unico
+        ux_backup_en_curso -> 409) y, si el proceso muere, al arrancar las EN_CURSO pasan
+        a FALLIDA.
+      - Retencion: automaticas = ultimas BACKUP_AUTO_RETENCION (7); manuales = ultimas
+        BACKUP_MANUAL_RETENCION (10) por alcance; las fallidas se limpian a los 30 dias.
+      - Archivos en BACKUPS_DIR (volumen). La base solo guarda el registro (sha256, tamano,
+        filas por tabla).
+      - tests/test_backups.py compara la lista de tablas con db/01_schema.sql: una tabla
+        nueva sin clasificar en backups/tablas.py rompe el test (la copia general, en
+        cambio, descubre las tablas sola).
+[8.3] PROBADO: 30 tests nuevos (217 en total pasan; los 2 de test_saas.py que fallan ya
+      fallaban antes: tests de plan de sugerencias de traspasos), ruff limpio, ng build.
+      De punta a punta contra el Postgres de Docker con el backend real: automatica al
+      arrancar, manual del ADMIN, aislamiento (otra empresa recibe 404 al listar, bajar,
+      borrar o pedir la copia ajena), SUPERADMIN por empresa y general, zip valido, y la
+      suma de ventas de las copias por empresa (815 + 240) = ventas de la base (1055).
+[8.4] PENDIENTE:
+      - APLICAR db/reparaciones/backups.sql en Railway (la del Docker local ya esta aplicada)
+        y crear el Volume /app/backups (docs/RAILWAY.md paso 6). El backend nuevo sin esa
+        tabla da 500 en /backups y el job de la automatica falla cada minuto (solo loguea).
+      - Documentacion: sumar CU30 al catalogo (Admin. empresa y Admin. plataforma), su
+        narrativa, secuencia/robustez/comunicacion y el modelo de datos (tabla backup,
+        enums tipo_backup/estado_backup, permisos backups.*), segun
+        ducumentacion/UML 2.5/MANTENIMIENTO.md.
+      - Movil: sin pantalla de copias (se hace desde la web).
+      - RESTAURAR no esta implementado: hoy la copia sirve para descargar y conservar los
+        datos; devolverlos a la base seria un script aparte (insertar el .ndjson en el orden
+        de TABLAS_EMPRESA / de dependencia) y falta decidir como se restaura una empresa
+        suelta sin pisar a las demas.
+      - Las imagenes de /media no entran en la copia (solo datos).
+      - Las copias viven en el mismo servidor que la base: protegen de un borrado o un error
+        de datos, no de perder el servidor. Mejora futura: subirlas a un almacenamiento
+        externo (S3 o similar).
+      - Una sola instancia del backend: con varias, el indice unico evita que dupliquen la
+        copia, pero cada una guarda el archivo en su propio disco.
+
+===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)
 ===============================================================================
 

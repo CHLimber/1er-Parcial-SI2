@@ -31,10 +31,25 @@ services:
       - "8081:8000"
     volumes:
       - backend_media:/app/media
+      - backend_backups:/app/backups
     depends_on:
       db:
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        API_URL: http://localhost:8081
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
+
 volumes:
   db_data:
   backend_media:
+  backend_backups:

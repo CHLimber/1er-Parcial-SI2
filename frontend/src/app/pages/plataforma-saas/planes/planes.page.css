@@ -1,0 +1,92 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+  background: var(--paper);
+}
+
+.planes {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1rem 3rem;
+}
+
+/* ---------- cabecera ---------- */
+
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 0;
+}
+
+.cabecera__marca {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.cabecera__marca span {
+  color: var(--flame);
+}
+
+.cabecera__enlaces a {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ---------- presentacion ---------- */
+
+.intro {
+  max-width: 40rem;
+  padding: clamp(1.5rem, 5vw, 3.5rem) 0 2rem;
+}
+
+.intro__eyebrow {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--flame-dark);
+}
+
+.intro__titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(2.25rem, 6vw, 3.75rem);
+  line-height: 1;
+  color: var(--ink);
+}
+
+.intro__texto {
+  margin: 1.25rem 0 0;
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.intro__texto strong {
+  color: var(--ink);
+}
+
+/* ---------- pie ---------- */
+
+.pie {
+  max-width: 40rem;
+  margin: 2.5rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.pie a {
+  color: var(--ink);
+  font-weight: 600;
+}

@@ -23,6 +23,17 @@ export const routes: Routes = [
     canActivate: [invitadoGuard],
   },
   {
+    // Publica: la vitrina de planes del SaaS, antes de tener cuenta
+    path: 'planes',
+    loadComponent: () => import('./pages/plataforma-saas/planes/planes.page').then((m) => m.PlanesPage),
+  },
+  {
+    path: 'registro-empresa',
+    loadComponent: () =>
+      import('./pages/plataforma-saas/registro-empresa/registro-empresa.page').then((m) => m.RegistroEmpresaPage),
+    canActivate: [invitadoGuard],
+  },
+  {
     path: 'tienda',
     loadComponent: () => import('./pages/catalogo-e-inventario/tienda/tienda.page').then((m) => m.TiendaPage),
     canActivate: [authGuard],
@@ -254,6 +265,13 @@ export const routes: Routes = [
         canActivate: [permisoGuard('empresas.leer')],
       },
       {
+        // CU30: copias de seguridad (la general de la plataforma y la de cada empresa)
+        path: 'backups',
+        loadComponent: () =>
+          import('./pages/plataforma-saas/panel-backups/panel-backups.page').then((m) => m.PanelBackupsPage),
+        canActivate: [permisoGuard('backups.leer')],
+      },
+      {
         path: 'auditoria',
         loadComponent: () =>
           import('./pages/acceso-y-organizacion/panel-auditoria/panel-auditoria.page').then((m) => m.PanelAuditoriaPage),
@@ -262,6 +280,11 @@ export const routes: Routes = [
     ],
   },
 
-  { path: '', pathMatch: 'full', redirectTo: 'tienda' },
-  { path: '**', redirectTo: 'tienda' },
+  {
+    // Portada publica: informacion de la plataforma y accesos (login, registro, planes)
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () => import('./pages/plataforma-saas/inicio/inicio.page').then((m) => m.InicioPage),
+  },
+  { path: '**', redirectTo: '' },
 ];

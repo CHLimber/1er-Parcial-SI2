@@ -1,0 +1,33 @@
+.resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1rem;
+}
+
+.resumen__etiqueta {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 0.2rem;
+}
+
+.resumen__valor {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.campo--en-barra {
+  min-width: 14rem;
+}
+
+.nota {
+  margin: 0 0 0.75rem;
+}
+
+.tabla .secundario {
+  display: block;
+  max-width: 16rem;
+}

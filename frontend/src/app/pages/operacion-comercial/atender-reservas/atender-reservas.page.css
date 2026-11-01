@@ -4,51 +4,7 @@
   background: var(--paper);
 }
 
-.cabecera {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
-  background: var(--ink);
-  color: var(--white);
-}
-
-.cabecera__marca {
-  font-family: var(--font-display);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 1.35rem;
-}
-
-.cabecera__acciones {
-  display: flex;
-  align-items: center;
-  gap: 1.25rem;
-}
-
-.cabecera__usuario {
-  font-size: 0.85rem;
-  color: var(--white);
-}
-
-.cabecera__salir {
-  border: none;
-  background: none;
-  color: var(--white);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 0;
-}
-
-.cabecera__salir:hover {
-  color: var(--flame);
-}
-
 .contenido {
-  padding: clamp(1.25rem, 3vw, 2.5rem);
-  max-width: 72rem;
-  margin: 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
   gap: 1.5rem;
@@ -63,9 +19,9 @@
 
 .titulo {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  font-size: clamp(1.4rem, 3vw, 1.9rem);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(1.3rem, 3vw, 1.6rem);
   color: var(--ink);
   margin: 0;
 }

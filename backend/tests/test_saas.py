@@ -160,3 +160,98 @@ def test_el_admin_de_empresa_tambien_depende_del_plan(cliente):
     app.dependency_overrides[get_staff_actual] = lambda: admin
     respuesta = TestClient(app, raise_server_exceptions=False).get("/traspasos/sugerencias")
     assert respuesta.status_code == 402
+
+
+# --- autoregistro publico de la empresa -----------------------------------------------------------
+
+
+def _registro(**cambios) -> dict:
+    datos = {
+        "nombre": "Boutique Sol", "razon_social": "Boutique Sol SRL", "nit": "1023456019",
+        "slug": "boutique-sol", "plan_codigo": "BASICO",
+        "administrador": {
+            "email": "dueña@boutiquesol.bo", "nombre": "Ana", "apellido": "Rojas",
+            "password": "Clave-segura-2026",
+        },
+        "sucursal": {
+            "codigo": "bs-01", "nombre": "Central", "ciudad": "SANTA_CRUZ", "direccion": "Av. Banzer 123",
+        },
+    }
+    return datos | cambios
+
+
+def _conexion_de_registro() -> ConexionFalsa:
+    ahora = datetime.now(timezone.utc)
+    plan = {
+        "plan_id": 1, "codigo": "BASICO", "nombre": "Basico", "descripcion": None,
+        "precio_mensual": Decimal("150"), "max_sucursales": 2, "max_empleados": 10, "max_cajas": 3,
+        "perfiles_clientes": False, "traspasos": False, "operacion_offline": True, "reportes": True,
+        "ia_reportes": False, "analitica_ml": False,
+    }
+    suscripcion = plan | {
+        "empresa_id": uuid4(), "empresa": "Boutique Sol", "empresa_slug": "boutique-sol",
+        "empresa_activa": True, "estado": "VENCIDA", "inicio": ahora, "vence_en": ahora,
+    }
+    return ConexionFalsa(
+        {
+            "WHERE p.codigo = upper($1) AND p.activo": plan,
+            "INSERT INTO empresa": uuid4(),
+            "INSERT INTO usuario": uuid4(),
+            "INSERT INTO sucursal": uuid4(),
+            "FROM suscripcion su": suscripcion,
+            "FROM sucursal s WHERE s.empresa_id": {"sucursales": 1, "empleados": 1, "cajas": 1},
+        }
+    )
+
+
+def test_el_registro_publico_no_pide_sesion_y_deja_la_empresa_pendiente_de_pago(cliente):
+    conn = _conexion_de_registro()
+
+    async def _conn():
+        yield conn
+
+    app.dependency_overrides[get_connection] = _conn
+    # `dias_prueba` no existe en el formulario publico: aunque se mande, no regala dias
+    respuesta = TestClient(app, raise_server_exceptions=False).post(
+        "/saas/registro", json=_registro(dias_prueba=90)
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["vigente"] is False
+    _, _, estado, dias = conn.args_de("INSERT INTO suscripcion")
+    assert (estado, dias) == ("VENCIDA", 0)
+    assert conn.ejecuto_en_tx("INSERT INTO caja")
+    # el actor de la bitacora es el propio administrador recien creado
+    assert conn.args_de("INSERT INTO auditoria")[0] == conn.args_de("INSERT INTO empleado")[0]
+
+
+def test_la_plataforma_si_puede_dar_dias_de_prueba_al_registrar(cliente):
+    conn = _conexion_de_registro()
+    # la respuesta de POST /saas/empresas relee la empresa creada
+    conn.respuestas["SELECT * FROM empresa WHERE id"] = {
+        "id": uuid4(), "slug": "boutique-sol", "nombre": "Boutique Sol", "razon_social": "Boutique Sol SRL",
+        "nit": "1023456019", "email": None, "telefono": None, "activa": True,
+        "creada_en": datetime.now(timezone.utc),
+    }
+
+    async def _conn():
+        yield conn
+
+    app.dependency_overrides[get_connection] = _conn
+    app.dependency_overrides[get_staff_actual] = lambda: staff(permisos=["empresas.crear"])
+    respuesta = TestClient(app, raise_server_exceptions=False).post(
+        "/saas/empresas", json=_registro(dias_prueba=30)
+    )
+    assert respuesta.status_code == 201
+    _, _, estado, dias = conn.args_de("INSERT INTO suscripcion")
+    assert (estado, dias) == ("PRUEBA", 30)
+
+
+def test_el_registro_publico_exige_la_primera_sucursal(cliente):
+    async def _conn():
+        yield _conexion_de_registro()
+
+    app.dependency_overrides[get_connection] = _conn
+    datos = _registro()
+    del datos["sucursal"]
+    respuesta = TestClient(app, raise_server_exceptions=False).post("/saas/registro", json=datos)
+    assert respuesta.status_code == 422

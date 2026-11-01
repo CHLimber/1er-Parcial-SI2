@@ -1,0 +1,200 @@
+:host {
+  display: block;
+}
+
+/* ---------- planes ---------- */
+
+.rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.75rem 1.5rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+}
+
+.plan--destacado {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--white);
+  box-shadow: 0 18px 40px -18px rgba(46, 37, 48, 0.55);
+}
+
+.plan--destacado .plan__nombre,
+.plan--destacado .plan__monto,
+.plan--destacado .plan__lista {
+  color: var(--white);
+}
+
+.plan--destacado .plan__descripcion,
+.plan--destacado .plan__periodo {
+  color: rgba(255, 253, 249, 0.7);
+}
+
+.plan--destacado .plan__etiqueta {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.plan--destacado .plan__marca {
+  color: var(--gold);
+}
+
+.plan--destacado .plan__boton {
+  background: var(--flame);
+}
+
+.plan--destacado .plan__boton:hover {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+.plan--destacado .plan__lista.plan__lista--topes {
+  border-bottom-color: rgba(255, 253, 249, 0.2);
+}
+
+/* los topes (sucursales, personal, cajas) van separados de las funciones */
+.plan__lista.plan__lista--topes {
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.plan__suma {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--flame-dark);
+}
+
+.plan--destacado .plan__suma {
+  color: var(--gold);
+}
+
+/* el boton siempre abajo, aunque las listas tengan distinto largo */
+.plan__boton {
+  margin-top: auto;
+}
+
+.plan__etiqueta {
+  position: absolute;
+  top: -0.75rem;
+  left: 1.5rem;
+  margin: 0;
+  padding: 0.2rem 0.7rem;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.plan__nombre {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.75rem;
+  color: var(--ink);
+}
+
+.plan__descripcion {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.plan__precio {
+  margin: 1.25rem 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.plan__monto {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 2.25rem;
+  color: var(--ink);
+}
+
+.plan__periodo {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.plan__lista {
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.plan__marca {
+  display: inline-block;
+  width: 1.1rem;
+  color: var(--flame);
+  font-weight: 700;
+}
+
+.plan__item--no {
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
+
+.plan__item--no .plan__marca {
+  color: var(--ink-soft);
+}
+
+.plan__boton {
+  display: block;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--white);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: center;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.plan__boton:hover {
+  background: var(--flame);
+}
+
+/* ---------- estados y pie ---------- */
+
+.estado {
+  padding: 2rem 0;
+  color: var(--ink-soft);
+}
+
+.estado--error {
+  color: var(--flame-dark);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

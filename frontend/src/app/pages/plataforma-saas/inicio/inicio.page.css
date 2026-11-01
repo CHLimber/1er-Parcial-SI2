@@ -1,0 +1,564 @@
+:host {
+  display: block;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ---------- piezas comunes ---------- */
+
+.boton {
+  display: inline-block;
+  padding: 0.8rem 1.4rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.92rem;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.boton--oscuro {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.boton--oscuro:hover {
+  background: var(--flame);
+}
+
+.boton--claro {
+  background: var(--white);
+  color: var(--ink);
+}
+
+.boton--claro:hover {
+  background: var(--gold);
+}
+
+.boton--borde {
+  border-color: rgba(255, 253, 249, 0.5);
+  color: var(--white);
+}
+
+.boton--borde:hover {
+  background: rgba(255, 253, 249, 0.12);
+}
+
+.etiqueta {
+  margin: 0 0 0.6rem;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--flame-dark);
+}
+
+.etiqueta--clara {
+  color: var(--gold);
+}
+
+.enlace {
+  color: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ---------- barra superior ---------- */
+
+.barra {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--paper-line);
+}
+
+.barra__interior {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.barra__marca {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.barra__marca span,
+.pie__marca span {
+  color: var(--flame);
+}
+
+.barra__enlaces {
+  display: flex;
+  gap: 1.5rem;
+  margin-left: auto;
+}
+
+.barra__enlaces a {
+  color: var(--ink);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.barra__enlaces a:hover {
+  color: var(--flame-dark);
+}
+
+.barra__acciones {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.barra__login {
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ---------- portada ---------- */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--white);
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.035) 0 1px,
+    transparent 1px 34px
+  );
+  pointer-events: none;
+}
+
+.hero__interior {
+  position: relative;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: clamp(3rem, 9vw, 7rem) 1rem clamp(3rem, 8vw, 6rem);
+}
+
+.hero__eyebrow {
+  margin: 0 0 1.25rem;
+  font-weight: 600;
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.hero__eyebrow span {
+  color: var(--flame);
+}
+
+.hero__titulo {
+  max-width: 16ch;
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(2.75rem, 8vw, 6rem);
+  line-height: 0.95;
+}
+
+.hero__texto {
+  max-width: 38rem;
+  margin: 1.5rem 0 0;
+  font-size: 1.1rem;
+  line-height: 1.55;
+  color: rgba(255, 253, 249, 0.78);
+}
+
+.hero__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.hero__aparte {
+  margin: 1.25rem 0 0;
+  font-size: 0.9rem;
+  color: rgba(255, 253, 249, 0.7);
+}
+
+.hero__aparte a {
+  color: var(--white);
+  font-weight: 600;
+}
+
+/* ---------- dos caminos ---------- */
+
+.caminos {
+  max-width: 72rem;
+  margin: -2.5rem auto 0;
+  padding: 0 1rem;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.25rem;
+}
+
+.camino {
+  padding: 1.75rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+}
+
+.camino--empresa {
+  background: var(--flame-dark);
+  border-color: var(--flame-dark);
+  color: var(--white);
+}
+
+.camino--empresa .etiqueta {
+  color: var(--gold);
+}
+
+.camino__titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 2rem;
+}
+
+.camino__texto {
+  margin: 0.6rem 0 1.5rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.camino--empresa .camino__texto {
+  color: rgba(255, 253, 249, 0.82);
+}
+
+.camino__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+/* ---------- secciones ---------- */
+
+.seccion {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: clamp(3rem, 7vw, 5.5rem) 1rem;
+  scroll-margin-top: 3.5rem;
+}
+
+.seccion__titulo {
+  margin: 0;
+  max-width: 24ch;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  line-height: 1;
+}
+
+.seccion__texto {
+  max-width: 40rem;
+  margin: 1rem 0 0;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.seccion__texto strong {
+  color: var(--ink);
+}
+
+/* bandas de color a todo el ancho: el contenido sigue centrado en 72rem */
+.seccion--tinta,
+.seccion--papel {
+  max-width: none;
+  padding-inline: max(1rem, calc((100% - 72rem) / 2 + 1rem));
+}
+
+.seccion--tinta {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.seccion--tinta .seccion__texto {
+  color: rgba(255, 253, 249, 0.7);
+}
+
+.seccion--papel {
+  background: var(--white);
+  border-block: 1px solid var(--paper-line);
+}
+
+.seccion--papel app-tarjetas-planes {
+  margin-top: 2.5rem;
+}
+
+/* ---------- pasos ---------- */
+
+.pasos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.5rem;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.paso {
+  padding-top: 1.25rem;
+  border-top: 2px solid var(--ink);
+}
+
+.paso__numero {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--flame-dark);
+}
+
+.paso__titulo {
+  margin: 0.4rem 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+.paso__texto {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* ---------- tiendas ---------- */
+
+.tiendas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tienda {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'inicial nombre'
+    'inicial ir';
+  column-gap: 1rem;
+  align-items: center;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid rgba(255, 253, 249, 0.2);
+  border-radius: var(--radius);
+  background: rgba(255, 253, 249, 0.04);
+  color: var(--white);
+  font-family: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.tienda:hover {
+  background: rgba(255, 253, 249, 0.1);
+  border-color: var(--gold);
+}
+
+.tienda__inicial {
+  grid-area: inicial;
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--flame);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+
+.tienda__nombre {
+  grid-area: nombre;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.tienda__ir {
+  grid-area: ir;
+  font-size: 0.82rem;
+  color: var(--gold);
+}
+
+.vacio {
+  margin: 2rem 0 0;
+  color: rgba(255, 253, 249, 0.6);
+}
+
+/* ---------- funciones ---------- */
+
+.funciones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+  margin: 2.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.funcion {
+  padding: 1.4rem;
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+}
+
+.funcion__titulo {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.funcion__texto {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* ---------- cierre y pie ---------- */
+
+.cierre {
+  padding: clamp(3rem, 7vw, 5rem) 1rem;
+  background: var(--flame-dark);
+  color: var(--white);
+  text-align: center;
+}
+
+.cierre__titulo {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+}
+
+.cierre__acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+.pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.pie__marca {
+  margin: 0;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.25rem;
+  text-transform: uppercase;
+}
+
+.pie__enlaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+}
+
+.pie__enlaces a {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.pie__legal {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 48rem) {
+  .barra__enlaces {
+    display: none;
+  }
+
+  .barra__acciones {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 30rem) {
+  .barra__login {
+    display: none;
+  }
+
+  .barra__interior {
+    gap: 0.75rem;
+  }
+
+  .barra__marca {
+    font-size: 1.25rem;
+  }
+
+  .boton {
+    padding: 0.7rem 1.1rem;
+  }
+
+  .barra__acciones .boton {
+    padding: 0.6rem 0.9rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .hero__acciones .boton,
+  .camino__acciones .boton,
+  .cierre__acciones .boton {
+    flex: 1 1 100%;
+  }
+
+  .caminos {
+    margin-top: -1.5rem;
+  }
+}

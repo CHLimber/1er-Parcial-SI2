@@ -123,7 +123,11 @@ INSERT INTO permiso (codigo, modulo, descripcion) VALUES
     ('empresas.leer',         'empresas',    'Consultar las empresas contratantes de la plataforma'),
     ('empresas.crear',        'empresas',    'Registrar una empresa contratante con su administrador'),
     ('empresas.actualizar',   'empresas',    'Editar, suspender o reactivar una empresa y asignarle plan'),
-    ('planes.actualizar',     'planes',      'Configurar precio, limites y funciones de los planes');
+    ('planes.actualizar',     'planes',      'Configurar precio, limites y funciones de los planes'),
+    -- Copias de seguridad: la empresa (ADMIN) respalda la suya; la plataforma (SUPERADMIN) tambien la general
+    ('backups.leer',          'backups',     'Ver y descargar las copias de seguridad'),
+    ('backups.crear',         'backups',     'Generar una copia de seguridad manual'),
+    ('backups.eliminar',      'backups',     'Eliminar una copia de seguridad');
 
 -- ADMIN (de empresa): todo lo de su tenant; lo de la plataforma (empresas, planes) no
 INSERT INTO rol_permiso (rol_id, permiso_id)
@@ -134,7 +138,7 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ADMIN'), p.id FROM permiso p
 -- reentrenamiento de los modelos. No opera la tienda de nadie (catalogo, caja, ventas).
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'SUPERADMIN'), p.id FROM permiso p
- WHERE p.modulo IN ('empresas', 'planes')
+ WHERE p.modulo IN ('empresas', 'planes', 'backups')
     OR p.codigo IN ('suscripciones.leer', 'suscripciones.actualizar', 'auditoria.leer',
                     'analitica.leer', 'analitica.actualizar');
 
@@ -2471,11 +2475,11 @@ INSERT INTO plan (codigo, nombre, descripcion, precio_mensual, max_sucursales, m
                   max_cajas, perfiles_clientes, traspasos, operacion_offline, reportes,
                   ia_reportes, analitica_ml, orden) VALUES
     ('BASICO',      'Basico',
-     'Hasta 2 sucursales: productos, ventas, reservas, operacion offline y reportes convencionales',
-     350,  2,  NULL, NULL, TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, 1),
+     'Para tiendas que arrancan: hasta 2 sucursales con caja, reservas, ventas online, venta sin conexion y reportes convencionales',
+     350,  2,  5,    2,    FALSE, FALSE, TRUE, TRUE, FALSE, FALSE, 1),
     ('PROFESIONAL', 'Profesional',
-     'Hasta 10 sucursales: todo lo del Basico mas reportes generativos con IA y analitica de ML',
-     900,  10, NULL, NULL, TRUE, TRUE, TRUE, TRUE, TRUE,  TRUE,  2);
+     'Para cadenas que crecen: hasta 10 sucursales, personal y cajas sin limite, perfiles de clientas, traspasos, reportes con IA y analitica predictiva',
+     900,  10, NULL, NULL, TRUE,  TRUE,  TRUE, TRUE, TRUE,  TRUE,  2);
 
 -- FashionStore (6 sucursales) en Profesional; las otras dos empresas se suscriben mas abajo.
 INSERT INTO suscripcion (empresa_id, plan_id, estado, inicio, vence_en)

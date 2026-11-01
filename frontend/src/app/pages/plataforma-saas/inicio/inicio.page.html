@@ -1,0 +1,171 @@
+<header class="barra">
+  <div class="barra__interior">
+    <a class="barra__marca" routerLink="/" aria-label="FashionStore, inicio">Fashion<span>Store</span></a>
+
+    <nav class="barra__enlaces" aria-label="Secciones">
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#tiendas">Tiendas</a>
+      <a href="#empresas">Para empresas</a>
+      <a href="#planes">Planes</a>
+    </nav>
+
+    <div class="barra__acciones">
+      @if (conSesion()) {
+        <a class="boton boton--oscuro" [routerLink]="destino()">Ir a mi cuenta</a>
+      } @else {
+        <a class="barra__login" routerLink="/login">Iniciar sesión</a>
+        <a class="boton boton--oscuro" routerLink="/registro-empresa">Registrar mi empresa</a>
+      }
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- ============ portada ============ -->
+  <section class="hero">
+    <div class="hero__interior">
+      <p class="hero__eyebrow">Moda femenina <span>·</span> Bolivia</p>
+      <h1 class="hero__titulo">Probate la moda antes de llevártela</h1>
+      <p class="hero__texto">
+        Reservá prendas en tu sucursal, probátelas en el vestidor y comprá en línea con entrega a
+        domicilio. Y si tenés una tienda, gestioná todo tu negocio desde una sola plataforma.
+      </p>
+
+      <div class="hero__acciones">
+        @if (conSesion()) {
+          <a class="boton boton--claro" [routerLink]="destino()">
+            {{ nombre() ? 'Seguir como ' + nombre() : 'Ir a mi cuenta' }}
+          </a>
+        } @else {
+          <a class="boton boton--claro" routerLink="/login">Iniciar sesión</a>
+          <a class="boton boton--borde" routerLink="/registro">Crear cuenta de clienta</a>
+        }
+      </div>
+      <p class="hero__aparte">
+        ¿Tenés una tienda? <a href="#empresas">Mirá cómo funciona para empresas</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ dos caminos ============ -->
+  <section class="caminos" aria-label="Elegí tu camino">
+    <article class="camino">
+      <p class="etiqueta">Para clientas</p>
+      <h2 class="camino__titulo">Quiero comprar</h2>
+      <p class="camino__texto">
+        Entrá a la tienda que más te guste, reservá tus prendas y pasá a probártelas. Sin
+        sorpresas con la talla.
+      </p>
+      <div class="camino__acciones">
+        <a class="boton boton--oscuro" routerLink="/registro">Crear mi cuenta</a>
+        <a class="enlace" routerLink="/login">Ya tengo cuenta</a>
+      </div>
+    </article>
+
+    <article class="camino camino--empresa">
+      <p class="etiqueta">Para empresas</p>
+      <h2 class="camino__titulo">Tengo una tienda</h2>
+      <p class="camino__texto">
+        Catálogo, inventario por sucursal, caja y ventas online en un solo lugar. Registrate en
+        cinco pasos y empezá hoy.
+      </p>
+      <div class="camino__acciones">
+        <a class="boton boton--claro" routerLink="/registro-empresa">Registrar mi empresa</a>
+        <a class="enlace" href="#planes">Ver planes y precios</a>
+      </div>
+    </article>
+  </section>
+
+  <!-- ============ como funciona ============ -->
+  <section class="seccion" id="como-funciona">
+    <p class="etiqueta">Para clientas</p>
+    <h2 class="seccion__titulo">Cómo funciona</h2>
+    <ol class="pasos">
+      @for (paso of pasos; track paso.titulo; let i = $index) {
+        <li class="paso">
+          <span class="paso__numero" aria-hidden="true">{{ i + 1 }}</span>
+          <h3 class="paso__titulo">{{ paso.titulo }}</h3>
+          <p class="paso__texto">{{ paso.texto }}</p>
+        </li>
+      }
+    </ol>
+  </section>
+
+  <!-- ============ tiendas ============ -->
+  <section class="seccion seccion--tinta" id="tiendas">
+    <p class="etiqueta etiqueta--clara">Tiendas</p>
+    <h2 class="seccion__titulo">Elegí dónde comprar</h2>
+    <p class="seccion__texto">Cada tienda tiene su propio catálogo, sus sucursales y sus promociones.</p>
+
+    @if (cargandoTiendas()) {
+      <p class="vacio">Cargando tiendas…</p>
+    } @else {
+      <ul class="tiendas">
+        @for (tienda of tiendas(); track tienda.slug) {
+          <li>
+            <button type="button" class="tienda" (click)="entrarATienda(tienda)">
+              <span class="tienda__inicial" aria-hidden="true">{{ tienda.nombre.charAt(0) }}</span>
+              <span class="tienda__nombre">{{ tienda.nombre }}</span>
+              <span class="tienda__ir">{{ conSesion() ? 'Entrar' : 'Ingresar' }} →</span>
+            </button>
+          </li>
+        } @empty {
+          <li class="vacio">Todavía no hay tiendas publicadas.</li>
+        }
+      </ul>
+    }
+  </section>
+
+  <!-- ============ empresas ============ -->
+  <section class="seccion" id="empresas">
+    <p class="etiqueta">Para empresas</p>
+    <h2 class="seccion__titulo">Todo lo que necesita tu tienda</h2>
+    <p class="seccion__texto">
+      Cada empresa tiene su propio espacio, aislado del resto: su catálogo, su personal, sus
+      sucursales y sus datos.
+    </p>
+    <ul class="funciones">
+      @for (funcion of funciones; track funcion.titulo) {
+        <li class="funcion">
+          <h3 class="funcion__titulo">{{ funcion.titulo }}</h3>
+          <p class="funcion__texto">{{ funcion.texto }}</p>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <!-- ============ planes ============ -->
+  <section class="seccion seccion--papel" id="planes">
+    <p class="etiqueta">Planes</p>
+    <h2 class="seccion__titulo">Elegí tu plan y empezá hoy</h2>
+    <p class="seccion__texto">
+      Registrás tu empresa en cinco pasos y <strong>pagás con tarjeta</strong> en el último; tu plan
+      se activa al confirmarse el pago y podés cambiarlo cuando quieras.
+    </p>
+    <app-tarjetas-planes />
+  </section>
+
+  <!-- ============ cierre ============ -->
+  <section class="cierre">
+    <h2 class="cierre__titulo">¿Lista para empezar?</h2>
+    <div class="cierre__acciones">
+      @if (conSesion()) {
+        <a class="boton boton--claro" [routerLink]="destino()">Ir a mi cuenta</a>
+      } @else {
+        <a class="boton boton--claro" routerLink="/registro">Crear cuenta de clienta</a>
+        <a class="boton boton--borde" routerLink="/registro-empresa">Registrar mi empresa</a>
+      }
+    </div>
+  </section>
+</main>
+
+<footer class="pie">
+  <p class="pie__marca">Fashion<span>Store</span></p>
+  <nav class="pie__enlaces" aria-label="Accesos">
+    <a routerLink="/login">Iniciar sesión</a>
+    <a routerLink="/registro">Crear cuenta</a>
+    <a routerLink="/planes">Planes</a>
+    <a routerLink="/registro-empresa">Registrar empresa</a>
+  </nav>
+  <p class="pie__legal">© {{ anio }} FashionStore · Bolivia</p>
+</footer>

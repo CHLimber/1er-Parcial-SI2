@@ -11,7 +11,7 @@ import {
   ResolverReservaOut,
 } from '../../../core/operacion-comercial/reservas/reservas.models';
 import { ReservasService } from '../../../core/operacion-comercial/reservas/reservas.service';
-import { CampanaNotificaciones } from '../../../shared/notificaciones/campana-notificaciones';
+import { PanelShell } from '../../../shared/panel/panel-shell';
 
 interface PreparacionItem {
   variante_id: string;
@@ -40,7 +40,7 @@ const FILTROS = [
 @Component({
   selector: 'app-atender-reservas-page',
   standalone: true,
-  imports: [FormsModule, CampanaNotificaciones],
+  imports: [FormsModule, PanelShell],
   templateUrl: './atender-reservas.page.html',
   styleUrls: ['./atender-reservas.page.css', '../../../shared/responsive.css'],
 })

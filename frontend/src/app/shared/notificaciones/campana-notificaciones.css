@@ -1,6 +1,7 @@
 /*
- * Campana de notificaciones. Se monta sobre cabeceras con fondo `--ink` (tienda y
- * panel-shell), por eso el boton es claro sobre oscuro; el panel desplegable usa la
+ * Campana de notificaciones. Por defecto se monta sobre cabeceras con fondo `--ink` (tienda), por
+ * eso el boton es claro sobre oscuro; sobre fondo claro (panel-shell) se ajusta con
+ * --campana-color / --campana-borde / --campana-contorno; el panel desplegable usa la
  * paleta de papel del resto de la app.
  */
 
@@ -17,10 +18,10 @@
   width: 2.75rem;
   height: 2.75rem;
   padding: 0;
-  border: 1px solid rgba(255, 253, 249, 0.35);
+  border: 1px solid var(--campana-borde, rgba(255, 253, 249, 0.35));
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--white);
+  color: var(--campana-color, var(--white));
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease;
 }
@@ -47,7 +48,7 @@
   height: 1.3rem;
   padding: 0 0.3rem;
   border-radius: var(--radius-pill);
-  border: 2px solid var(--ink);
+  border: 2px solid var(--campana-contorno, var(--ink));
   background: var(--flame);
   color: var(--white);
   font-family: var(--font-body);

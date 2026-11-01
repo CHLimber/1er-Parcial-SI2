@@ -84,6 +84,11 @@ export interface EmpresaIn extends EmpresaDatosIn {
   } | null;
 }
 
+/** CU01 por autoregistro (pagina publica de planes): sin dias de prueba y con sucursal obligatoria. */
+export type RegistroEmpresaIn = Omit<EmpresaIn, 'dias_prueba' | 'sucursal'> & {
+  sucursal: { codigo: string; nombre: string; ciudad: string; direccion: string };
+};
+
 /** CU02: asignar / cambiar plan con fechas (administrativo, sin cobro). */
 export interface AsignarPlanIn {
   plan_codigo: string;

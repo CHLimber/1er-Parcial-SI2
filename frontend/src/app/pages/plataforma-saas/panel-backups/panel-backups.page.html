@@ -1,0 +1,193 @@
+<app-panel-shell
+  titulo="Copias de seguridad"
+  [bajada]="esPlataforma
+    ? 'La plataforma respalda todas las empresas cada día de forma automática, y podés generar una copia general o la de una empresa cuando quieras.'
+    : 'Generá una copia de los datos de tu empresa (sucursales, catálogo, inventario, ventas, personal y clientas) y descargala cuando la necesites.'"
+>
+  @if (esPlataforma) {
+    <div class="solapas">
+      <button type="button" class="solapa" [class.solapa--activa]="solapa === 'automatica'" (click)="solapa = 'automatica'">
+        Copia automática
+      </button>
+      <button type="button" class="solapa" [class.solapa--activa]="solapa === 'empresas'" (click)="solapa = 'empresas'">
+        Copias por empresa
+      </button>
+    </div>
+  }
+
+  @if (aviso()) {
+    <p class="exito">{{ aviso() }}</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+
+  <ng-template #tabla let-copias let-conEmpresa="conEmpresa">
+    @if (copias.length === 0) {
+      <p class="estado">Todavía no hay copias de seguridad.</p>
+    } @else {
+      <div class="tabla-envoltorio">
+        <table class="tabla">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              @if (conEmpresa) {
+                <th>Empresa</th>
+              }
+              <th>Tipo</th>
+              <th>Estado</th>
+              <th>Hecha por</th>
+              <th class="tabla__numero">Tamaño</th>
+              <th class="tabla__numero">Filas</th>
+              <th class="tabla__numero">Duración</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of copias; track c.id) {
+              <tr>
+                <td>{{ fechaHora(c.iniciado_en) }}</td>
+                @if (conEmpresa) {
+                  <td>{{ c.empresa }}</td>
+                }
+                <td>
+                  <span class="badge" [class.badge--ok]="c.tipo === 'AUTOMATICO'">
+                    {{ c.tipo === 'AUTOMATICO' ? 'Automática' : 'Manual' }}
+                  </span>
+                </td>
+                <td>
+                  <span
+                    class="badge"
+                    [class.badge--ok]="c.estado === 'COMPLETADO'"
+                    [class.badge--alerta]="c.estado === 'EN_CURSO'"
+                    [class.badge--baja]="c.estado === 'FALLIDO'"
+                  >
+                    {{ etiquetaEstado(c.estado) }}
+                  </span>
+                  @if (c.estado === 'COMPLETADO' && !c.disponible) {
+                    <span class="secundario">archivo no disponible</span>
+                  }
+                  @if (c.error) {
+                    <span class="secundario" [title]="c.error">{{ c.error }}</span>
+                  }
+                </td>
+                <td>{{ c.creado_por ?? 'Sistema' }}</td>
+                <td class="tabla__numero">{{ tamano(c.tamano_bytes) }}</td>
+                <td class="tabla__numero" [title]="c.total_tablas ? c.total_tablas + ' tablas' : ''">
+                  {{ c.total_filas ?? '—' }}
+                </td>
+                <td class="tabla__numero">{{ duracion(c.duracion_segundos) }}</td>
+                <td class="tabla__acciones">
+                  @if (c.estado === 'COMPLETADO' && c.disponible) {
+                    <button type="button" class="boton boton--chico" (click)="descargar(c)">Descargar</button>
+                  }
+                  @if (puedeEliminar && c.estado !== 'EN_CURSO') {
+                    <button type="button" class="boton boton--chico boton--peligro" (click)="eliminar(c)">Eliminar</button>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </ng-template>
+
+  @if (cargando()) {
+    <p class="estado">Cargando…</p>
+  } @else if (esPlataforma && solapa === 'automatica') {
+    @if (programacion(); as p) {
+      <section class="panel">
+        <h2 class="panel__titulo">Programación de la copia automática</h2>
+        <div class="resumen">
+          <div>
+            <span class="resumen__etiqueta">Estado</span>
+            <span class="badge" [class.badge--ok]="p.activa" [class.badge--baja]="!p.activa">
+              {{ p.activa ? 'Activa' : 'Desactivada' }}
+            </span>
+          </div>
+          <div>
+            <span class="resumen__etiqueta">Se hace</span>
+            <strong class="resumen__valor">{{ p.frecuencia }} a las {{ p.hora }}</strong>
+            <span class="secundario">{{ p.zona }}</span>
+          </div>
+          <div>
+            <span class="resumen__etiqueta">Próxima copia</span>
+            <strong class="resumen__valor">{{ p.activa ? fechaHora(p.proxima_ejecucion) : '—' }}</strong>
+          </div>
+          <div>
+            <span class="resumen__etiqueta">Última copia</span>
+            @if (p.ultima; as u) {
+              <strong class="resumen__valor">{{ fechaHora(u.iniciado_en) }}</strong>
+              <span
+                class="badge"
+                [class.badge--ok]="u.estado === 'COMPLETADO'"
+                [class.badge--alerta]="u.estado === 'EN_CURSO'"
+                [class.badge--baja]="u.estado === 'FALLIDO'"
+              >
+                {{ etiquetaEstado(u.estado) }}
+              </span>
+            } @else {
+              <strong class="resumen__valor">Aún no corrió</strong>
+            }
+          </div>
+          <div>
+            <span class="resumen__etiqueta">Se conservan</span>
+            <strong class="resumen__valor">{{ p.retencion_automaticas }} automáticas</strong>
+            <span class="secundario">y {{ p.retencion_manuales }} manuales</span>
+          </div>
+        </div>
+        @if (p.ultima && p.ultima.estado === 'FALLIDO') {
+          <p class="error">
+            La última copia automática falló: {{ p.ultima.error }}. El sistema reintenta hasta 3 veces por día; mientras
+            tanto podés generar una a mano.
+          </p>
+        }
+        @if (!p.activa) {
+          <p class="aviso">La copia automática está desactivada en el servidor (BACKUP_AUTO_ACTIVO).</p>
+        }
+      </section>
+    }
+
+    <section class="panel">
+      <div class="barra">
+        <h2 class="panel__titulo">Copias generales (todas las empresas)</h2>
+        <span class="barra__espacio"></span>
+        @if (puedeCrear) {
+          <button type="button" class="boton" [disabled]="ocupado()" (click)="crearGeneral()">
+            Generar copia general ahora
+          </button>
+        }
+      </div>
+      <ng-container *ngTemplateOutlet="tabla; context: { $implicit: generales(), conEmpresa: false }" />
+    </section>
+  } @else {
+    <section class="panel">
+      <div class="barra">
+        <h2 class="panel__titulo">{{ esPlataforma ? 'Copias de las empresas' : 'Copias de tu empresa' }}</h2>
+        <span class="barra__espacio"></span>
+        @if (esPlataforma) {
+          <div class="campo campo--en-barra">
+            <label for="b-empresa">Empresa</label>
+            <select id="b-empresa" name="empresa" [(ngModel)]="empresaElegida" (ngModelChange)="cambiarFiltroEmpresa()">
+              <option value="">Todas (solo para ver)</option>
+              @for (e of empresas(); track e.id) {
+                <option [value]="e.id">{{ e.nombre }}</option>
+              }
+            </select>
+          </div>
+        }
+        @if (puedeCrear) {
+          <button type="button" class="boton" [disabled]="ocupado() || (esPlataforma && !empresaElegida)" (click)="crearDeEmpresa()">
+            Generar copia ahora
+          </button>
+        }
+      </div>
+      <p class="secundario nota">
+        Incluye los datos de la empresa (no las imágenes del catálogo) y no lleva las contraseñas. Solo se conservan las
+        últimas copias manuales: al generar una nueva, las más viejas se borran solas.
+      </p>
+      <ng-container *ngTemplateOutlet="tabla; context: { $implicit: deEmpresas(), conEmpresa: esPlataforma }" />
+    </section>
+  }
+</app-panel-shell>

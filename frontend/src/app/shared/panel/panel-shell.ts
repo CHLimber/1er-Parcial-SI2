@@ -1,9 +1,10 @@
-import { Component, OnInit, computed, inject, input } from '@angular/core';
+import { Component, HostListener, OnInit, computed, inject, input, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { AuthService } from '../../core/acceso-y-organizacion/auth/auth.service';
 import { PERMISO_ATENDER_RESERVAS, PERMISO_CAJA } from '../../core/acceso-y-organizacion/auth/auth.guard';
 import { CampanaNotificaciones } from '../notificaciones/campana-notificaciones';
+import { Icono } from './icono';
 
 interface EntradaNav {
   ruta: string;
@@ -116,6 +117,11 @@ const ENTRADAS_PANEL: EntradaNav[] = [
     visible: (auth) => auth.tienePermiso(PERMISO_CAJA, PERMISO_ATENDER_RESERVAS),
   },
   {
+    ruta: '/panel/backups',
+    etiqueta: 'Copias de seguridad',
+    visible: (auth) => auth.tienePermiso('backups.leer'),
+  },
+  {
     ruta: '/panel/auditoria',
     etiqueta: 'Auditoría',
     visible: (auth) => auth.tienePermiso('auditoria.leer'),
@@ -128,19 +134,69 @@ const ENTRADAS_PANEL: EntradaNav[] = [
   },
 ];
 
+/**
+ * Como se agrupa la navegacion lateral y con que icono. Es solo presentacion: que secciones ve
+ * cada usuario lo decide `visible` (sus permisos). El orden de ENTRADAS_PANEL, en cambio, define
+ * a donde cae quien entra a /panel, y por eso no coincide con el orden visual.
+ */
+const GRUPOS: { titulo: string; rutas: string[] }[] = [
+  { titulo: 'Plataforma', rutas: ['/panel/empresas'] },
+  { titulo: 'Operación', rutas: ['/caja', '/atender-reservas', '/offline', '/panel/devoluciones'] },
+  {
+    titulo: 'Catálogo e inventario',
+    rutas: ['/panel/catalogo', '/panel/inventario', '/panel/recepciones', '/panel/traspasos', '/panel/proveedores'],
+  },
+  { titulo: 'Clientas y negocio', rutas: ['/panel/clientes', '/panel/reportes', '/panel/analitica'] },
+  {
+    titulo: 'Administración',
+    rutas: ['/panel/sucursales', '/panel/usuarios', '/panel/suscripcion', '/panel/sincronizacion', '/panel/backups', '/panel/auditoria'],
+  },
+];
+
+const ICONO_POR_RUTA: Record<string, string> = {
+  '/panel/empresas': 'empresas',
+  '/panel/catalogo': 'catalogo',
+  '/panel/recepciones': 'recepciones',
+  '/panel/inventario': 'inventario',
+  '/panel/traspasos': 'traspasos',
+  '/panel/devoluciones': 'devoluciones',
+  '/panel/proveedores': 'proveedores',
+  '/panel/sucursales': 'sucursales',
+  '/panel/usuarios': 'usuarios',
+  '/panel/reportes': 'reportes',
+  '/panel/clientes': 'clientas',
+  '/panel/suscripcion': 'suscripcion',
+  '/panel/analitica': 'analitica',
+  '/panel/sincronizacion': 'sincronizacion',
+  '/offline': 'offline',
+  '/panel/backups': 'backups',
+  '/panel/auditoria': 'auditoria',
+  '/caja': 'caja',
+  '/atender-reservas': 'reservas',
+};
+
+interface GrupoNav {
+  titulo: string;
+  entradas: (EntradaNav & { icono: string })[];
+}
+
 /** A donde mandar a quien entra a /panel: su primera seccion habilitada, o la tienda si no tiene ninguna. */
 export function primeraSeccionPanel(auth: AuthService): string {
   return ENTRADAS_PANEL.find((entrada) => entrada.visible(auth))?.ruta ?? '/tienda';
 }
 
 /**
- * Cabecera y navegacion comunes del panel de gestion (CU09 a CU13). Los enlaces se arman con
- * los permisos del rol: un CAJERO solo ve Caja, un ADMIN los ve todos.
+ * Estructura comun del panel de gestion: barra lateral con la navegacion agrupada, barra superior
+ * (migas, notificaciones y menu de usuario) y la cabecera de pagina. La navegacion se arma con los
+ * permisos del rol: un CAJERO solo ve Caja, un ADMIN los ve todos. En pantallas chicas la barra
+ * lateral pasa a ser un cajon que se abre con el boton de menu.
+ *
+ * Las paginas proyectan su contenido y, opcionalmente, botones de pagina con `<div acciones>`.
  */
 @Component({
   selector: 'app-panel-shell',
   standalone: true,
-  imports: [CampanaNotificaciones, RouterLink, RouterLinkActive],
+  imports: [CampanaNotificaciones, Icono, RouterLink, RouterLinkActive],
   templateUrl: './panel-shell.html',
   styleUrl: './panel-shell.css',
 })
@@ -151,15 +207,56 @@ export class PanelShell implements OnInit {
   protected readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
-  protected readonly navegacion = computed(() =>
-    ENTRADAS_PANEL.filter((entrada) => entrada.visible(this.auth)),
-  );
+  protected readonly menuAbierto = signal(false);
+  protected readonly usuarioAbierto = signal(false);
+
+  protected readonly navegacion = computed<GrupoNav[]>(() => {
+    const visibles = new Map(ENTRADAS_PANEL.filter((e) => e.visible(this.auth)).map((e) => [e.ruta, e]));
+    return GRUPOS.map((g) => ({
+      titulo: g.titulo,
+      entradas: g.rutas.flatMap((ruta) => {
+        const entrada = visibles.get(ruta);
+        return entrada ? [{ ...entrada, icono: ICONO_POR_RUTA[ruta] ?? '' }] : [];
+      }),
+    })).filter((g) => g.entradas.length > 0);
+  });
 
   protected readonly inicio = computed(() => primeraSeccionPanel(this.auth));
+
+  protected readonly iniciales = computed(() => {
+    const u = this.auth.usuario();
+    return `${u?.nombre?.charAt(0) ?? ''}${u?.apellido?.charAt(0) ?? ''}`.toUpperCase() || '?';
+  });
 
   ngOnInit(): void {
     // si el administrador cambio los permisos del rol, esta es la oportunidad de enterarse
     this.auth.refrescarSesion().subscribe({ error: () => undefined });
+  }
+
+  protected alternarMenu(): void {
+    this.menuAbierto.update((abierto) => !abierto);
+  }
+
+  protected cerrarMenu(): void {
+    this.menuAbierto.set(false);
+  }
+
+  protected alternarUsuario(): void {
+    this.usuarioAbierto.update((abierto) => !abierto);
+  }
+
+  /** El menu de usuario se cierra al hacer clic afuera o con Escape; el cajon movil tambien con Escape. */
+  @HostListener('document:click', ['$event'])
+  protected alHacerClic(evento: MouseEvent): void {
+    if (this.usuarioAbierto() && !(evento.target as HTMLElement).closest('.usuario')) {
+      this.usuarioAbierto.set(false);
+    }
+  }
+
+  @HostListener('document:keydown.escape')
+  protected alEscape(): void {
+    this.usuarioAbierto.set(false);
+    this.menuAbierto.set(false);
   }
 
   protected cerrarSesion(): void {

@@ -1,44 +1,119 @@
-<header class="cabecera">
-  <a class="cabecera__marca" [routerLink]="inicio()">
-    {{ auth.usuario()?.empresa ?? 'Plataforma SaaS' }} · Gestión
-    @if (auth.usuario()?.plan; as plan) {
-      <span class="cabecera__plan">Plan {{ plan }}</span>
-    }
-  </a>
+<div class="app" [class.app--menu-abierto]="menuAbierto()">
+  <aside class="lateral" id="menu-lateral" aria-label="Navegación principal">
+    <div class="lateral__cabecera">
+      <a class="marca" [routerLink]="inicio()" (click)="cerrarMenu()" aria-label="FashionStore, inicio del panel">
+        Fashion<span>Store</span>
+      </a>
+      <button type="button" class="lateral__cerrar" (click)="cerrarMenu()" aria-label="Cerrar menú">
+        <app-icono nombre="cerrar" />
+      </button>
+    </div>
 
-  <div class="cabecera__acciones">
-    @if (auth.usuario(); as u) {
-      <span class="cabecera__usuario">
-        {{ u.nombre }} {{ u.apellido }}
-        <span class="cabecera__rol">{{ u.rol ?? 'STAFF' }}</span>
-      </span>
-    }
-    <app-campana-notificaciones />
-    <a class="cabecera__enlace" routerLink="/cambiar-password">Cambiar contraseña</a>
-    <a class="cabecera__enlace" routerLink="/tienda">Ir a la tienda</a>
-    <button type="button" class="cabecera__salir" (click)="cerrarSesion()">Cerrar sesión</button>
+    <div class="empresa">
+      <span class="empresa__nombre">{{ auth.usuario()?.empresa ?? 'Plataforma SaaS' }}</span>
+      @if (auth.usuario()?.plan; as plan) {
+        <span class="empresa__plan">Plan {{ plan }}</span>
+      }
+    </div>
+
+    <nav class="menu" aria-label="Secciones de gestión">
+      @for (grupo of navegacion(); track grupo.titulo) {
+        <div class="menu__grupo">
+          <p class="menu__titulo">{{ grupo.titulo }}</p>
+          @for (entrada of grupo.entradas; track entrada.ruta) {
+            <a
+              class="menu__enlace"
+              routerLinkActive="menu__enlace--activo"
+              ariaCurrentWhenActive="page"
+              [routerLink]="entrada.ruta"
+              (click)="cerrarMenu()"
+            >
+              <app-icono [nombre]="entrada.icono" />
+              <span>{{ entrada.etiqueta }}</span>
+            </a>
+          }
+        </div>
+      }
+    </nav>
+  </aside>
+
+  <div class="velo" (click)="cerrarMenu()" aria-hidden="true"></div>
+
+  <div class="principal">
+    <header class="superior">
+      <button
+        type="button"
+        class="superior__menu"
+        (click)="alternarMenu()"
+        aria-controls="menu-lateral"
+        [attr.aria-expanded]="menuAbierto()"
+        aria-label="Abrir menú"
+      >
+        <app-icono nombre="menu" />
+      </button>
+
+      <p class="superior__ruta">
+        <span class="superior__empresa">{{ auth.usuario()?.empresa ?? 'Plataforma SaaS' }}</span>
+        <span class="superior__separador" aria-hidden="true">/</span>
+        <span class="superior__seccion">{{ titulo() }}</span>
+      </p>
+
+      <div class="superior__acciones">
+        <app-campana-notificaciones class="campana" />
+
+        @if (auth.usuario(); as u) {
+          <div class="usuario">
+            <button
+              type="button"
+              class="usuario__boton"
+              (click)="alternarUsuario()"
+              aria-haspopup="menu"
+              [attr.aria-expanded]="usuarioAbierto()"
+            >
+              <span class="usuario__avatar" aria-hidden="true">{{ iniciales() }}</span>
+              <span class="usuario__datos">
+                <span class="usuario__nombre">{{ u.nombre }} {{ u.apellido }}</span>
+                <span class="usuario__rol">{{ u.rol ?? 'STAFF' }}</span>
+              </span>
+              <app-icono class="usuario__flecha" nombre="abajo" />
+            </button>
+
+            @if (usuarioAbierto()) {
+              <div class="usuario__menu" role="menu">
+                <div class="usuario__cabecera">
+                  <strong>{{ u.nombre }} {{ u.apellido }}</strong>
+                  <span>{{ u.email }}</span>
+                </div>
+                <a role="menuitem" class="usuario__opcion" routerLink="/cambiar-password">
+                  <app-icono nombre="candado" /> Cambiar contraseña
+                </a>
+                <a role="menuitem" class="usuario__opcion" routerLink="/tienda">
+                  <app-icono nombre="tienda" /> Ir a la tienda
+                </a>
+                <button type="button" role="menuitem" class="usuario__opcion usuario__opcion--salir" (click)="cerrarSesion()">
+                  <app-icono nombre="salir" /> Cerrar sesión
+                </button>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </header>
+
+    <main class="contenido">
+      <div class="encabezado">
+        <div class="encabezado__texto">
+          <h1 class="encabezado__titulo">{{ titulo() }}</h1>
+          @if (bajada()) {
+            <p class="encabezado__bajada">{{ bajada() }}</p>
+          }
+        </div>
+        <div class="encabezado__acciones">
+          <ng-content select="[acciones]" />
+        </div>
+      </div>
+
+      <ng-content />
+    </main>
   </div>
-</header>
-
-<nav class="nav" aria-label="Secciones de gestión">
-  @for (entrada of navegacion(); track entrada.ruta) {
-    <a
-      class="nav__enlace"
-      routerLinkActive="nav__enlace--activo"
-      [routerLink]="entrada.ruta"
-    >
-      {{ entrada.etiqueta }}
-    </a>
-  }
-</nav>
-
-<main class="contenido">
-  <div class="encabezado">
-    <h1 class="encabezado__titulo">{{ titulo() }}</h1>
-    @if (bajada()) {
-      <p class="encabezado__bajada">{{ bajada() }}</p>
-    }
-  </div>
-
-  <ng-content />
-</main>
+</div>

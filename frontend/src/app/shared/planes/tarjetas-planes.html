@@ -1,0 +1,57 @@
+@if (cargando()) {
+  <p class="estado">Cargando planes…</p>
+} @else if (error()) {
+  <p class="estado estado--error" role="alert">{{ error() }}</p>
+} @else {
+  <section class="rejilla" aria-label="Planes disponibles">
+    @for (plan of planes(); track plan.codigo; let i = $index) {
+      <article class="plan" [class.plan--destacado]="esDestacado(plan)">
+        @if (esDestacado(plan)) {
+          <p class="plan__etiqueta">Más completo</p>
+        }
+        <h3 class="plan__nombre">{{ plan.nombre }}</h3>
+        @if (plan.descripcion) {
+          <p class="plan__descripcion">{{ plan.descripcion }}</p>
+        }
+
+        <p class="plan__precio">
+          <span class="plan__monto">{{ precio(plan.precio_mensual) }}</span>
+          @if (!esGratis(plan)) {
+            <span class="plan__periodo">/ mes</span>
+          }
+        </p>
+
+        <ul class="plan__lista plan__lista--topes">
+          @for (item of topes(plan); track item.texto) {
+            <li><span class="plan__marca" aria-hidden="true">✓</span> {{ item.texto }}</li>
+          }
+        </ul>
+
+        @if (anterior(i); as previo) {
+          <p class="plan__suma">Todo lo del {{ previo }} y además:</p>
+        }
+        <ul class="plan__lista">
+          @for (item of funcionesDe(plan, i); track item.texto) {
+            <li [class.plan__item--no]="!item.incluida">
+              <span class="plan__marca" aria-hidden="true">{{ item.incluida ? '✓' : '–' }}</span>
+              {{ item.texto }}
+              @if (!item.incluida) {
+                <span class="visually-hidden">(no incluido)</span>
+              }
+            </li>
+          }
+        </ul>
+
+        <a
+          class="plan__boton"
+          routerLink="/registro-empresa"
+          [queryParams]="{ plan: plan.codigo }"
+        >
+          Elegir {{ plan.nombre }}
+        </a>
+      </article>
+    } @empty {
+      <p class="estado">Todavía no hay planes publicados.</p>
+    }
+  </section>
+}

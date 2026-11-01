@@ -47,6 +47,7 @@ from app.modules.plataforma_saas.saas.schemas import (
     PagoSuscripcionOut,
     PlanIn,
     PlanOut,
+    RegistroEmpresaIn,
     SuscripcionOut,
     TiendaOut,
     UsoOut,
@@ -172,9 +173,18 @@ async def listar_planes(conn: asyncpg.Connection = Depends(get_connection)) -> l
 
 @router.get("/tiendas", response_model=list[TiendaOut])
 async def listar_tiendas(conn: asyncpg.Connection = Depends(get_connection)) -> list[TiendaOut]:
-    """Publico: las tiendas activas de la plataforma, para el selector de la vitrina (cada una
-    se mira con ?empresa=slug / header X-Empresa)."""
-    filas = await conn.fetch("SELECT slug, nombre FROM empresa WHERE activa ORDER BY nombre")
+    """Publico: las tiendas activas de la plataforma con suscripcion vigente, para el selector
+    de la vitrina (cada una se mira con ?empresa=slug / header X-Empresa). Una empresa recien
+    registrada que todavia no pago, o con la suscripcion vencida, no se ofrece."""
+    filas = await conn.fetch(
+        """
+        SELECT e.slug, e.nombre
+        FROM empresa e
+        JOIN suscripcion su ON su.empresa_id = e.id
+        WHERE e.activa AND su.estado IN ('PRUEBA', 'ACTIVA') AND su.vence_en > now()
+        ORDER BY e.nombre
+        """
+    )
     return [TiendaOut(**dict(f)) for f in filas]
 
 
@@ -273,15 +283,14 @@ async def obtener_empresa(
     return await _obtener_empresa(conn, empresa_id)
 
 
-@router.post("/empresas", response_model=EmpresaOut, status_code=status.HTTP_201_CREATED)
-async def registrar_empresa(
-    body: EmpresaIn,
-    conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(plataforma_crear),
-) -> EmpresaOut:
-    """CU01 - Registrar empresa: crea el tenant, su suscripcion en PRUEBA del plan elegido y su
-    administrador (rol ADMIN, RN03). Con `sucursal`, ademas su primera sucursal con una caja y
-    el administrador asignado ahi (asi puede operar caja y reservas desde el primer dia)."""
+async def _crear_empresa(
+    conn: asyncpg.Connection, body: EmpresaIn, actor_id: UUID | None, *, pendiente_de_pago: bool = False
+) -> UUID:
+    """Crea el tenant, su suscripcion del plan elegido y su administrador (rol ADMIN, RN03). La
+    suscripcion nace en PRUEBA por `dias_prueba`; con `pendiente_de_pago` nace VENCIDA (sin dias
+    de uso) y la activa el primer pago, igual que una empresa de base vieja sin suscripcion. Con `sucursal`, ademas su primera sucursal con una caja y el administrador asignado
+    ahi (asi puede operar caja y reservas desde el primer dia). `actor_id` es quien queda en
+    la bitacora: la plataforma, o el propio administrador si la empresa se registro sola."""
     plan = await _plan_por_codigo(conn, body.plan_codigo)
     try:
         async with conn.transaction():
@@ -300,11 +309,12 @@ async def registrar_empresa(
             await conn.execute(
                 """
                 INSERT INTO suscripcion (empresa_id, plan_id, estado, vence_en)
-                VALUES ($1, $2, 'PRUEBA', now() + make_interval(days => $3))
+                VALUES ($1, $2, $3::estado_suscripcion, now() + make_interval(days => $4))
                 """,
                 empresa_id,
                 plan["plan_id"],
-                body.dias_prueba,
+                "VENCIDA" if pendiente_de_pago else "PRUEBA",
+                0 if pendiente_de_pago else body.dias_prueba,
             )
             admin_id = await conn.fetchval(
                 """
@@ -349,7 +359,7 @@ async def registrar_empresa(
                 )
             await registrar_auditoria(
                 conn,
-                usuario_id=staff["id"],
+                usuario_id=actor_id or admin_id,
                 entidad="empresa",
                 entidad_id=empresa_id,
                 accion="CREAR",
@@ -359,12 +369,38 @@ async def registrar_empresa(
         detalle = {
             "empresa_slug_key": "Ya existe una empresa con ese identificador",
             "usuario_email_key": "Ese email ya esta registrado en la plataforma",
-            "sucursal_codigo_key": "Ese codigo de sucursal ya existe",
+            "sucursal_empresa_codigo_key": "Ese codigo de sucursal ya existe en tu empresa",
         }.get(error.constraint_name, "Ya existe un registro con esos datos")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detalle)
     except asyncpg.InvalidTextRepresentationError:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ciudad invalida")
+    return empresa_id
+
+
+@router.post("/empresas", response_model=EmpresaOut, status_code=status.HTTP_201_CREATED)
+async def registrar_empresa(
+    body: EmpresaIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(plataforma_crear),
+) -> EmpresaOut:
+    """CU01 - Registrar empresa (la plataforma, con dias de prueba a su criterio)."""
+    empresa_id = await _crear_empresa(conn, body, staff["id"])
     return await _obtener_empresa(conn, empresa_id)
+
+
+@router.post("/registro", response_model=SuscripcionOut, status_code=status.HTTP_201_CREATED)
+async def registro_publico(
+    body: RegistroEmpresaIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> SuscripcionOut:
+    """CU01 - Autoregistro de una empresa desde la pagina publica de planes. Publico: no hay
+    sesion todavia. Crea el tenant con su administrador y su primera sucursal, pero SIN prueba
+    gratis: la suscripcion queda pendiente de pago (VENCIDA, sin funciones del plan) hasta que el
+    asistente de registro cobre con Stripe (POST /saas/suscripcion/checkout). El cliente inicia
+    sesion con el login normal (asi pasa por el bloqueo de intentos)."""
+    datos = EmpresaIn(**body.model_dump())
+    empresa_id = await _crear_empresa(conn, datos, None, pendiente_de_pago=True)
+    return await _suscripcion(conn, empresa_id)
 
 
 @router.put("/empresas/{empresa_id}", response_model=EmpresaOut)

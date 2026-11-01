@@ -124,6 +124,16 @@ class EmpresaIn(EmpresaDatosIn):
     sucursal: SucursalInicialIn | None = None
 
 
+class RegistroEmpresaIn(EmpresaDatosIn):
+    """Autoregistro publico: igual que EmpresaIn, pero sin prueba gratis (se paga al registrarse)
+    y con la primera sucursal obligatoria (sin ella el administrador no podria operar caja)."""
+
+    slug: str = Field(min_length=2, max_length=40, pattern=r"^[a-z0-9][a-z0-9-]{1,38}$")
+    plan_codigo: str = Field(min_length=3, max_length=20)
+    administrador: AdminEmpresaIn
+    sucursal: SucursalInicialIn
+
+
 class EstadoEmpresaIn(BaseModel):
     activa: bool
 
