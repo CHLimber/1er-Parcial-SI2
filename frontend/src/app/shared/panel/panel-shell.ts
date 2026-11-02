@@ -39,6 +39,12 @@ const ENTRADAS_PANEL: EntradaNav[] = [
     visible: (auth) => auth.tienePermiso('empresas.leer'),
   },
   {
+    // la plataforma (SUPERADMIN): cuentas, roles y permisos de todas las empresas
+    ruta: '/panel/gobierno',
+    etiqueta: 'Cuentas y roles',
+    visible: (auth) => auth.tienePermiso('empresas.leer'),
+  },
+  {
     ruta: '/panel/catalogo',
     etiqueta: 'Catálogo',
     visible: (auth) => auth.tienePermiso('catalogo.crear', 'catalogo.actualizar', 'catalogo.eliminar'),
@@ -154,7 +160,7 @@ const ENTRADAS_PANEL: EntradaNav[] = [
  * a donde cae quien entra a /panel, y por eso no coincide con el orden visual.
  */
 const GRUPOS: { titulo: string; rutas: string[] }[] = [
-  { titulo: 'Plataforma', rutas: ['/panel/empresas'] },
+  { titulo: 'Plataforma', rutas: ['/panel/empresas', '/panel/gobierno'] },
   { titulo: 'Operación', rutas: ['/caja', '/atender-reservas', '/offline', '/panel/devoluciones'] },
   {
     titulo: 'Catálogo e inventario',
@@ -169,6 +175,7 @@ const GRUPOS: { titulo: string; rutas: string[] }[] = [
 
 const ICONO_POR_RUTA: Record<string, string> = {
   '/panel/empresas': 'empresas',
+  '/panel/gobierno': 'usuarios',
   '/panel/catalogo': 'catalogo',
   '/panel/recepciones': 'recepciones',
   '/panel/inventario': 'inventario',

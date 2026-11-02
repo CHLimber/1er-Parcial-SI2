@@ -154,3 +154,63 @@ export interface PagoSuscripcionOut {
   creado_en: string;
   confirmado_en: string | null;
 }
+
+// --- gobierno de la plataforma: cuentas, roles y permisos de todas las empresas -----------------
+
+/** Una cuenta cualquiera: personal de una empresa, clienta o equipo de la plataforma. */
+export interface CuentaOut {
+  id: string;
+  email: string;
+  nombre: string;
+  apellido: string;
+  telefono: string | null;
+  tipo: 'CLIENTE' | 'STAFF';
+  rol_id: number | null;
+  rol: string | null;
+  empresa_id: string | null;
+  empresa: string | null;
+  activo: boolean;
+  bloqueado: boolean;
+  ultimo_acceso: string | null;
+  creado_en: string;
+}
+
+export interface CuentaUpdate {
+  email: string;
+  nombre: string;
+  apellido: string;
+  telefono: string | null;
+  rol_id: number | null;
+}
+
+export interface EquipoIn {
+  email: string;
+  nombre: string;
+  apellido: string;
+  password: string;
+}
+
+export interface RolPlataformaOut {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+  es_sistema: boolean;
+  empresa_id: string | null;
+  empresa: string | null;
+  usuarios: number;
+  permisos: number[];
+  /** SUPERADMIN, ADMIN, ENCARGADO y CAJERO: el codigo los nombra, no se renombran ni se eliminan. */
+  protegido: boolean;
+}
+
+export interface RolPlataformaIn {
+  nombre: string;
+  descripcion: string | null;
+  /** null = rol del sistema, compartido por todas las empresas. */
+  empresa_id: string | null;
+}
+
+export interface RolPlataformaUpdate {
+  nombre: string;
+  descripcion: string | null;
+}

@@ -3,13 +3,17 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
+import { PermisoOut } from '../../acceso-y-organizacion/usuarios/usuarios-admin.models';
 import {
   AsignarPlanIn,
   CheckoutSuscripcionIn,
   CheckoutSuscripcionOut,
+  CuentaOut,
+  CuentaUpdate,
   EmpresaDatosIn,
   EmpresaIn,
   EmpresaOut,
+  EquipoIn,
   PagoManualIn,
   PagoSuscripcionOut,
   PersonalEmpresaIn,
@@ -17,6 +21,9 @@ import {
   PlanIn,
   PlanOut,
   RegistroEmpresaIn,
+  RolPlataformaIn,
+  RolPlataformaOut,
+  RolPlataformaUpdate,
   SuscripcionOut,
   TiendaOut,
 } from './saas.models';
@@ -116,5 +123,65 @@ export class SaasService {
 
   desbloquearPersonal(usuarioId: string): Observable<PersonalEmpresaOut> {
     return this.http.post<PersonalEmpresaOut>(`${this.base}/usuarios/${usuarioId}/desbloquear`, null);
+  }
+
+  // --- gobierno de la plataforma: cuentas, roles y permisos de todas las empresas --------------
+
+  cuentas(filtros: {
+    q?: string | null;
+    tipo?: 'CLIENTE' | 'STAFF' | null;
+    empresaId?: string | null;
+    activo?: boolean | null;
+  }): Observable<CuentaOut[]> {
+    let params = new HttpParams();
+    if (filtros.q) params = params.set('q', filtros.q);
+    if (filtros.tipo) params = params.set('tipo', filtros.tipo);
+    if (filtros.empresaId) params = params.set('empresa_id', filtros.empresaId);
+    if (filtros.activo !== null && filtros.activo !== undefined) params = params.set('activo', filtros.activo);
+    return this.http.get<CuentaOut[]>(`${this.base}/cuentas`, { params });
+  }
+
+  agregarAlEquipo(datos: EquipoIn): Observable<CuentaOut> {
+    return this.http.post<CuentaOut>(`${this.base}/equipo`, datos);
+  }
+
+  editarCuenta(id: string, datos: CuentaUpdate): Observable<CuentaOut> {
+    return this.http.put<CuentaOut>(`${this.base}/cuentas/${id}`, datos);
+  }
+
+  cambiarEstadoCuenta(id: string, activo: boolean): Observable<CuentaOut> {
+    return this.http.patch<CuentaOut>(`${this.base}/cuentas/${id}/estado`, { activo });
+  }
+
+  restablecerPasswordCuenta(id: string, password: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/cuentas/${id}/password`, { password });
+  }
+
+  desbloquearCuenta(id: string): Observable<CuentaOut> {
+    return this.http.post<CuentaOut>(`${this.base}/cuentas/${id}/desbloquear`, null);
+  }
+
+  permisos(): Observable<PermisoOut[]> {
+    return this.http.get<PermisoOut[]>(`${this.base}/permisos`);
+  }
+
+  roles(): Observable<RolPlataformaOut[]> {
+    return this.http.get<RolPlataformaOut[]>(`${this.base}/roles`);
+  }
+
+  crearRol(datos: RolPlataformaIn): Observable<RolPlataformaOut> {
+    return this.http.post<RolPlataformaOut>(`${this.base}/roles`, datos);
+  }
+
+  editarRol(id: number, datos: RolPlataformaUpdate): Observable<RolPlataformaOut> {
+    return this.http.put<RolPlataformaOut>(`${this.base}/roles/${id}`, datos);
+  }
+
+  asignarPermisosRol(id: number, permisos: number[]): Observable<RolPlataformaOut> {
+    return this.http.put<RolPlataformaOut>(`${this.base}/roles/${id}/permisos`, { permisos });
+  }
+
+  eliminarRol(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.base}/roles/${id}`);
   }
 }

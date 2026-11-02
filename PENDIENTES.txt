@@ -2700,6 +2700,40 @@
      avisos) y alertas de stock bajo ejecutadas sobre Postgres real (2 encargados -> 2 avisos con
      los nombres juntos; sin prendas bajas no inserta). FALTA: aplicar indices_rendimiento.sql en
      Railway; no se regeneraron docs/FASHIONSTORE_BD.sql ni docs/bd_documento.
+ 9.12 Movil: mejoras de pantalla de 9.5, 9.6 y 9.7 (2026-11-01). CU07: el selector de tienda de la
+     vitrina pasa del menu emergente a una hoja con tarjetas (sucursales, ciudades, prendas y "Estas
+     aca"); TiendaOut suma sucursales/ciudades/prendas. CU09 (DetalleRecepcionPagina): pasos "como
+     funciona", cada linea con muestra de color y "Stock hoy -> quedara (+n)", confirmacion con el
+     impacto, recuadro "confirmada" con enlace a Inventario y asientos "Habia / Entro / Hay ahora";
+     DetalleOut y MovimientoOut suman codigo_hex, stock_actual, talla y color. CU10
+     (panel_inventario_pagina.dart): 4 indicadores (Stock bajo y Agotadas filtran), listado inicial
+     con lo que menos hay (sin buscar), insignia por prenda, previa "pasara de X a Y" y kardex con
+     variacion/antes/despues; ResumenInventarioOut, AlertaInventario y stockMinimo en el servicio.
+     Probado: flutter analyze sin issues y flutter test 20 (3 nuevos en test/ui_cu07_cu09_cu10_test.dart).
+     Todavia no se vio en el emulador. NO se portaron: la portada publica (inicio), el panel de empresas
+     (solo web) ni los esqueletos de carga del resto de pantallas.
+ 9.13 Gobierno de la plataforma (2026-11-02, pedido: "que el superadmin controle los roles y permisos
+     y tambien los usuarios"). Antes el SUPERADMIN solo veia Empresas, Copias de seguridad y
+     Auditoria; el personal de una empresa lo atendia solo desde panel-empresas y no tocaba roles ni
+     clientas. Ahora hay /panel/gobierno ("Cuentas y roles", permisos empresas.leer/actualizar, sin
+     migracion) y backend `plataforma_saas/saas/gobierno_router.py` (+ gobierno_schemas.py):
+     - Cuentas: GET /saas/cuentas (filtros q, tipo, empresa, activo) con personal de TODAS las
+       empresas, clientas y equipo de la plataforma; PUT /saas/cuentas/{id} (datos y rol del
+       personal), PATCH .../estado, POST .../password (tambien desbloquea), POST .../desbloquear y
+       POST /saas/equipo (otro SUPERADMIN). Salvaguardas: nadie se da de baja a si mismo, no se baja
+       a quien tiene caja abierta, reactivar respeta el limite de personal del plan, una clienta no
+       tiene rol. Las rutas viejas /saas/usuarios/{id}/... de personal_router siguen (panel-empresas).
+     - Roles y permisos: GET /saas/roles y /saas/permisos (catalogo completo), POST/PUT/DELETE
+       /saas/roles y PUT /saas/roles/{id}/permisos. Un rol del sistema (empresa_id NULL) lo comparten
+       todas las empresas: lo que se cambia llega a todas. Se puede crear un rol del sistema
+       (plantilla) o uno propio de una empresa. Salvaguardas: SUPERADMIN no cambia permisos; ADMIN
+       conserva usuarios.leer/crear/actualizar, roles.leer/crear/actualizar y suscripciones.leer/
+       actualizar (PERMISOS_MINIMOS_ADMIN); los modulos empresas/planes no se asignan a otro rol;
+       SUPERADMIN/ADMIN/ENCARGADO/CAJERO no se renombran ni se eliminan (el codigo los nombra); un
+       rol con usuarios no se elimina. Todo va a la bitacora con la empresa afectada.
+     Probado: pytest 289 (19 nuevos en tests/test_gobierno_plataforma.py; ConexionFalsa suma
+     executemany), ruff limpio y `ng build` sin errores. NO probado contra Postgres real ni mirado en
+     el navegador. Movil: sin pantalla (igual que el panel de empresas). FALTA desplegar a Railway.
 
  NO se verifico visualmente en un navegador: los cambios de pantalla compilan y la API esta
  probada, falta mirarlos.

@@ -1,0 +1,443 @@
+<app-panel-shell
+  titulo="Cuentas y roles"
+  bajada="Todas las cuentas de la plataforma y qué puede hacer cada rol. Los roles del sistema los comparten todas las empresas: lo que cambies acá llega a todas."
+>
+  <div class="solapas">
+    <button type="button" class="solapa" [class.solapa--activa]="solapa === 'cuentas'" (click)="solapa = 'cuentas'">
+      Cuentas
+    </button>
+    <button type="button" class="solapa" [class.solapa--activa]="solapa === 'roles'" (click)="solapa = 'roles'">
+      Roles y permisos
+    </button>
+  </div>
+
+  @if (solapa === 'cuentas') {
+    <div class="barra">
+      <div class="campo">
+        <label for="busqueda">Buscar</label>
+        <input
+          id="busqueda"
+          type="search"
+          placeholder="Nombre, apellido o correo"
+          [value]="busqueda"
+          (input)="busqueda = $any($event.target).value"
+          (keyup.enter)="cargarCuentas()"
+        />
+      </div>
+
+      <div class="campo">
+        <label for="empresa">Empresa</label>
+        <select id="empresa" [value]="filtroEmpresa" (change)="filtroEmpresa = $any($event.target).value; cargarCuentas()">
+          <option value="">Todas</option>
+          @for (empresa of empresas(); track empresa.id) {
+            <option [value]="empresa.id">{{ empresa.nombre }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="campo">
+        <label for="tipo">Tipo</label>
+        <select id="tipo" [value]="filtroTipo" (change)="filtroTipo = $any($event.target).value; cargarCuentas()">
+          <option value="">Todos</option>
+          <option value="STAFF">Personal y equipo</option>
+          <option value="CLIENTE">Clientas</option>
+        </select>
+      </div>
+
+      <div class="campo">
+        <label for="estado">Estado</label>
+        <select id="estado" [value]="filtroEstado" (change)="filtroEstado = $any($event.target).value; cargarCuentas()">
+          <option value="">Todos</option>
+          <option value="true">Activas</option>
+          <option value="false">Dadas de baja</option>
+        </select>
+      </div>
+
+      <button type="button" class="boton boton--secundario" (click)="cargarCuentas()">Buscar</button>
+
+      <span class="barra__espacio"></span>
+
+      @if (puedeEditar) {
+        <button type="button" class="boton" (click)="nuevoEquipo()">Nuevo del equipo</button>
+      }
+    </div>
+
+    @if (error()) {
+      <p class="error" role="alert">{{ error() }}</p>
+    }
+    @if (aviso()) {
+      <p class="exito">{{ aviso() }}</p>
+    }
+
+    <div class="columnas">
+      <section class="panel">
+        @if (cargando()) {
+          <p class="estado">Cargando cuentas…</p>
+        } @else if (cuentas().length === 0) {
+          <p class="estado">No hay cuentas que coincidan con el filtro.</p>
+        } @else {
+          <div class="tabla-envoltorio">
+            <table class="tabla tabla--ancha">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Pertenece a</th>
+                  <th>Rol</th>
+                  <th>Último acceso</th>
+                  <th>Estado</th>
+                  @if (puedeEditar) {
+                    <th></th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (cuenta of cuentas(); track cuenta.id) {
+                  <tr [attr.data-inactivo]="!cuenta.activo">
+                    <td>
+                      <strong>{{ cuenta.nombre }} {{ cuenta.apellido }}</strong>
+                      @if (esPropia(cuenta)) {
+                        <span class="badge">vos</span>
+                      }
+                      <div class="secundario">{{ cuenta.email }}</div>
+                    </td>
+                    <td>{{ ambito(cuenta) }}</td>
+                    <td>{{ cuenta.rol ?? '—' }}</td>
+                    <td class="mono">{{ fechaCorta(cuenta.ultimo_acceso) }}</td>
+                    <td>
+                      <span class="badge" [class.badge--ok]="cuenta.activo" [class.badge--baja]="!cuenta.activo">
+                        {{ cuenta.activo ? 'Activa' : 'Baja' }}
+                      </span>
+                      @if (cuenta.bloqueado) {
+                        <span class="badge badge--baja">Bloqueada</span>
+                      }
+                    </td>
+                    @if (puedeEditar) {
+                      <td>
+                        <div class="tabla__acciones">
+                          <button type="button" class="boton boton--secundario boton--chico" (click)="editar(cuenta)">
+                            Editar
+                          </button>
+                          <button type="button" class="boton boton--secundario boton--chico" (click)="abrirPassword(cuenta)">
+                            Contraseña
+                          </button>
+                          @if (cuenta.bloqueado) {
+                            <button type="button" class="boton boton--secundario boton--chico" (click)="desbloquear(cuenta)">
+                              Desbloquear
+                            </button>
+                          }
+                          @if (!esPropia(cuenta)) {
+                            <button
+                              type="button"
+                              class="boton boton--chico"
+                              [class.boton--peligro]="cuenta.activo"
+                              [class.boton--secundario]="!cuenta.activo"
+                              (click)="alternarEstado(cuenta)"
+                            >
+                              {{ cuenta.activo ? 'Dar de baja' : 'Reactivar' }}
+                            </button>
+                          }
+                        </div>
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      <aside>
+        @if (passwordDe(); as cuenta) {
+          <section class="panel">
+            <h2 class="panel__titulo">Restablecer contraseña</h2>
+            <p class="estado">{{ cuenta.email }}</p>
+            <form class="formulario" [formGroup]="formPassword" (ngSubmit)="guardarPassword()" novalidate>
+              <div class="campo">
+                <label for="nueva-password">Nueva contraseña</label>
+                <input id="nueva-password" type="text" formControlName="password" />
+                <app-lista-requisitos-password [password]="formPassword.controls.password.value" />
+              </div>
+              @if (errorFormulario()) {
+                <p class="error" role="alert">{{ errorFormulario() }}</p>
+              }
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardando()">
+                  {{ guardando() ? 'Guardando…' : 'Restablecer' }}
+                </button>
+                <button type="button" class="boton boton--secundario" (click)="cerrarPaneles()">Cancelar</button>
+              </div>
+            </form>
+          </section>
+        }
+
+        @if (editando(); as cuenta) {
+          <section class="panel">
+            <h2 class="panel__titulo">Editar cuenta</h2>
+            <p class="aviso">
+              {{ cuenta.tipo === 'CLIENTE'
+                ? 'Cuenta de clienta: es de la plataforma y compra en todas las tiendas.'
+                : cuenta.empresa_id === null
+                  ? 'Equipo de la plataforma: su rol no cambia.'
+                  : 'Personal de ' + cuenta.empresa + '.' }}
+            </p>
+            <form class="formulario" [formGroup]="formCuenta" (ngSubmit)="guardarCuenta()" novalidate>
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="c-nombre">Nombre</label>
+                  <input id="c-nombre" type="text" formControlName="nombre" />
+                </div>
+                <div class="campo">
+                  <label for="c-apellido">Apellido</label>
+                  <input id="c-apellido" type="text" formControlName="apellido" />
+                </div>
+              </div>
+              <div class="campo">
+                <label for="c-email">Correo</label>
+                <input id="c-email" type="email" formControlName="email" />
+                @if (formCuenta.controls.email.touched && formCuenta.controls.email.invalid) {
+                  <p class="error">Ingresá un correo válido.</p>
+                }
+              </div>
+              <div class="campo">
+                <label for="c-telefono">Teléfono</label>
+                <input id="c-telefono" type="tel" formControlName="telefono" />
+              </div>
+              @if (cambiaRol()) {
+                <div class="campo">
+                  <label for="c-rol">Rol</label>
+                  <select id="c-rol" formControlName="rol_id">
+                    @for (rol of rolesDeLaCuenta(); track rol.id) {
+                      <option [value]="rol.id">{{ rol.nombre }}{{ rol.empresa_id ? ' (propio)' : '' }}</option>
+                    }
+                  </select>
+                </div>
+              }
+              @if (errorFormulario()) {
+                <p class="error" role="alert">{{ errorFormulario() }}</p>
+              }
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardando()">
+                  {{ guardando() ? 'Guardando…' : 'Guardar' }}
+                </button>
+                <button type="button" class="boton boton--secundario" (click)="cerrarPaneles()">Cancelar</button>
+              </div>
+            </form>
+          </section>
+        }
+
+        @if (equipoAbierto()) {
+          <section class="panel">
+            <h2 class="panel__titulo">Nuevo del equipo de la plataforma</h2>
+            <p class="aviso">Tendrá rol SUPERADMIN: administra empresas, planes, cuentas y roles de todas.</p>
+            <form class="formulario" [formGroup]="formEquipo" (ngSubmit)="guardarEquipo()" novalidate>
+              <div class="rejilla">
+                <div class="campo">
+                  <label for="e-nombre">Nombre</label>
+                  <input id="e-nombre" type="text" formControlName="nombre" />
+                </div>
+                <div class="campo">
+                  <label for="e-apellido">Apellido</label>
+                  <input id="e-apellido" type="text" formControlName="apellido" />
+                </div>
+              </div>
+              <div class="campo">
+                <label for="e-email">Correo</label>
+                <input id="e-email" type="email" formControlName="email" />
+              </div>
+              <div class="campo">
+                <label for="e-password">Contraseña inicial</label>
+                <input id="e-password" type="text" formControlName="password" />
+                <app-lista-requisitos-password [password]="formEquipo.controls.password.value" />
+              </div>
+              @if (errorFormulario()) {
+                <p class="error" role="alert">{{ errorFormulario() }}</p>
+              }
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardando()">
+                  {{ guardando() ? 'Guardando…' : 'Agregar' }}
+                </button>
+                <button type="button" class="boton boton--secundario" (click)="cerrarPaneles()">Cancelar</button>
+              </div>
+            </form>
+          </section>
+        }
+      </aside>
+    </div>
+  } @else {
+    <div class="columnas columnas--detalle">
+      <section class="panel">
+        <h2 class="panel__titulo">Roles del sistema</h2>
+        <p class="campo__ayuda">Compartidos por todas las empresas.</p>
+        <ul class="lista-roles">
+          @for (rol of rolesDelSistema(); track rol.id) {
+            <li>
+              <button
+                type="button"
+                class="rol"
+                [class.rol--activo]="rolSeleccionado()?.id === rol.id"
+                (click)="seleccionarRol(rol)"
+              >
+                <span class="rol__nombre">{{ rol.nombre }}</span>
+                <span class="rol__meta">{{ rol.usuarios }} usuario(s) · {{ rol.permisos.length }} permiso(s)</span>
+              </button>
+            </li>
+          }
+        </ul>
+
+        @if (rolesPropios().length > 0) {
+          <h2 class="panel__titulo">Roles propios de empresas</h2>
+          <ul class="lista-roles">
+            @for (rol of rolesPropios(); track rol.id) {
+              <li>
+                <button
+                  type="button"
+                  class="rol"
+                  [class.rol--activo]="rolSeleccionado()?.id === rol.id"
+                  (click)="seleccionarRol(rol)"
+                >
+                  <span class="rol__nombre">{{ rol.nombre }}</span>
+                  <span class="rol__meta">
+                    {{ rol.empresa }} · {{ rol.usuarios }} usuario(s) · {{ rol.permisos.length }} permiso(s)
+                  </span>
+                </button>
+              </li>
+            }
+          </ul>
+        }
+
+        @if (puedeEditar) {
+          <div class="acciones">
+            <button type="button" class="boton boton--secundario" (click)="nuevoRol()">Nuevo rol</button>
+          </div>
+        }
+      </section>
+
+      <section class="panel">
+        @if (!rolSeleccionado() && !creandoRol()) {
+          <p class="estado">Elegí un rol para ver y ajustar sus permisos.</p>
+        } @else {
+          <h2 class="panel__titulo">
+            {{ rolSeleccionado() ? 'Rol ' + rolSeleccionado()!.nombre : 'Nuevo rol' }}
+          </h2>
+
+          <form class="formulario" [formGroup]="formRol" (ngSubmit)="guardarRol()" novalidate>
+            <div class="rejilla">
+              <div class="campo">
+                <label for="rol-nombre">Nombre</label>
+                <input
+                  id="rol-nombre"
+                  type="text"
+                  formControlName="nombre"
+                  [readOnly]="!puedeEditar || (rolSeleccionado()?.protegido ?? false)"
+                />
+              </div>
+              <div class="campo">
+                <label for="rol-descripcion">Descripción</label>
+                <input id="rol-descripcion" type="text" formControlName="descripcion" [readOnly]="!puedeEditar" />
+              </div>
+            </div>
+
+            @if (creandoRol()) {
+              <div class="campo">
+                <label for="rol-empresa">Ámbito</label>
+                <select id="rol-empresa" formControlName="empresa_id">
+                  <option value="">Del sistema (todas las empresas)</option>
+                  @for (empresa of empresas(); track empresa.id) {
+                    <option [value]="empresa.id">Solo {{ empresa.nombre }}</option>
+                  }
+                </select>
+                <p class="campo__ayuda">
+                  Un rol del sistema aparece en el selector de roles de todas las empresas; uno propio, solo en la suya.
+                </p>
+              </div>
+            } @else if (rolSeleccionado()?.protegido) {
+              <p class="aviso">
+                El código nombra a este rol: no se renombra ni se elimina.
+                @if (rolSeleccionado()?.nombre === 'SUPERADMIN') {
+                  Tampoco cambia sus permisos: es la llave de la plataforma.
+                } @else if (rolSeleccionado()?.nombre === 'ADMIN') {
+                  Siempre conserva usuarios, roles y suscripción para que ninguna empresa se quede sin su llave.
+                }
+              </p>
+            }
+
+            @if (puedeEditar) {
+              <div class="acciones">
+                <button type="submit" class="boton" [disabled]="guardandoRol()">
+                  {{ rolSeleccionado() ? 'Guardar cambios' : 'Crear rol' }}
+                </button>
+                @if (rolSeleccionado() && !rolSeleccionado()!.protegido) {
+                  <button type="button" class="boton boton--peligro" [disabled]="guardandoRol()" (click)="eliminarRol()">
+                    Eliminar rol
+                  </button>
+                }
+              </div>
+            }
+          </form>
+
+          @if (rolSeleccionado()) {
+            <h3 class="subtitulo">Permisos</h3>
+            @if (rolSeleccionado()!.empresa_id === null && permisosEditables()) {
+              <p class="aviso">
+                Es un rol del sistema: el cambio llega a todas las empresas que lo usan, desde el próximo pedido de
+                cada persona.
+              </p>
+            }
+
+            <div class="tabla-envoltorio">
+              <table class="tabla matriz-permisos">
+                <thead>
+                  <tr>
+                    <th>Módulo \ Acción</th>
+                    @for (accion of acciones; track accion.accion) {
+                      <th>{{ accion.etiqueta }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (fila of filasMatriz(); track fila.modulo) {
+                    <tr>
+                      <th scope="row">{{ nombreModulo(fila.modulo) }}</th>
+                      @for (celda of fila.celdas; track $index) {
+                        <td class="matriz-permisos__celda">
+                          @if (celda) {
+                            <label class="matriz-permisos__casilla" [title]="celda.descripcion ?? celda.codigo">
+                              <input
+                                type="checkbox"
+                                [checked]="estaMarcado(celda.id)"
+                                [disabled]="casillaBloqueada(celda)"
+                                (change)="alternarPermiso(celda.id)"
+                              />
+                            </label>
+                          } @else {
+                            <span class="matriz-permisos__sin-uso" aria-hidden="true">—</span>
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            @if (permisosEditables()) {
+              <div class="acciones">
+                <button type="button" class="boton" [disabled]="guardandoRol()" (click)="guardarPermisos()">
+                  {{ guardandoRol() ? 'Guardando…' : 'Guardar permisos' }}
+                </button>
+              </div>
+            }
+          }
+
+          @if (errorRol()) {
+            <p class="error" role="alert">{{ errorRol() }}</p>
+          }
+          @if (avisoRol()) {
+            <p class="exito">{{ avisoRol() }}</p>
+          }
+        }
+      </section>
+    </div>
+  }
+</app-panel-shell>

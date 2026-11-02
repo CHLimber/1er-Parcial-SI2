@@ -39,6 +39,7 @@ from app.modules.operacion_comercial.ventas.router import router as ventas_route
 from app.modules.operacion_sin_conexion.sincronizacion.router import router as sincronizacion_router
 from app.modules.plataforma_saas.backups.router import router as backups_router
 from app.modules.plataforma_saas.backups.servicio import job_backup_automatico
+from app.modules.plataforma_saas.saas.gobierno_router import router as saas_gobierno_router
 from app.modules.plataforma_saas.saas.personal_router import router as saas_personal_router
 from app.modules.plataforma_saas.saas.router import router as saas_router
 from app.modules.relacion_con_la_clienta.asistente.router import router as asistente_router
@@ -137,6 +138,7 @@ app.include_router(devoluciones_router)
 app.include_router(traspasos_router)
 app.include_router(saas_router)
 app.include_router(saas_personal_router)
+app.include_router(saas_gobierno_router)
 app.include_router(backups_router)
 app.include_router(clientes_router)
 app.include_router(sincronizacion_router)

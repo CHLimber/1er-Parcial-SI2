@@ -91,6 +91,9 @@ class ConexionFalsa:
         self._anotar(sql, args)
         return "OK"
 
+    async def executemany(self, sql, filas):
+        self._anotar(sql, tuple(filas))
+
     def ejecuto(self, fragmento: str) -> bool:
         return any(fragmento in sql for sql in self.ejecutado)
 

@@ -281,6 +281,13 @@ export const routes: Routes = [
         canActivate: [permisoGuard('empresas.leer')],
       },
       {
+        // Plataforma SaaS: cuentas, roles y permisos de todas las empresas
+        path: 'gobierno',
+        loadComponent: () =>
+          import('./pages/plataforma-saas/panel-gobierno/panel-gobierno.page').then((m) => m.PanelGobiernoPage),
+        canActivate: [permisoGuard('empresas.leer')],
+      },
+      {
         // CU30: copias de seguridad (la general de la plataforma y la de cada empresa)
         path: 'backups',
         loadComponent: () =>

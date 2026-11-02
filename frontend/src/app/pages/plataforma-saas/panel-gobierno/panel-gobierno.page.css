@@ -1,0 +1,114 @@
+.subtitulo {
+  margin-top: 1.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+}
+
+.lista-roles {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--paper-line);
+  border: 1px solid var(--paper-line);
+}
+
+.rol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  background: var(--white);
+  border: none;
+  padding: 0.7rem 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.rol--activo {
+  background: var(--paper);
+  box-shadow: inset 3px 0 0 var(--flame);
+}
+
+.rol__nombre {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.rol__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.matriz-permisos {
+  margin-top: 0.75rem;
+  table-layout: fixed;
+}
+
+.matriz-permisos th:first-child,
+.matriz-permisos td:first-child {
+  width: 10rem;
+  white-space: normal;
+}
+
+.matriz-permisos th:first-child {
+  text-align: left;
+}
+
+.matriz-permisos th:not(:first-child) {
+  text-align: center;
+}
+
+.matriz-permisos tbody tr:nth-child(even) {
+  background: var(--paper);
+}
+
+.matriz-permisos__celda {
+  text-align: center;
+}
+
+.matriz-permisos__casilla {
+  display: inline-flex;
+  padding: 0.25rem;
+  cursor: pointer;
+}
+
+.matriz-permisos__casilla input {
+  width: 1.05rem;
+  height: 1.05rem;
+  cursor: pointer;
+}
+
+.matriz-permisos__sin-uso {
+  color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 48rem) {
+  /*
+   * La matriz de permisos tiene una columna por rol (seis con el seed) mas la del
+   * permiso. Apilarla como tarjetas perderia justamente lo unico que importa aca, que es
+   * comparar roles de un vistazo, asi que se desliza en horizontal dentro de
+   * `.tabla-envoltorio` con la primera columna un poco mas angosta.
+   */
+  .matriz-permisos {
+    min-width: 30rem;
+  }
+
+  .matriz-permisos th:first-child,
+  .matriz-permisos td:first-child {
+    width: 8.5rem;
+  }
+}
