@@ -53,7 +53,12 @@ CREATE TYPE metodo_pago       AS ENUM ('EFECTIVO','TARJETA','QR','TRANSFERENCIA'
 CREATE TYPE pasarela_pago     AS ENUM ('STRIPE','QR');
 CREATE TYPE estado_pago       AS ENUM ('PENDIENTE','APROBADO','RECHAZADO','REEMBOLSADO');
 CREATE TYPE tipo_comprobante  AS ENUM ('RECIBO','FACTURA');
-CREATE TYPE estado_devolucion AS ENUM ('SOLICITADA','APROBADA','RECHAZADA');
+-- SOLICITADA: registrada en caja o pedida por la clienta desde la web/app. CONFIRMADA: una
+-- solicitud online que la sucursal acepto y espera a la clienta (como una reserva). APROBADA:
+-- concretada en caja (stock, plata y prendas nuevas). CANCELADA (la clienta) y EXPIRADA (no vino)
+-- solo se dan en las online.
+CREATE TYPE estado_devolucion AS ENUM ('SOLICITADA','CONFIRMADA','APROBADA','RECHAZADA',
+                                       'CANCELADA','EXPIRADA');
 -- Segundo parcial (PENDIENTES 5.8): por que vuelve la prenda. TALLA/COLOR son cambios (la clienta
 -- se lleva otra variante de la misma prenda); el resto son devoluciones con reintegro.
 CREATE TYPE motivo_devolucion AS ENUM ('TALLA','COLOR','DEFECTO','NO_GUSTO','OTRO');
@@ -805,15 +810,42 @@ CREATE TABLE devolucion (
     resuelta_en     TIMESTAMPTZ,
     motivo_rechazo  VARCHAR(250),
     -- Reintegro del dinero, fijado al aprobar segun como se pago la venta: STRIPE se devuelve
-    -- por la API (reintegro_referencia = id del Refund `re_...`); EFECTIVO sale del cajon de la
-    -- sesion de caja de quien aprueba (sesion_caja_id, lo descuenta fn_total_efectivo_sesion);
-    -- TARJETA/QR/TRANSFERENCIA se devuelven fuera del sistema y aca queda el registro.
+    -- por la API (reintegro_referencia = id del Refund `re_...`); EFECTIVO y QR salen del cajon
+    -- de la sesion de caja de quien aprueba (sesion_caja_id, lo descuenta
+    -- fn_total_efectivo_sesion: la clienta viene a la sucursal y se le da la plata en mano);
+    -- TARJETA/TRANSFERENCIA se devuelven fuera del sistema y aca queda el registro.
     reintegro_metodo     VARCHAR(20)  CHECK (reintegro_metodo IN
                              ('STRIPE','EFECTIVO','TARJETA','QR','TRANSFERENCIA')),
     reintegro_referencia VARCHAR(80),
     sesion_caja_id       UUID         REFERENCES sesion_caja(id),
-    -- Cambio de prenda = devolucion + venta nueva cobrada en caja; esto las vincula.
+    -- INTERCAMBIO: la venta que se arma sola al aprobar, con las prendas nuevas a su precio
+    -- actual. Lo devuelto queda como credito (monto_devuelto) y solo se cobra la diferencia.
     venta_cambio_id      UUID         REFERENCES venta(id),
+    -- DEVOLUCION (vuelve la plata) o INTERCAMBIO (la clienta se lleva otra talla/color de la
+    -- misma prenda). Lo fija el motivo: TALLA/COLOR son intercambios, el resto devoluciones.
+    tipo                 VARCHAR(12)  NOT NULL DEFAULT 'DEVOLUCION'
+                             CHECK (tipo IN ('DEVOLUCION','INTERCAMBIO')),
+    -- CAJA: la registra el personal con la clienta adelante. ONLINE: la pide la clienta desde
+    -- la web/app, la sucursal la confirma y se concreta en caja cuando la clienta llega (como
+    -- una reserva: fecha y hora de visita, vence en expira_en y la expira fn_expirar_devoluciones).
+    origen               VARCHAR(10)  NOT NULL DEFAULT 'CAJA' CHECK (origen IN ('CAJA','ONLINE')),
+    fecha_visita         DATE,
+    hora_visita          TIME,
+    expira_en            TIMESTAMPTZ,
+    -- Plata (todo con IVA). monto_devuelto = lo que vale lo devuelto (lo que se pago por esas
+    -- prendas): neta los reportes. monto_cambio = lo que valen las prendas nuevas del
+    -- intercambio. monto_reintegrado = lo que efectivamente vuelve a la clienta (devolucion: todo;
+    -- intercambio: lo que sobra). diferencia_cobrada = lo que paga de mas en el intercambio.
+    monto_cambio         NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (monto_cambio >= 0),
+    monto_reintegrado    NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (monto_reintegrado >= 0),
+    diferencia_cobrada   NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (diferencia_cobrada >= 0),
+    diferencia_metodo    VARCHAR(20)  CHECK (diferencia_metodo IN ('EFECTIVO','TARJETA','QR')),
+    -- Las prendas pedidas a cambio quedan comprometidas (cantidad_reservada) mientras la
+    -- solicitud esta en tramite; el trigger tg_devolucion_stock las libera al cerrarla.
+    stock_comprometido   BOOLEAN      NOT NULL DEFAULT FALSE,
+    -- Comprobante por correo (lo manda el job de avisos al aprobarse, como el de compra)
+    correo_enviado_en    TIMESTAMPTZ,
+    correo_intentos      INT          NOT NULL DEFAULT 0,
     -- Segundo parcial (PENDIENTES 5.8): motivo estructurado y condiciones de la prenda que el
     -- personal verifica al recibirla. Las reglas (que condicion exige cada motivo y que plazo
     -- corre) estan en devoluciones/router.py: TALLA/COLOR usan configuracion.cambio_plazo_dias,
@@ -826,9 +858,16 @@ CREATE TABLE devolucion (
 );
 CREATE INDEX ix_devolucion_fecha ON devolucion(fecha DESC);
 CREATE INDEX ix_devolucion_venta ON devolucion(venta_id);
+-- Una sola devolucion o intercambio por compra: mientras haya una en tramite o aprobada no se
+-- registra otra (las rechazadas, canceladas o expiradas no cuentan).
+CREATE UNIQUE INDEX ux_devolucion_una_por_venta ON devolucion(venta_id)
+    WHERE estado IN ('SOLICITADA','CONFIRMADA','APROBADA');
+CREATE INDEX ix_devolucion_vigentes ON devolucion(expira_en)
+    WHERE estado IN ('SOLICITADA','CONFIRMADA') AND origen = 'ONLINE';
 COMMENT ON TABLE devolucion IS
-    'Devolucion de prendas de una venta PAGADA/ENTREGADA. Nace SOLICITADA; al pasar a APROBADA '
-    'tg_devolucion_stock reingresa el stock (tipo DEVOLUCION). usuario_id = quien la registro.';
+    'Devolucion o intercambio de prendas de una venta PAGADA/ENTREGADA. Nace SOLICITADA; al pasar '
+    'a APROBADA tg_devolucion_stock reingresa el stock (tipo DEVOLUCION). usuario_id = quien la '
+    'registro (la clienta en las ONLINE).';
  
 CREATE TABLE devolucion_detalle (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -836,7 +875,10 @@ CREATE TABLE devolucion_detalle (
     venta_detalle_id UUID NOT NULL REFERENCES venta_detalle(id),
     cantidad         INT  NOT NULL CHECK (cantidad > 0),
     -- Cambio por talla/color: la variante (misma prenda) que la clienta pide a cambio.
-    variante_solicitada_id UUID REFERENCES producto_variante(id)
+    variante_solicitada_id UUID REFERENCES producto_variante(id),
+    -- Precio de lista (sin IVA) de la variante pedida, fijado al registrar la solicitud: la
+    -- diferencia que se le informa a la clienta no cambia aunque el precio cambie antes de la visita.
+    precio_solicitado      NUMERIC(12,2) CHECK (precio_solicitado >= 0)
 );
 
 -- Rendimiento (db/reparaciones/indices_rendimiento.sql): venta_detalle(venta_id) es la FK mas

@@ -216,9 +216,12 @@ COMMENT ON FUNCTION fn_mover_inventario IS
 
 -- Cuanto efectivo deberia haber en el cajon por las ventas de una sesion (sesion_caja.
 -- monto_inicial + esto = monto_sistema). Solo EFECTIVO: TARJETA/QR/TRANSFERENCIA/PASARELA no
--- tocan el cajon fisico. Resta el efectivo que salio del cajon por devoluciones aprobadas en
--- esa sesion (devolucion.sesion_caja_id). Un pago en efectivo que una devolucion completa dejo
--- REEMBOLSADO se sigue sumando: la plata entro al cajon, y lo que salio lo resta la devolucion.
+-- tocan el cajon fisico. Resta el efectivo que salio del cajon por devoluciones e intercambios
+-- aprobados en esa sesion (devolucion.sesion_caja_id): lo REINTEGRADO, no lo que valia lo
+-- devuelto (en un intercambio casi todo queda como credito para las prendas nuevas). Una venta
+-- pagada con QR tambien se reintegra en efectivo desde el cajon. Un pago en efectivo que una
+-- devolucion completa dejo REEMBOLSADO se sigue sumando: la plata entro al cajon, y lo que salio
+-- lo resta la devolucion.
 -- STABLE (no escribe nada) para que se pueda llamar tanto desde una consulta de solo lectura
 -- (vista previa del arqueo) como adentro del UPDATE que cierra la sesion, sin abrir una
 -- ventana entre "leer" el total y "escribirlo".
@@ -233,11 +236,11 @@ AS $$
                    WHERE v.sesion_caja_id = p_sesion_id
                      AND p.estado IN ('APROBADO', 'REEMBOLSADO')
                      AND p.metodo = 'EFECTIVO'), 0)
-      - COALESCE((SELECT SUM(d.monto_devuelto)
+      - COALESCE((SELECT SUM(d.monto_reintegrado)
                     FROM devolucion d
                    WHERE d.sesion_caja_id = p_sesion_id
                      AND d.estado = 'APROBADA'
-                     AND d.reintegro_metodo = 'EFECTIVO'), 0);
+                     AND d.reintegro_metodo IN ('EFECTIVO', 'QR')), 0);
 $$;
 
 COMMENT ON FUNCTION fn_total_efectivo_sesion IS
@@ -420,10 +423,15 @@ CREATE TRIGGER tg_confirmar_recepcion
 --  (SOLICITADA -> APROBADA) y es la base la que reingresa cada linea con
 --  fn_mover_inventario tipo DEVOLUCION, en la sucursal de la devolucion.
 --  Ademas la base es la ultima barrera de dos reglas:
---   * una devolucion resuelta (APROBADA/RECHAZADA) no cambia mas de estado;
+--   * una devolucion cerrada (APROBADA/RECHAZADA/CANCELADA/EXPIRADA) no cambia
+--     mas de estado, y CONFIRMADA solo se alcanza desde SOLICITADA;
 --   * lo APROBADO de cada linea de venta no supera lo vendido. La venta se
 --     bloquea con FOR UPDATE para que dos aprobaciones simultaneas de la misma
 --     venta se serialicen y la segunda vea la primera.
+--  INTERCAMBIO: las prendas pedidas a cambio quedaron comprometidas al
+--  registrar la solicitud (stock_comprometido). Al cerrarla, por la causa que
+--  sea, se libera ese compromiso; si se APRUEBA, el backend inserta despues la
+--  venta del cambio y tg_venta_descuenta_stock descuenta lo fisico.
 -- ---------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_devolucion_stock()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -433,8 +441,26 @@ BEGIN
     IF NEW.estado = OLD.estado THEN
         RETURN NEW;
     END IF;
-    IF OLD.estado <> 'SOLICITADA' THEN
+    IF OLD.estado NOT IN ('SOLICITADA', 'CONFIRMADA') THEN
         RAISE EXCEPTION 'La devolucion ya esta % y no puede cambiar de estado', lower(OLD.estado::text);
+    END IF;
+    IF NEW.estado IN ('SOLICITADA', 'CONFIRMADA') AND OLD.estado = 'CONFIRMADA' THEN
+        RAISE EXCEPTION 'Una devolucion confirmada no vuelve a quedar %', lower(NEW.estado::text);
+    END IF;
+
+    IF NEW.estado <> 'CONFIRMADA' AND OLD.stock_comprometido THEN
+        FOR d IN
+            SELECT dd.variante_solicitada_id, dd.cantidad
+              FROM devolucion_detalle dd
+             WHERE dd.devolucion_id = NEW.id AND dd.variante_solicitada_id IS NOT NULL
+        LOOP
+            PERFORM fn_mover_inventario(
+                NEW.sucursal_id, d.variante_solicitada_id, 'LIBERACION', d.cantidad,
+                'Cierre del intercambio (' || lower(NEW.estado::text) || '): se libera la prenda pedida',
+                'DEVOLUCION', NEW.id, NEW.resuelta_por_id);
+        END LOOP;
+        -- el trigger es AFTER UPDATE OF estado: este UPDATE no lo vuelve a disparar
+        UPDATE devolucion SET stock_comprometido = FALSE WHERE id = NEW.id;
     END IF;
 
     IF NEW.estado = 'APROBADA' THEN
@@ -470,6 +496,49 @@ DROP TRIGGER IF EXISTS tg_devolucion_stock ON devolucion;
 CREATE TRIGGER tg_devolucion_stock
     AFTER UPDATE OF estado ON devolucion
     FOR EACH ROW EXECUTE FUNCTION fn_devolucion_stock();
+
+
+-- ---------------------------------------------------------------------
+--  EXPIRACION DE SOLICITUDES ONLINE DE DEVOLUCION/INTERCAMBIO
+--  Mismo criterio que fn_expirar_reservas: la clienta que no vino a la
+--  sucursal no congela para siempre las prendas pedidas a cambio. El UPDATE
+--  dispara tg_devolucion_stock, que libera el compromiso. Avisa a la clienta.
+--  La llama el job periodico del backend (app/core/jobs.py).
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_expirar_devoluciones()
+RETURNS INT LANGUAGE plpgsql AS $$
+DECLARE
+    r          RECORD;
+    v_contador INT := 0;
+BEGIN
+    FOR r IN
+        SELECT d.id, d.numero, d.tipo, v.usuario_id, v.id AS venta_id, v.numero AS venta_numero
+          FROM devolucion d
+          JOIN venta v ON v.id = d.venta_id
+         WHERE d.estado IN ('SOLICITADA', 'CONFIRMADA')
+           AND d.origen = 'ONLINE'
+           AND d.expira_en < now()
+         ORDER BY d.expira_en
+           FOR UPDATE OF d SKIP LOCKED
+    LOOP
+        UPDATE devolucion SET estado = 'EXPIRADA' WHERE id = r.id;
+        IF r.usuario_id IS NOT NULL THEN
+            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+            VALUES (r.usuario_id, 'VENTA',
+                    CASE WHEN r.tipo = 'INTERCAMBIO' THEN 'Intercambio vencido' ELSE 'Devolucion vencida' END,
+                    'Tu solicitud ' || r.numero || ' de la compra ' || r.venta_numero
+                        || ' vencio porque no pasaste por la sucursal en la fecha elegida.',
+                    'DEVOLUCION', r.id);
+        END IF;
+        v_contador := v_contador + 1;
+    END LOOP;
+    RETURN v_contador;
+END;
+$$;
+
+COMMENT ON FUNCTION fn_expirar_devoluciones IS
+    'Expira las solicitudes online de devolucion/intercambio cuya visita ya paso (libera las '
+    'prendas pedidas a cambio via tg_devolucion_stock). Devuelve cuantas expiro.';
 
 
 -- ---------------------------------------------------------------------

@@ -30,6 +30,9 @@ from app.modules.inteligencia_de_negocio.analitica.router import router as anali
 from app.modules.inteligencia_de_negocio.reportes.router import router as reportes_router
 from app.modules.operacion_comercial.caja.router import router as caja_router
 from app.modules.operacion_comercial.carrito.router import router as carrito_router
+from app.modules.operacion_comercial.devoluciones.cliente_router import (
+    router as mis_devoluciones_router,
+)
 from app.modules.operacion_comercial.devoluciones.router import router as devoluciones_router
 from app.modules.operacion_comercial.direcciones.router import router as direcciones_router
 from app.modules.operacion_comercial.envios.admin_router import router as envios_admin_router
@@ -137,6 +140,7 @@ app.include_router(envios_router)
 app.include_router(envios_admin_router)
 app.include_router(notificaciones_router)
 app.include_router(devoluciones_router)
+app.include_router(mis_devoluciones_router)
 app.include_router(traspasos_router)
 app.include_router(saas_router)
 app.include_router(saas_personal_router)

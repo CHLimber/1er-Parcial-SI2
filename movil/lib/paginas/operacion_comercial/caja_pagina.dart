@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../compartido/widgets.dart';
+import '../../core/acceso_y_organizacion/auth/auth_service.dart';
 import '../../core/operacion_comercial/caja/caja_service.dart';
+import '../../core/operacion_comercial/devoluciones/devoluciones_service.dart';
 import '../../core/config.dart';
 import '../../core/errores.dart';
 import '../../core/tema.dart';
@@ -60,6 +64,37 @@ class _CajaPaginaState extends State<CajaPagina> {
   List<PedidoPorRetirarOut> _pedidosPorRetirar = [];
   bool _cargandoRetiros = false;
   String? _entregando;
+
+  /// efectivo que deberia haber en el cajon ahora (mismo calculo que el arqueo); se muestra en
+  /// la barra superior
+  double? _efectivo;
+
+  /// devoluciones/intercambios que esperan al personal (solicitudes online)
+  PendientesDevolucion? _pendientesDevolucion;
+
+  Future<void> _refrescarEfectivo() async {
+    if (_sesion == null) {
+      if (mounted) setState(() => _efectivo = null);
+      return;
+    }
+    try {
+      final arqueo = await cajaService.obtenerArqueo();
+      if (mounted) setState(() => _efectivo = arqueo.montoSistema);
+    } catch (_) {
+      // sin efectivo visible: no bloquea la caja
+    }
+  }
+
+  Future<void> _cargarPendientesDevolucion() async {
+    final auth = context.read<AuthService>();
+    if (!auth.tienePermiso(['devoluciones.leer', 'devoluciones.actualizar'])) return;
+    try {
+      final p = await devolucionesService.pendientes();
+      if (mounted) setState(() => _pendientesDevolucion = p);
+    } catch (_) {
+      // aviso opcional
+    }
+  }
 
   @override
   void initState() {
@@ -173,6 +208,7 @@ class _CajaPaginaState extends State<CajaPagina> {
       final resultado = await cajaService.aprobarPago(pago.pagoId);
       if (!mounted) return;
       final aprobado = resultado.pagoEstado == 'APROBADO';
+      _refrescarEfectivo();
       mostrarAviso(
         context,
         aprobado
@@ -241,6 +277,7 @@ class _CajaPaginaState extends State<CajaPagina> {
     // las listas de pedidos online no bloquean la pantalla de caja: se cargan aparte
     _cargarPagosPendientes();
     _cargarPedidosPorRetirar();
+    _cargarPendientesDevolucion();
     setState(() {
       _cargando = true;
       _error = null;
@@ -256,6 +293,7 @@ class _CajaPaginaState extends State<CajaPagina> {
             (cajas.isEmpty ? null : cajas.first.id);
         _cargando = false;
       });
+      _refrescarEfectivo();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -277,6 +315,7 @@ class _CajaPaginaState extends State<CajaPagina> {
       );
       if (!mounted) return;
       setState(() => _sesion = sesion);
+      _refrescarEfectivo();
       mostrarAviso(context, 'Caja ${sesion.cajaNombre} abierta');
     } catch (error) {
       if (!mounted) return;
@@ -544,6 +583,7 @@ class _CajaPaginaState extends State<CajaPagina> {
         _ticket.clear();
         _montoRecibido.clear();
       });
+      _refrescarEfectivo();
       await _mostrarComprobante(venta);
     } catch (error) {
       if (!mounted) return;
@@ -596,6 +636,26 @@ class _CajaPaginaState extends State<CajaPagina> {
         appBar: AppBar(
           title: const Text('Caja'),
           actions: [
+            if (_sesion != null)
+              // efectivo en el cajon ahora; tocarlo lo recalcula
+              InkWell(
+                onTap: _refrescarEfectivo,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text('EFECTIVO EN CAJA', style: TextStyle(fontSize: 9.5, letterSpacing: 0.6)),
+                      Text(
+                        _efectivo == null ? '...' : formatearPrecio(_efectivo!),
+                        style: fuenteMono(fontSize: 14, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             const BotonNotificaciones(),
             IconButton(onPressed: _cargar, icon: const Icon(Icons.refresh)),
           ],
@@ -869,9 +929,32 @@ class _CajaPaginaState extends State<CajaPagina> {
     final iva = _subtotal * 0.13;
     final total = _subtotal + iva;
 
+    final pendientes = _pendientesDevolucion;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
       children: [
+        if (pendientes != null && pendientes.total > 0) ...[
+          TarjetaPanel(
+            alTocar: () => context.push('/panel/devoluciones'),
+            hijo: Row(
+              children: [
+                const Icon(Icons.assignment_return_outlined, color: Paleta.flame),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Devoluciones e intercambios: '
+                    '${pendientes.porAceptar > 0 ? '${pendientes.porAceptar} por aceptar' : ''}'
+                    '${pendientes.porAceptar > 0 && pendientes.porConcretar > 0 ? ' · ' : ''}'
+                    '${pendientes.porConcretar > 0 ? '${pendientes.porConcretar} esperando a la clienta' : ''}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         TarjetaPanel(
           hijo: Row(
             children: [

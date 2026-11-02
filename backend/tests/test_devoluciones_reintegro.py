@@ -86,7 +86,8 @@ async def test_reembolso_parcial_pide_el_monto_en_centavos_con_clave_idempotente
 def _devolucion_out() -> dict:
     ahora = datetime.now(timezone.utc)
     return {
-        "id": DEVOLUCION, "numero": "NDV-000001", "venta_id": VENTA, "venta_numero": "V-TEST",
+        "id": DEVOLUCION, "numero": "NDV-000001", "tipo": "DEVOLUCION", "origen": "CAJA",
+        "venta_id": VENTA, "venta_numero": "V-TEST",
         "venta_total": Decimal("226.00"), "sucursal_id": SUCURSAL, "sucursal": "Equipetrol",
         "cliente": "Ana Perez", "motivo_tipo": "NO_GUSTO", "motivo": "No le quedo",
         "con_etiqueta": True, "sin_uso": True, "con_comprobante": True,
@@ -98,13 +99,22 @@ def _devolucion_out() -> dict:
     }
 
 
+def _bloqueada(**extra) -> dict:
+    return {
+        "id": DEVOLUCION, "venta_id": VENTA, "sucursal_id": SUCURSAL, "estado": "SOLICITADA",
+        "tipo": "DEVOLUCION", "origen": "CAJA", "motivo_tipo": "NO_GUSTO", "con_etiqueta": True,
+        "sin_uso": True, "con_comprobante": True, "monto_devuelto": Decimal("113.00"),
+        "monto_cambio": Decimal("0"), "numero": "NDV-000001", "fecha_visita": None,
+        "hora_visita": None, "venta_numero": "V-TEST", "cliente_id": uuid4(), "sucursal": "Equipetrol",
+        **extra,
+    }
+
+
 def _conn_aprobar(pago: dict) -> ConexionFalsa:
     return ConexionFalsa(
         {
-            "FROM devolucion d JOIN venta v": {
-                "id": DEVOLUCION, "venta_id": VENTA, "sucursal_id": SUCURSAL,
-                "estado": "SOLICITADA", "monto_devuelto": Decimal("113.00"), "venta_numero": "V-TEST",
-            },
+            # _bloquear_en_tramite
+            "d.monto_cambio, d.numero, d.fecha_visita": _bloqueada(),
             # quedan unidades sin devolver: devolucion parcial
             "SELECT (SELECT COALESCE(SUM(cantidad), 0) FROM venta_detalle": 1,
             "v.total - v.costo_envio AS mercaderia": {
@@ -137,7 +147,7 @@ def test_aprobar_devolucion_pagada_con_stripe_reembolsa_por_la_api(cliente, monk
     assert respuesta.status_code == 200, respuesta.text
     # 100 de lista sobre 200 -> la mitad de lo que se pago por la mercaderia (226)
     assert llamadas == [("pi_1", Decimal("113.00"), f"devolucion-{DEVOLUCION}")]
-    assert conn.args_de("SET estado = 'APROBADA'")[3] == "STRIPE"
+    assert conn.args_de("SET estado = 'APROBADA'")[6] == "STRIPE"
     assert conn.args_de("SET reintegro_referencia") == (DEVOLUCION, "re_123")
 
 
@@ -163,7 +173,7 @@ def test_aprobar_devolucion_con_tarjeta_de_caja_no_llama_a_stripe(cliente, monke
     conn = _conn_aprobar({"metodo": "TARJETA", "pasarela": None, "id_transaccion": None})
     respuesta = _aprobar(cliente, conn)
     assert respuesta.status_code == 200, respuesta.text
-    assert conn.args_de("SET estado = 'APROBADA'")[3] == "TARJETA"
+    assert conn.args_de("SET estado = 'APROBADA'")[6] == "TARJETA"
 
 
 # --- entregar pedidos online en caja ------------------------------------------------------------

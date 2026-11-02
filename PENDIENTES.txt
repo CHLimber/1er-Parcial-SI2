@@ -2739,6 +2739,101 @@
  probada, falta mirarlos.
 
 ===============================================================================
+10. DEVOLUCIONES E INTERCAMBIOS (pedido 2026-11-02)
+===============================================================================
+
+ Pedido del usuario, punto por punto, y como quedo:
+
+ 10.1 Push al telefono fuera de la app: por ahora SOLO CORREO (decision del usuario). El push sigue
+      programado pero sin proyecto de Firebase no llega (ver item 10 de "lo hecho").
+ 10.2 Efectivo en caja siempre visible: recuadro "Efectivo en caja" en la cabecera de Caja (web,
+      arriba a la derecha junto a "Cerrar caja"; movil, en la AppBar). Es GET /caja/arqueo
+      (monto_sistema = apertura + cobros en efectivo - lo devuelto en mano); se recalcula al abrir,
+      cobrar, aprobar un pago online y al tocarlo.
+ 10.3 Devolucion de una venta pagada con QR (online o en caja): el reintegro sale EN EFECTIVO del
+      cajon, igual que EFECTIVO (exige caja abierta, devolucion.sesion_caja_id). La clienta siempre
+      va a la sucursal. fn_total_efectivo_sesion resta reintegro_metodo IN (EFECTIVO, QR).
+ 10.4 Plazo: 3 dias desde la venta para devolucion e intercambio (configuracion
+      devolucion_plazo_dias y cambio_plazo_dias = 3).
+ 10.5 Dos pestanias, mismas reglas: Devoluciones | Intercambios (+ Cambios del mes). devolucion.tipo
+      DEVOLUCION/INTERCAMBIO lo fija el motivo (TALLA/COLOR = intercambio). BUG CORREGIDO: un cambio
+      se aprobaba como devolucion entera (reintegraba toda la plata, Stripe incluido) y la prenda
+      nueva se cobraba aparte con una venta que habia que "vincular" a mano. Ahora lo devuelto es
+      CREDITO: al concretar se arma sola la venta del cambio (venta_cambio_id, POS, ENTREGADA) con
+      las prendas nuevas a su precio + IVA y solo se registra como pago la diferencia. Se quito
+      POST /devoluciones/{id}/cambio.
+ 10.6 Comprobante de devolucion/intercambio por correo con PDF (core/comprobante_devolucion.py,
+      job de avisos; devolucion.correo_enviado_en/correo_intentos). La venta del cambio tiene
+      comprobante (Mis compras) pero no manda su correo propio: lo cubre el del intercambio.
+ 10.7 Tope: hasta 3 prendas por compra SUMANDO devolucion e intercambio (devolucion_max_unidades)
+      y UNA SOLA solicitud por compra (indice unico parcial ux_devolucion_una_por_venta sobre
+      SOLICITADA/CONFIRMADA/APROBADA). DECISION PROPIA: una rechazada, cancelada o expirada no
+      cuenta (se puede volver a pedir dentro del plazo). La venta que nace de un intercambio no se
+      devuelve de nuevo.
+ 10.8 Precio distinto por talla/color: producto_variante.precio cargado en el seed (tallas grandes
+      XL/XXL, 42/44 y calzado 39/40 +10%; Vino, Camel y Rosa Palo +5%; acumulan). La web mostraba
+      siempre el precio base en el detalle de la prenda: ahora muestra el de la variante elegida.
+ 10.9 Diferencia de precio en el intercambio: si lo nuevo vale mas la clienta paga la diferencia
+      EN CAJA (efectivo, tarjeta o QR); si vale menos se le devuelve lo que sobra por el mismo
+      medio que la devolucion. El precio de la prenda pedida se fija al registrar
+      (devolucion_detalle.precio_solicitado) para que no cambie hasta la visita.
+ 10.10 Dos formas: (a) en caja, como antes (registrar -> concretar), y (b) desde la web/app, como
+      una reserva: Mis compras -> "Devolver o cambiar" (/mis-devoluciones?venta=). La clienta elige
+      prendas, motivo, talla/color nueva y dia/hora de visita (dentro del plazo y del horario de la
+      sucursal). Nace SOLICITADA (origen ONLINE), avisa a ENCARGADO y CAJERO, y en un intercambio
+      COMPROMETE la prenda pedida (fn_mover_inventario RESERVA). El personal la acepta (CONFIRMADA)
+      o rechaza; cuando la clienta llega se concreta en caja (revisa condiciones, devuelve o cobra).
+      Vence como una reserva (expira_en = visita + reserva_horas_vigencia; fn_expirar_devoluciones
+      en el job) y la clienta puede cancelarla. El usuario descarto el delivery: todo termina en la
+      sucursal. CAJERO recibio devoluciones.leer/crear/actualizar.
+
+ Archivos: db/01_schema.sql (estados CONFIRMADA/CANCELADA/EXPIRADA, columnas nuevas), db/02_logica.sql
+ (fn_total_efectivo_sesion, fn_devolucion_stock libera lo comprometido, fn_expirar_devoluciones),
+ db/03_datos_iniciales.sql, MIGRACION db/reparaciones/devoluciones_intercambios.sql (idempotente);
+ backend devoluciones/{servicio.py (nuevo), router.py, cliente_router.py (nuevo, /mis-devoluciones),
+ schemas.py}, caja/router.py, core/comprobante_devolucion.py, core/avisos.py, core/jobs.py; web
+ panel-devoluciones, mis-devoluciones (nueva), mis-compras, caja, producto-detalle, campana; movil
+ panel_devoluciones_pagina, mis_devoluciones_pagina (nueva), mis_compras_pagina, caja_pagina,
+ notificaciones_pagina, rutas.
+
+ PROBADO: 317 tests backend (tests/test_devoluciones_intercambio.py nuevo), ruff, ng build, flutter
+ analyze/test. Migracion aplicada dos veces en el Docker local (idempotente) y init completo de
+ 01-04 en un Postgres descartable. DE PUNTA A PUNTA contra el backend local: compra online en
+ efectivo -> intercambio online a talla 42 (mas cara) -> la cajera lo acepta -> se concreta cobrando
+ Bs 28.36 de diferencia, venta del cambio armada, kardex RESERVA/LIBERACION/DEVOLUCION/SALIDA;
+ compra QR -> devolucion en caja reintegrada desde el cajon; segunda solicitud en la misma compra ->
+ 409; arqueo cuadra; cancelar libera la prenda.
+ [FALTA] Aplicar db/reparaciones/devoluciones_intercambios.sql en Railway ANTES de desplegar el
+ backend nuevo. Mirar las pantallas en el navegador y en el telefono. Reembolso parcial de Stripe
+ por la diferencia: solo con tests unitarios. Documentar el cambio de alcance del CU de devolucion
+ (docs/PARCIALES.md y diagramas): ahora hay solicitud online, intercambio con diferencia y aceptar.
+
+===============================================================================
+11. COBRO CON QR Y STRIPE AL ATENDER UNA RESERVA (pedido 2026-11-02)
+===============================================================================
+
+ Pedido: al cerrar una reserva en el vestidor, el QR no mostraba la imagen (solo se anotaba el
+ metodo) y no habia Stripe. Ahora (web atender-reservas y movil atender_reservas_pagina):
+  - Se ve el TOTAL a cobrar con IVA (ReservaItemOut.precio nuevo).
+  - QR: aparece la foto del QR (pago-qr.jpeg) con el total; el personal confirma con "Confirmar
+    pago QR recibido" cuando ve el pago (sigue siendo /resolver, metodo QR).
+  - Stripe: formulario de tarjeta ahi mismo (web: Checkout embebido; movil: PaymentSheet). La
+    venta se cierra SOLA cuando Stripe confirma: POST /reservas/{id}/cobro-stripe arma la venta
+    PENDIENTE (canal POS, con un carrito sin duenio "vestidor:<reserva>" atado a la reserva) y el
+    pago lo aprueba confirmar_aprobado como cualquier pago online -- por el webhook o por
+    GET /reservas/{id}/cobro-stripe, que le pregunta a Stripe y lo aprueba si ya cobro (asi no
+    depende de `stripe listen` en local). Al aprobarse, _cerrar_reserva_del_vestidor libera lo
+    probado y no comprado, deja la reserva CONVERTIDA y la venta ENTREGADA. POST .../cancelar
+    cierra el intento en Stripe para cobrar de otra forma (mientras hay un cobro en curso
+    /resolver responde 409). Si se recarga la pagina, la web retoma el formulario pendiente.
+ PROBADO: 322 tests backend (tests/test_reserva_cobro_stripe.py), ng build, flutter analyze/test.
+ De punta a punta contra Stripe en modo test: reserva -> vestidor -> cobro con PaymentIntent
+ confirmado con pm_card_visa -> la consulta de estado la cierra (ENTREGADA, comprobante, 38 COMPRADO
+ / 42 DESCARTADO, kardex LIBERACION+SALIDA y LIBERACION); iniciar y cancelar -> se cobra con QR.
+ [FALTA] Mirarlo en pantalla (el formulario embebido web no se pudo pagar desde el script) y en un
+ telefono con Google Play Services para el PaymentSheet. Sin migracion: no cambia el esquema.
+
+===============================================================================
  LO QUE SI ESTA HECHO Y VERIFICADO (para no volver a revisarlo)
 ===============================================================================
 

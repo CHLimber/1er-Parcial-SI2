@@ -11,10 +11,11 @@ import '../../core/errores.dart';
 import '../../core/tema.dart';
 import 'mis_reservas_pagina.dart' show fechaLegible;
 
-/// Devoluciones de ventas (PENDIENTES 2.7/2.19.7, espejo de `panel-devoluciones` en la
-/// web). Registrar es del personal, sobre una venta PAGADA o ENTREGADA de su sucursal:
-/// nace SOLICITADA y no mueve stock. Resolver es aprobar (el trigger de la base reingresa
-/// el stock y recalcula el reintegro) o rechazar (con motivo).
+/// Devoluciones e intercambios (PENDIENTES 10, espejo de `panel-devoluciones` en la web), en dos
+/// pestanias con las mismas reglas: 3 dias desde la compra, una sola por compra, hasta 3 prendas.
+/// - Devolucion: vuelve la prenda y la plata (Stripe por la API; efectivo y QR desde la caja).
+/// - Intercambio: otra talla/color; lo devuelto es credito y se cobra o devuelve la diferencia.
+/// Las solicitudes online de la clienta se aceptan aca y se concretan cuando llega a la sucursal.
 class PanelDevolucionesPagina extends StatefulWidget {
   const PanelDevolucionesPagina({super.key});
 
@@ -26,6 +27,7 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
   final _busqueda = TextEditingController();
 
   List<DevolucionOut> _devoluciones = [];
+  String _tipo = 'DEVOLUCION';
   String? _estado;
   bool _cargando = true;
   String? _error;
@@ -51,6 +53,7 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
     });
     try {
       final devoluciones = await devolucionesService.listar(
+        tipo: _tipo,
         estado: _estado,
         venta: _busqueda.text.trim().isEmpty ? null : _busqueda.text.trim(),
       );
@@ -82,20 +85,24 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
     await _cargar();
   }
 
-  Future<void> _nuevaDevolucion() async {
-    final registrada = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (contexto) => const NuevaDevolucionPagina()),
+  Future<void> _nueva() async {
+    final registrada = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(builder: (contexto) => NuevaDevolucionPagina(tipo: _tipo)),
     );
-    if (registrada == true) await _cargar();
+    if (registrada != null) {
+      await _cargar();
+      if (mounted) await _abrirDetalle(registrada);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final puedeRegistrar = context.watch<AuthService>().tienePermiso(['devoluciones.crear']);
+    final esIntercambio = _tipo == 'INTERCAMBIO';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Devoluciones'),
+        title: const Text('Devoluciones e intercambios'),
         actions: [
           IconButton(
             tooltip: 'Cambios del mes',
@@ -108,33 +115,49 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
       ),
       floatingActionButton: puedeRegistrar
           ? FloatingActionButton.extended(
-              onPressed: _nuevaDevolucion,
+              onPressed: _nueva,
               backgroundColor: Paleta.flame,
               foregroundColor: Paleta.blanco,
               icon: const Icon(Icons.add),
-              label: const Text('NUEVA'),
+              label: Text(esIntercambio ? 'NUEVO INTERCAMBIO' : 'NUEVA DEVOLUCION'),
             )
           : null,
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'DEVOLUCION', label: Text('Devoluciones'), icon: Icon(Icons.undo)),
+                ButtonSegment(value: 'INTERCAMBIO', label: Text('Intercambios'), icon: Icon(Icons.swap_horiz)),
+              ],
+              selected: {_tipo},
+              onSelectionChanged: (valor) {
+                setState(() => _tipo = valor.first);
+                _cargar();
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
             child: TextField(
               controller: _busqueda,
               onChanged: _buscarConRetraso,
               decoration: const InputDecoration(
-                labelText: 'Buscar por numero de venta',
+                labelText: 'Buscar por numero de venta o nota',
                 prefixIcon: Icon(Icons.search),
               ),
             ),
           ),
-          Padding(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
             child: Row(
               children: [
                 _chip('Todas', null),
-                _chip('Pendientes', 'SOLICITADA'),
-                _chip('Aprobadas', 'APROBADA'),
+                _chip('Por aceptar', 'SOLICITADA'),
+                _chip('Esperan visita', 'CONFIRMADA'),
+                _chip('Realizadas', 'APROBADA'),
                 _chip('Rechazadas', 'RECHAZADA'),
               ],
             ),
@@ -145,7 +168,7 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
               error: _error,
               alReintentar: _cargar,
               hijo: _devoluciones.isEmpty
-                  ? const EstadoVacio(mensaje: 'No hay devoluciones con ese filtro.')
+                  ? EstadoVacio(mensaje: esIntercambio ? 'No hay intercambios con ese filtro.' : 'No hay devoluciones con ese filtro.')
                   : RefreshIndicator(
                       color: Paleta.flame,
                       onRefresh: _cargar,
@@ -153,45 +176,7 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
                         padding: const EdgeInsets.fromLTRB(16, 10, 16, 90),
                         itemCount: _devoluciones.length,
                         separatorBuilder: (contexto, indice) => const SizedBox(height: 10),
-                        itemBuilder: (contexto, indice) {
-                          final devolucion = _devoluciones[indice];
-                          return TarjetaPanel(
-                            alTocar: () => _abrirDetalle(devolucion.id),
-                            hijo: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        devolucion.ventaNumero,
-                                        style: fuenteMono(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: Paleta.ink,
-                                        ),
-                                      ),
-                                    ),
-                                    BadgeEstado(devolucion.estado),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                FilaDato('Sucursal', devolucion.sucursal),
-                                if (devolucion.cliente != null)
-                                  FilaDato('Clienta', devolucion.cliente!),
-                                FilaDato('Nota', devolucion.numero),
-                                FilaDato('Motivo',
-                                    '${motivosDevolucion[devolucion.motivoTipo] ?? devolucion.motivoTipo}: ${devolucion.motivo}'),
-                                FilaDato(
-                                  'Contenido',
-                                  '${devolucion.lineas} linea(s) · ${devolucion.unidades} unidad(es)',
-                                ),
-                                FilaDato('Reintegro', formatearPrecio(devolucion.montoDevuelto)),
-                                FilaDato('Fecha', fechaLegible(DateTime.parse(devolucion.fecha))),
-                              ],
-                            ),
-                          );
-                        },
+                        itemBuilder: (contexto, indice) => _tarjeta(_devoluciones[indice]),
                       ),
                     ),
             ),
@@ -200,6 +185,37 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
       ),
     );
   }
+
+  Widget _tarjeta(DevolucionOut d) => TarjetaPanel(
+        alTocar: () => _abrirDetalle(d.id),
+        hijo: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${d.numero} · ${d.ventaNumero}',
+                    style: fuenteMono(fontSize: 14, fontWeight: FontWeight.w700, color: Paleta.ink),
+                  ),
+                ),
+                BadgeEstado(estadosDevolucion[d.estado] ?? d.estado, color: BadgeEstado.colorDeEstado(d.estado)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            FilaDato('Origen', d.origen == 'ONLINE' ? 'Solicitud online' : 'En caja'),
+            if (d.fechaVisita != null && d.enTramite) FilaDato('Visita', d.visita),
+            if (d.cliente != null) FilaDato('Clienta', d.cliente!),
+            FilaDato('Motivo', '${motivosDevolucion[d.motivoTipo] ?? d.motivoTipo}: ${d.motivo}'),
+            FilaDato('Prendas', '${d.unidades}'),
+            if (d.esIntercambio)
+              FilaDato('Diferencia', _textoDiferencia(d.diferencia))
+            else
+              FilaDato('Reintegro', formatearPrecio(d.estado == 'APROBADA' ? d.montoReintegrado : d.montoDevuelto)),
+            FilaDato('Fecha', fechaLegible(DateTime.parse(d.fecha))),
+          ],
+        ),
+      );
 
   Widget _chip(String etiqueta, String? valor) => Padding(
         padding: const EdgeInsets.only(right: 8),
@@ -215,21 +231,28 @@ class _PanelDevolucionesPaginaState extends State<PanelDevolucionesPagina> {
       );
 }
 
-/// Registro de una devolucion: busca la venta por numero, se elige cuanto se devuelve
-/// de cada linea (tope: lo vendido menos lo ya devuelto o en tramite) y el motivo.
-/// Como vuelve la plata (PENDIENTES 4.11): por donde entro. STRIPE se reembolsa por la API,
-/// EFECTIVO sale del cajon de la caja abierta de quien aprueba, el resto fuera del sistema.
+String _textoDiferencia(double diferencia) {
+  if (diferencia > 0.004) return 'paga ${formatearPrecio(diferencia)}';
+  if (diferencia < -0.004) return 'se le devuelve ${formatearPrecio(-diferencia)}';
+  return 'sin diferencia';
+}
+
+/// Como vuelve la plata: por donde entro. STRIPE se reembolsa por la API; EFECTIVO y QR salen en
+/// efectivo del cajon de la caja abierta de quien concreta; el resto fuera del sistema.
 String etiquetaReintegro(String? metodo) => switch (metodo) {
       'STRIPE' => 'Reembolso automatico a la tarjeta (Stripe)',
-      'EFECTIVO' => 'Efectivo, desde la caja abierta',
+      'EFECTIVO' || 'QR' => 'Efectivo, desde la caja abierta',
       'TARJETA' => 'Tarjeta (reversar en el POS, fuera del sistema)',
-      'QR' => 'QR / transferencia a la clienta (fuera del sistema)',
       'TRANSFERENCIA' => 'Transferencia a la clienta (fuera del sistema)',
       _ => 'Sin pago aprobado registrado',
     };
 
+/// Registro en caja: busca la venta por numero y elige prendas (hasta el tope por compra), motivo
+/// y, en un intercambio, la talla/color que se lleva la clienta con su precio.
 class NuevaDevolucionPagina extends StatefulWidget {
-  const NuevaDevolucionPagina({super.key});
+  const NuevaDevolucionPagina({super.key, required this.tipo});
+
+  final String tipo;
 
   @override
   State<NuevaDevolucionPagina> createState() => _NuevaDevolucionPaginaState();
@@ -241,14 +264,13 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
 
   VentaDevolvibleOut? _venta;
   final Map<String, int> _cantidades = {};
-  // Segundo parcial (PENDIENTES 5.8): motivo, condiciones y talla/color que se lleva a cambio
-  String _motivoTipo = 'TALLA';
+  late String _motivoTipo = widget.tipo == 'INTERCAMBIO' ? 'TALLA' : 'NO_GUSTO';
   bool _conComprobante = true;
   bool _conEtiqueta = true;
   bool _sinUso = true;
   final Map<String, String> _solicitadas = {}; // venta_detalle_id -> variante a cambio
   final Map<String, List<VarianteCambioOut>> _opciones = {}; // variante vendida -> opciones
-  bool get _esCambio => _motivoTipo == 'TALLA' || _motivoTipo == 'COLOR';
+  bool get _esCambio => widget.tipo == 'INTERCAMBIO';
   bool _buscando = false;
   bool _registrando = false;
   String? _error;
@@ -264,11 +286,37 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
       ? 0
       : _venta!.lineas.fold<double>(
           0,
-          (suma, linea) =>
-              suma + (_cantidades[linea.ventaDetalleId] ?? 0) * linea.reembolsoUnitario,
+          (suma, linea) => suma + (_cantidades[linea.ventaDetalleId] ?? 0) * linea.reembolsoUnitario,
         );
 
+  /// lo que valen las prendas nuevas elegidas, con IVA
+  double get _estimadoNuevo {
+    final venta = _venta;
+    if (venta == null || !_esCambio) return 0;
+    var subtotal = 0.0;
+    for (final linea in venta.lineas) {
+      final elegida = _solicitadas[linea.ventaDetalleId];
+      final opcion = (_opciones[linea.varianteId] ?? const <VarianteCambioOut>[])
+          .where((o) => o.varianteId == elegida);
+      if (opcion.isNotEmpty) subtotal += (_cantidades[linea.ventaDetalleId] ?? 0) * opcion.first.precio;
+    }
+    return (subtotal * 1.13 * 100).roundToDouble() / 100;
+  }
+
   int get _unidadesElegidas => _cantidades.values.fold(0, (suma, c) => suma + c);
+
+  String? get _bloqueo {
+    final v = _venta;
+    if (v == null) return null;
+    if (v.esVentaDeCambio) return 'Esta venta salio de un intercambio: ya uso su devolucion.';
+    if (v.solicitudVigente != null) {
+      return 'La venta ya tiene la ${v.solicitudVigente}: se permite una sola por compra.';
+    }
+    if (_esCambio ? v.fueraDePlazoCambio : v.fueraDePlazo) {
+      return 'Vencio el plazo de esta venta: ya no se puede registrar.';
+    }
+    return null;
+  }
 
   Future<void> _buscar() async {
     final numero = _numero.text.trim();
@@ -318,9 +366,12 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
         : todas.where((o) => o.color != linea.color && o.talla == linea.talla).toList();
   }
 
-  void _fijarCantidad(String ventaDetalleId, int valor, int maximo) {
+  void _fijarCantidad(LineaVentaOut linea, int valor) {
+    final venta = _venta!;
+    final actual = _cantidades[linea.ventaDetalleId] ?? 0;
+    final resto = venta.maxUnidades - _unidadesElegidas + actual;
     setState(() {
-      _cantidades[ventaDetalleId] = valor.clamp(0, maximo);
+      _cantidades[linea.ventaDetalleId] = valor.clamp(0, linea.devolvible < resto ? linea.devolvible : resto);
     });
   }
 
@@ -329,7 +380,7 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
     if (venta == null) return;
     final lineas = _cantidades.entries.where((e) => e.value > 0).toList();
     if (lineas.isEmpty) {
-      mostrarAviso(context, 'Indica al menos una prenda a devolver.', esError: true);
+      mostrarAviso(context, 'Indica al menos una prenda.', esError: true);
       return;
     }
     if (_esCambio && lineas.any((l) => _solicitadas[l.key] == null)) {
@@ -353,11 +404,8 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
         solicitadas: _esCambio ? _solicitadas : const {},
       );
       if (!mounted) return;
-      mostrarAviso(
-        context,
-        'Nota ${devolucion.numero} registrada. Queda pendiente de aprobacion: todavia no volvio al stock.',
-      );
-      Navigator.of(context).pop(true);
+      mostrarAviso(context, 'Nota ${devolucion.numero} registrada. Concretala para mover el stock y la plata.');
+      Navigator.of(context).pop(devolucion.id);
     } catch (error) {
       if (!mounted) return;
       mostrarAviso(context, interpretarError(error), esError: true);
@@ -369,8 +417,9 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
   @override
   Widget build(BuildContext context) {
     final venta = _venta;
+    final bloqueo = _bloqueo;
     return Scaffold(
-      appBar: AppBar(title: const Text('Nueva devolucion')),
+      appBar: AppBar(title: Text(_esCambio ? 'Nuevo intercambio' : 'Nueva devolucion')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
@@ -382,10 +431,7 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                   controller: _numero,
                   textInputAction: TextInputAction.search,
                   onSubmitted: (_) => _buscar(),
-                  decoration: const InputDecoration(
-                    labelText: 'Numero de venta',
-                    hintText: 'V-...',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Numero de venta', hintText: 'V-...'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -426,28 +472,25 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                   FilaDato('Sucursal', venta.sucursal),
                   if (venta.cliente != null) FilaDato('Clienta', venta.cliente!),
                   FilaDato('Total', formatearPrecio(venta.total)),
-                  if (venta.totalDevuelto > 0)
-                    FilaDato('Ya devuelto', formatearPrecio(venta.totalDevuelto)),
-                  FilaDato('Reintegro', etiquetaReintegro(venta.reintegroMetodo)),
-                  FilaDato('Plazo devolucion', fechaLegible(DateTime.parse(venta.plazoVenceEn))),
-                  if (venta.cambioVenceEn != null)
-                    FilaDato('Plazo cambio', fechaLegible(DateTime.parse(venta.cambioVenceEn!))),
-                  if (venta.reintegroMetodo == 'EFECTIVO')
-                    const Padding(
-                      padding: EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Para aprobarla hace falta una sesion de caja abierta.',
-                        style: TextStyle(fontSize: 12, color: Paleta.inkSuave),
-                      ),
-                    ),
+                  FilaDato('Si sobra plata', etiquetaReintegro(venta.reintegroMetodo)),
+                  FilaDato(
+                    'Plazo',
+                    fechaLegible(DateTime.parse(_esCambio ? (venta.cambioVenceEn ?? venta.plazoVenceEn) : venta.plazoVenceEn)),
+                  ),
+                  FilaDato('Maximo', '${venta.maxUnidades} prendas'),
                 ],
               ),
             ),
+            if (bloqueo != null) ...[
+              const SizedBox(height: 12),
+              MensajeError(bloqueo),
+            ],
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               initialValue: _motivoTipo,
               decoration: const InputDecoration(labelText: 'Motivo'),
-              items: motivosDevolucion.entries
+              items: motivosDe(widget.tipo)
+                  .entries
                   .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                   .toList(),
               onChanged: (valor) {
@@ -459,12 +502,6 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                 if (_esCambio) _cargarOpciones();
               },
             ),
-            if (_esCambio ? venta.fueraDePlazoCambio : venta.fueraDePlazo) ...[
-              const SizedBox(height: 12),
-              MensajeError(_esCambio
-                  ? 'Vencio el plazo de cambio de esta venta: ya no se puede cambiar la prenda.'
-                  : 'Vencio el plazo de devolucion de esta venta: ya no se puede registrar.'),
-            ],
             const SizedBox(height: 10),
             const EtiquetaDato('Condiciones de la prenda'),
             CheckboxListTile(
@@ -491,7 +528,7 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
             Text(
               _motivoTipo == 'DEFECTO'
                   ? 'Por defecto de fabrica alcanza con el comprobante.'
-                  : 'Para cambios y devoluciones se exigen las tres.',
+                  : 'Se exigen las tres.',
               style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
             ),
             const SizedBox(height: 20),
@@ -509,21 +546,10 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                       Text(linea.producto, style: const TextStyle(fontWeight: FontWeight.w700)),
                       const SizedBox(height: 4),
                       Text(
-                        '${linea.sku} · ${linea.talla} · ${linea.color}',
+                        '${linea.sku} · ${linea.talla} · ${linea.color} · vale ${formatearPrecio(linea.reembolsoUnitario)}',
                         style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        'Vendidas ${linea.cantidadVendida} · devueltas ${linea.devuelta} · '
-                        'en tramite ${linea.enTramite} · devolvible ${linea.devolvible}',
-                        style: const TextStyle(fontSize: 11.5, color: Paleta.inkSuave),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Reintegro por unidad: ${formatearPrecio(linea.reembolsoUnitario)}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                      const SizedBox(height: 8),
                       if (linea.devolvible <= 0)
                         const Text(
                           'No queda nada por devolver de esta linea.',
@@ -533,31 +559,17 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                         Row(
                           children: [
                             IconButton(
-                              onPressed: elegida > 0
-                                  ? () => _fijarCantidad(
-                                        linea.ventaDetalleId,
-                                        elegida - 1,
-                                        linea.devolvible,
-                                      )
-                                  : null,
+                              onPressed: elegida > 0 ? () => _fijarCantidad(linea, elegida - 1) : null,
                               icon: const Icon(Icons.remove_circle_outline),
                             ),
                             Text('$elegida', style: const TextStyle(fontWeight: FontWeight.w700)),
                             IconButton(
-                              onPressed: elegida < linea.devolvible
-                                  ? () => _fijarCantidad(
-                                        linea.ventaDetalleId,
-                                        elegida + 1,
-                                        linea.devolvible,
-                                      )
-                                  : null,
+                              onPressed: elegida < linea.devolvible ? () => _fijarCantidad(linea, elegida + 1) : null,
                               icon: const Icon(Icons.add_circle_outline),
                             ),
                             const Spacer(),
-                            Text(
-                              'max ${linea.devolvible}',
-                              style: const TextStyle(fontSize: 11.5, color: Paleta.inkSuave),
-                            ),
+                            Text('max ${linea.devolvible}',
+                                style: const TextStyle(fontSize: 11.5, color: Paleta.inkSuave)),
                           ],
                         ),
                       if (_esCambio && elegida > 0)
@@ -569,7 +581,8 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
                               .map((o) => DropdownMenuItem(
                                     value: o.varianteId,
                                     enabled: o.disponible >= elegida,
-                                    child: Text('${o.talla} · ${o.color} (${o.disponible} disp.)'),
+                                    child: Text(
+                                        '${o.talla} · ${o.color} · ${formatearPrecio(o.precio)} (${o.disponible} disp.)'),
                                   ))
                               .toList(),
                           onChanged: (valor) {
@@ -590,24 +603,24 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
             ),
             const SizedBox(height: 6),
             Text(
-              '$_unidadesElegidas unidad(es) elegida(s) · estimado ${formatearPrecio(_estimado)}',
+              _esCambio
+                  ? '$_unidadesElegidas prenda(s) · credito ${formatearPrecio(_estimado)} · '
+                      'lo nuevo ${formatearPrecio(_estimadoNuevo)} · ${_textoDiferencia(_estimadoNuevo - _estimado)}'
+                  : '$_unidadesElegidas prenda(s) · reintegro estimado ${formatearPrecio(_estimado)}',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
+            const Text('Con IVA; el monto final se fija al concretar.',
+                style: TextStyle(fontSize: 12, color: Paleta.inkSuave)),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed:
-                  (_registrando ||
-                          _unidadesElegidas == 0 ||
-                          (_esCambio ? venta.fueraDePlazoCambio : venta.fueraDePlazo))
-                      ? null
-                      : _registrar,
+              onPressed: (_registrando || _unidadesElegidas == 0 || bloqueo != null) ? null : _registrar,
               child: _registrando
                   ? const SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Paleta.blanco),
                     )
-                  : Text(_esCambio ? 'REGISTRAR CAMBIO' : 'REGISTRAR DEVOLUCION'),
+                  : Text(_esCambio ? 'REGISTRAR INTERCAMBIO' : 'REGISTRAR DEVOLUCION'),
             ),
           ],
         ],
@@ -616,7 +629,7 @@ class _NuevaDevolucionPaginaState extends State<NuevaDevolucionPagina> {
   }
 }
 
-/// Detalle de una devolucion y su resolucion (aprobar/rechazar), solo si esta SOLICITADA.
+/// Detalle y resolucion: aceptar una solicitud online, concretar en caja o rechazar.
 class DetalleDevolucionPagina extends StatefulWidget {
   const DetalleDevolucionPagina({super.key, required this.devolucionId});
 
@@ -659,29 +672,16 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
     }
   }
 
-  Future<void> _aprobar() async {
-    final confirmado = await confirmar(
-      context,
-      titulo: 'Aprobar devolucion',
-      mensaje: 'El stock de las prendas vuelve a la sucursal y se calcula lo que hay que '
-          'reintegrar a la clienta.',
-      textoConfirmar: 'Aprobar',
-    );
-    if (!confirmado) return;
+  Future<void> _ejecutar(Future<DevolucionDetalleOut> Function() accion, String Function(DevolucionDetalleOut) aviso) async {
     setState(() => _trabajando = true);
     try {
-      final detalle = await devolucionesService.aprobar(widget.devolucionId);
+      final detalle = await accion();
       if (!mounted) return;
       setState(() {
         _devolucion = detalle;
         _trabajando = false;
       });
-      mostrarAviso(
-        context,
-        'Devolucion aprobada: ${detalle.unidades} unidad(es) volvieron al stock de '
-        '${detalle.sucursal}. ${_instruccionReintegro(detalle)}'
-        '${detalle.pagoReembolsado ? " La venta quedo devuelta completa y el pago paso a reembolsado." : ""}',
-      );
+      mostrarAviso(context, aviso(detalle));
     } catch (error) {
       if (!mounted) return;
       setState(() => _trabajando = false);
@@ -689,67 +689,108 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
     }
   }
 
-  String _instruccionReintegro(DevolucionDetalleOut detalle) {
-    final importe = formatearPrecio(detalle.montoDevuelto);
-    return switch (detalle.reintegroMetodo) {
-      'STRIPE' => 'Stripe ya reembolso $importe a la tarjeta de la clienta.',
-      'EFECTIVO' => 'Entregale $importe en efectivo: ya se desconto del arqueo de tu caja.',
-      _ => 'Reintegrar $importe (${etiquetaReintegro(detalle.reintegroMetodo).toLowerCase()}).',
-    };
+  Future<void> _confirmar() async {
+    await _ejecutar(
+      () => devolucionesService.confirmar(widget.devolucionId),
+      (_) => 'Solicitud aceptada. Se le aviso a la clienta; concretala cuando llegue.',
+    );
   }
 
-  /// Cambio de prenda: la prenda nueva se cobra en caja y aca se vincula esa venta.
-  Future<void> _vincularCambio() async {
-    final numero = TextEditingController();
-    final confirmado = await showDialog<bool>(
+  /// Concretar: condiciones vistas al recibir la prenda y, si paga diferencia, como la paga.
+  Future<void> _concretar() async {
+    final d = _devolucion!;
+    var etiqueta = d.conEtiqueta;
+    var sinUso = d.sinUso;
+    var comprobante = d.conComprobante;
+    String? metodo;
+    final pagaDiferencia = d.esIntercambio && d.diferencia > 0.004;
+    final aceptado = await showDialog<bool>(
       context: context,
-      builder: (contexto) => AlertDialog(
-        backgroundColor: Paleta.blanco,
-        title: const Text('Cambio de prenda'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Cobra la prenda nueva en caja como una venta normal e ingresa aca su numero.',
-              style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
+      builder: (contexto) => StatefulBuilder(
+        builder: (contexto, actualizar) => AlertDialog(
+          backgroundColor: Paleta.blanco,
+          title: Text(d.esIntercambio ? 'Concretar intercambio' : 'Concretar devolucion'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Revisa la prenda antes de confirmar.',
+                    style: TextStyle(fontSize: 13, color: Paleta.inkSuave)),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: comprobante,
+                  onChanged: (v) => actualizar(() => comprobante = v ?? false),
+                  title: const Text('Trae el comprobante'),
+                ),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: etiqueta,
+                  onChanged: (v) => actualizar(() => etiqueta = v ?? false),
+                  title: const Text('Conserva la etiqueta'),
+                ),
+                CheckboxListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  value: sinUso,
+                  onChanged: (v) => actualizar(() => sinUso = v ?? false),
+                  title: const Text('Sin uso ni lavado'),
+                ),
+                if (pagaDiferencia)
+                  DropdownButtonFormField<String>(
+                    initialValue: metodo,
+                    decoration: InputDecoration(labelText: 'Paga ${formatearPrecio(d.diferencia)} con'),
+                    items: const [
+                      DropdownMenuItem(value: 'EFECTIVO', child: Text('Efectivo')),
+                      DropdownMenuItem(value: 'TARJETA', child: Text('Tarjeta')),
+                      DropdownMenuItem(value: 'QR', child: Text('QR')),
+                    ],
+                    onChanged: (v) => actualizar(() => metodo = v),
+                  ),
+              ],
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: numero,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(labelText: 'Numero de la venta nueva (V-...)'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(contexto, false), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: pagaDiferencia && metodo == null ? null : () => Navigator.pop(contexto, true),
+              child: const Text('Concretar'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(contexto, false), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(contexto, true),
-            child: const Text('Vincular'),
-          ),
-        ],
       ),
     );
-    final texto = numero.text.trim();
-    numero.dispose();
-    if (confirmado != true || texto.isEmpty || !mounted) return;
+    if (aceptado != true || !mounted) return;
+    await _ejecutar(
+      () => devolucionesService.aprobar(
+        widget.devolucionId,
+        conEtiqueta: etiqueta,
+        sinUso: sinUso,
+        conComprobante: comprobante,
+        diferenciaMetodo: metodo,
+      ),
+      _resumen,
+    );
+  }
 
-    setState(() => _trabajando = true);
-    try {
-      final detalle = await devolucionesService.vincularCambio(widget.devolucionId, texto);
-      if (!mounted) return;
-      setState(() {
-        _devolucion = detalle;
-        _trabajando = false;
-      });
-      mostrarAviso(context, 'Cambio registrado: la venta ${detalle.ventaCambioNumero} reemplaza lo devuelto.');
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _trabajando = false);
-      mostrarAviso(context, interpretarError(error), esError: true);
+  String _resumen(DevolucionDetalleOut d) {
+    String plata = 'No hay diferencia de plata.';
+    if (d.diferenciaCobrada > 0) {
+      plata = 'Cobra ${formatearPrecio(d.diferenciaCobrada)} de diferencia.';
+    } else if (d.montoReintegrado > 0) {
+      final importe = formatearPrecio(d.montoReintegrado);
+      plata = switch (d.reintegroMetodo) {
+        'STRIPE' => 'Stripe ya reembolso $importe a la tarjeta.',
+        'EFECTIVO' || 'QR' => 'Entregale $importe en efectivo: ya se desconto de tu caja.',
+        _ => 'Reintegrar $importe (${etiquetaReintegro(d.reintegroMetodo).toLowerCase()}).',
+      };
     }
+    final base = d.esIntercambio
+        ? 'Intercambio realizado: entregale la prenda nueva (venta ${d.ventaCambioNumero}).'
+        : 'Devolucion realizada: ${d.unidades} prenda(s) volvieron al stock.';
+    return '$base $plata';
   }
 
   Future<void> _rechazar() async {
@@ -758,13 +799,13 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
       context: context,
       builder: (contexto) => AlertDialog(
         backgroundColor: Paleta.blanco,
-        title: const Text('Rechazar devolucion'),
+        title: const Text('Rechazar'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Se le avisa a la clienta con este motivo. El stock no se toca.',
+              'Se le avisa a la clienta con este motivo. Lo reservado para el cambio se libera.',
               style: TextStyle(fontSize: 13, color: Paleta.inkSuave, height: 1.4),
             ),
             const SizedBox(height: 10),
@@ -789,41 +830,29 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
 
     final texto = motivo.text.trim();
     motivo.dispose();
-    if (confirmado != true) return;
-    if (!mounted) return;
+    if (confirmado != true || !mounted) return;
     if (texto.length < 3) {
       mostrarAviso(context, 'Indica el motivo del rechazo.', esError: true);
       return;
     }
-
-    setState(() => _trabajando = true);
-    try {
-      final detalle = await devolucionesService.rechazar(widget.devolucionId, texto);
-      if (!mounted) return;
-      setState(() {
-        _devolucion = detalle;
-        _trabajando = false;
-      });
-      mostrarAviso(context, 'Devolucion rechazada. Se le aviso a la clienta.');
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _trabajando = false);
-      mostrarAviso(context, interpretarError(error), esError: true);
-    }
+    await _ejecutar(
+      () => devolucionesService.rechazar(widget.devolucionId, texto),
+      (_) => 'Rechazada. Se le aviso a la clienta.',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final devolucion = _devolucion;
+    final d = _devolucion;
     final puedeResolver = context.watch<AuthService>().tienePermiso(['devoluciones.actualizar']);
 
     return Scaffold(
-      appBar: AppBar(title: Text(devolucion?.ventaNumero ?? 'Devolucion')),
+      appBar: AppBar(title: Text(d == null ? 'Devolucion' : '${d.esIntercambio ? 'Intercambio' : 'Devolucion'} ${d.numero}')),
       body: VistaAsincrona(
         cargando: _cargando,
         error: _error,
         alReintentar: _cargar,
-        hijo: devolucion == null
+        hijo: d == null
             ? const EstadoVacio(mensaje: 'No se encontro la devolucion.')
             : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -836,49 +865,45 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                           children: [
                             Expanded(
                               child: Text(
-                                devolucion.ventaNumero,
+                                'Venta ${d.ventaNumero}',
                                 style: fuenteMono(fontSize: 15, fontWeight: FontWeight.w700, color: Paleta.ink),
                               ),
                             ),
-                            BadgeEstado(devolucion.estado),
+                            BadgeEstado(estadosDevolucion[d.estado] ?? d.estado,
+                                color: BadgeEstado.colorDeEstado(d.estado)),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        FilaDato('Sucursal', devolucion.sucursal),
-                        if (devolucion.cliente != null) FilaDato('Clienta', devolucion.cliente!),
-                        FilaDato('Nota', devolucion.numero),
-                                FilaDato('Motivo',
-                                    '${motivosDevolucion[devolucion.motivoTipo] ?? devolucion.motivoTipo}: ${devolucion.motivo}'),
-                        FilaDato('Venta total', formatearPrecio(devolucion.ventaTotal)),
-                        FilaDato('Reintegro', formatearPrecio(devolucion.montoDevuelto)),
-                        FilaDato('Fecha', fechaLegible(DateTime.parse(devolucion.fecha))),
-                        if (devolucion.registradaPor != null)
-                          FilaDato('Registrada por', devolucion.registradaPor!),
-                        if (devolucion.resueltaPor != null)
-                          FilaDato('Resuelta por', devolucion.resueltaPor!),
-                        if (devolucion.motivoRechazo != null)
-                          FilaDato('Motivo rechazo', devolucion.motivoRechazo!),
-                        if (devolucion.estado == 'APROBADA')
-                          FilaDato('Como se reintegra', etiquetaReintegro(devolucion.reintegroMetodo)),
-                        if (devolucion.reintegroReferencia != null)
-                          FilaDato('Ref. Stripe', devolucion.reintegroReferencia!),
-                        if (devolucion.ventaCambioNumero != null)
-                          FilaDato('Cambio de prenda', 'venta ${devolucion.ventaCambioNumero}'),
-                        if (devolucion.pagoReembolsado)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 4),
-                            child: Text(
-                              'La venta quedo devuelta completa: el pago paso a reembolsado.',
-                              style: TextStyle(fontSize: 12, color: Paleta.verde),
-                            ),
-                          ),
+                        FilaDato('Origen', d.origen == 'ONLINE' ? 'Solicitud online' : 'En caja'),
+                        if (d.fechaVisita != null) FilaDato('Visita', d.visita),
+                        FilaDato('Sucursal', d.sucursal),
+                        if (d.cliente != null) FilaDato('Clienta', d.cliente!),
+                        FilaDato('Motivo', '${motivosDevolucion[d.motivoTipo] ?? d.motivoTipo}: ${d.motivo}'),
+                        if (d.esIntercambio) ...[
+                          FilaDato('Vale lo devuelto', formatearPrecio(d.montoDevuelto)),
+                          FilaDato('Vale lo nuevo', formatearPrecio(d.montoCambio)),
+                          if (d.estado == 'APROBADA') ...[
+                            FilaDato('Pago de diferencia', formatearPrecio(d.diferenciaCobrada)),
+                            FilaDato('Se le devolvio', formatearPrecio(d.montoReintegrado)),
+                          ] else
+                            FilaDato('Diferencia', _textoDiferencia(d.diferencia)),
+                        ] else
+                          FilaDato(d.estado == 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado',
+                              formatearPrecio(d.estado == 'APROBADA' ? d.montoReintegrado : d.montoDevuelto)),
+                        if (d.reintegroMetodo != null) FilaDato('Reintegro', etiquetaReintegro(d.reintegroMetodo)),
+                        if (d.reintegroReferencia != null) FilaDato('Ref. Stripe', d.reintegroReferencia!),
+                        if (d.ventaCambioNumero != null) FilaDato('Venta del cambio', d.ventaCambioNumero!),
+                        FilaDato('Fecha', fechaLegible(DateTime.parse(d.fecha))),
+                        if (d.registradaPor != null) FilaDato('Registrada por', d.registradaPor!),
+                        if (d.resueltaPor != null) FilaDato('Resuelta por', d.resueltaPor!),
+                        if (d.motivoRechazo != null) FilaDato('Motivo rechazo', d.motivoRechazo!),
                       ],
                     ),
                   ),
                   const SizedBox(height: 20),
-                  const EtiquetaDato('Detalle'),
+                  const EtiquetaDato('Prendas'),
                   const SizedBox(height: 8),
-                  ...devolucion.detalle.map(
+                  ...d.detalle.map(
                     (linea) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: TarjetaPanel(
@@ -889,27 +914,41 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                             Text(linea.producto, style: const TextStyle(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 4),
                             Text(
-                              '${linea.sku} · ${linea.talla} · ${linea.color}'
-                              '${linea.tallaSolicitada != null ? '  →  a cambio: ${linea.tallaSolicitada} · ${linea.colorSolicitado}' : ''}',
-                              style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${linea.cantidad} de ${linea.cantidadVendida} vendida(s) x '
-                              '${formatearPrecio(linea.precioUnitario)}',
+                              '${linea.cantidad} x ${linea.talla} · ${linea.color} (${formatearPrecio(linea.precioUnitario)})',
                               style: const TextStyle(fontSize: 12.5),
                             ),
+                            if (linea.tallaSolicitada != null)
+                              Text(
+                                '→ se lleva ${linea.tallaSolicitada} · ${linea.colorSolicitado}'
+                                '${linea.precioSolicitado != null ? ' (${formatearPrecio(linea.precioSolicitado!)} + IVA)' : ''}',
+                                style: const TextStyle(fontSize: 12.5, color: Paleta.flame),
+                              ),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  if (devolucion.solicitada && puedeResolver) ...[
+                  if (d.enTramite && puedeResolver) ...[
                     const SizedBox(height: 22),
+                    if (d.origen == 'ONLINE' && d.estado == 'SOLICITADA') ...[
+                      OutlinedButton.icon(
+                        onPressed: _trabajando ? null : _confirmar,
+                        icon: const Icon(Icons.event_available),
+                        label: const Text('ACEPTAR SOLICITUD'),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     ElevatedButton.icon(
-                      onPressed: _trabajando ? null : _aprobar,
+                      onPressed: _trabajando ? null : _concretar,
                       icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('APROBAR'),
+                      label: Text(d.esIntercambio ? 'CONCRETAR INTERCAMBIO' : 'CONCRETAR DEVOLUCION'),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Si la plata sale o entra en efectivo (o la compra se pago con QR) hace falta tu caja abierta.',
+                        style: TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                      ),
                     ),
                     const SizedBox(height: 10),
                     OutlinedButton(
@@ -921,23 +960,12 @@ class _DetalleDevolucionPaginaState extends State<DetalleDevolucionPagina> {
                       child: const Text('RECHAZAR'),
                     ),
                   ],
-                  if (devolucion.estado == 'APROBADA' &&
-                      devolucion.ventaCambioId == null &&
-                      context.watch<AuthService>().tienePermiso(['devoluciones.crear'])) ...[
-                    const SizedBox(height: 22),
-                    OutlinedButton.icon(
-                      onPressed: _trabajando ? null : _vincularCambio,
-                      icon: const Icon(Icons.swap_horiz),
-                      label: const Text('VINCULAR CAMBIO DE PRENDA'),
-                    ),
-                  ],
                 ],
               ),
       ),
     );
   }
 }
-
 
 /// "Que prendas solicitaron cambio en el mes" (Segundo parcial, PENDIENTES 5.10), espejo de la
 /// solapa "Cambios del mes" de la web.
@@ -1034,7 +1062,7 @@ class _CambiosMesPaginaState extends State<CambiosMesPagina> {
                       const SizedBox(height: 4),
                       Text(
                         '${f.solicitudes} solicitud(es) · ${f.unidades} prenda(s) · '
-                        '${f.aprobadas} aprob. · ${f.pendientes} pend. · ${f.rechazadas} rech.',
+                        '${f.aprobadas} realiz. · ${f.pendientes} pend. · ${f.rechazadas} no concretadas',
                         style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
                       ),
                       Text(f.sucursales.join(', '), style: const TextStyle(fontSize: 12, color: Paleta.inkSuave)),

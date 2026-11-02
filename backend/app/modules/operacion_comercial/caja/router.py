@@ -152,9 +152,10 @@ async def _calcular_arqueo(conn: asyncpg.Connection, sesion: asyncpg.Record) -> 
     efectivo = await conn.fetchrow(
         """
         SELECT fn_total_efectivo_sesion($1) AS neto,
-               (SELECT COALESCE(SUM(monto_devuelto), 0) FROM devolucion
+               -- lo que salio en mano: devoluciones e intercambios pagados en efectivo o QR
+               (SELECT COALESCE(SUM(monto_reintegrado), 0) FROM devolucion
                  WHERE sesion_caja_id = $1 AND estado = 'APROBADA'
-                   AND reintegro_metodo = 'EFECTIVO') AS devuelto
+                   AND reintegro_metodo IN ('EFECTIVO', 'QR')) AS devuelto
         """,
         sesion["id"],
     )

@@ -150,6 +150,14 @@ async def job_expirar_reservas(intervalo_segundos: int) -> None:
                 except Exception as exc:  # noqa: BLE001
                     print(f"job_expirar_reservas: fallo la expiracion de reservas ({exc!r})")
                 try:
+                    # solicitudes online de devolucion/intercambio cuya visita ya paso: libera
+                    # las prendas pedidas a cambio (tg_devolucion_stock)
+                    vencidas = await conn.fetchval("SELECT fn_expirar_devoluciones()")
+                    if vencidas:
+                        print(f"job_expirar_reservas: {vencidas} devolucion(es) online expirada(s)")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"job_expirar_reservas: fallo la expiracion de devoluciones ({exc!r})")
+                try:
                     anulados = await anular_pedidos_pendientes_vencidos(conn)
                     if anulados:
                         print(f"job_expirar_reservas: {anulados} pedido(s) efectivo/QR anulado(s) por vencimiento")

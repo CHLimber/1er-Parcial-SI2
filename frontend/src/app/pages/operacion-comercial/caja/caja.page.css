@@ -597,3 +597,56 @@
     flex: 1 1 100%;
   }
 }
+
+/* Efectivo en caja, siempre visible en la cabecera (al lado de "Cerrar caja") */
+.efectivo {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  line-height: 1.15;
+}
+
+.efectivo:hover {
+  border-color: var(--gold);
+}
+
+.efectivo[aria-busy='true'] {
+  opacity: 0.6;
+}
+
+.efectivo__etiqueta {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+.efectivo__monto {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.aviso-devoluciones {
+  display: block;
+  margin-bottom: 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--gold);
+  background: var(--white);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+
+.aviso-devoluciones:hover {
+  border-left-color: var(--flame);
+}

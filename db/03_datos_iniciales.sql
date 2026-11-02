@@ -164,12 +164,15 @@ SELECT (SELECT id FROM rol WHERE nombre = 'ENCARGADO'), p.id
 
 -- CAJERO: caja, punto de venta, verificacion de pagos online QR/efectivo (todo cuelga de
 -- caja.crear, ver get_cajero_actual en app/core/deps.py) y, desde que absorbio al VENDEDOR,
--- tambien atiende reservas en el piso y vestidores (reservas.leer / reservas.actualizar)
+-- tambien atiende reservas en el piso y vestidores (reservas.leer / reservas.actualizar).
+-- Devoluciones e intercambios: los concreta en caja (la plata sale o entra por su cajon) y
+-- acepta las solicitudes online, igual que el encargado.
 INSERT INTO rol_permiso (rol_id, permiso_id)
 SELECT (SELECT id FROM rol WHERE nombre = 'CAJERO'), p.id
   FROM permiso p
  WHERE p.codigo IN ('catalogo.leer','inventario.leer','caja.leer','caja.crear','caja.actualizar','ventas.crear',
                     'reservas.leer','reservas.actualizar',
+                    'devoluciones.leer','devoluciones.crear','devoluciones.actualizar',
                     'clientes.leer','sincronizacion.leer');
 
 -- Las coordenadas son el punto de partida de toda tarifa de delivery (CU20): sin ellas
@@ -2331,6 +2334,28 @@ VALUES
 );
 
 -- ---------------------------------------------------------------------
+-- PRECIO POR TALLA Y COLOR: cada variante puede costar distinto que el precio
+-- base de la prenda (producto_variante.precio; NULL = el precio base). Las
+-- tallas grandes llevan mas tela (+10%) y los colores de tenido especial
+-- (Vino, Camel, Rosa Palo) cuestan un poco mas (+5%); se acumulan. Sirve para
+-- probar que un intercambio por otra talla/color cobra o devuelve la
+-- diferencia. Mismo UPDATE en db/reparaciones/devoluciones_intercambios.sql.
+-- ---------------------------------------------------------------------
+UPDATE producto_variante pv
+   SET precio = round(p.precio_base
+                      * (CASE WHEN (t.tipo = 'LETRA' AND t.codigo IN ('XL', 'XXL'))
+                              OR (t.tipo = 'NUMERO' AND t.codigo IN ('42', '44'))
+                              OR (t.tipo = 'CALZADO' AND t.codigo IN ('39', '40'))
+                            THEN 1.10 ELSE 1 END)
+                      * (CASE WHEN c.nombre IN ('Vino', 'Camel', 'Rosa Palo') THEN 1.05 ELSE 1 END))
+  FROM producto p, talla t, color c
+ WHERE p.id = pv.producto_id AND t.id = pv.talla_id AND c.id = pv.color_id
+   AND ((t.tipo = 'LETRA' AND t.codigo IN ('XL', 'XXL'))
+        OR (t.tipo = 'NUMERO' AND t.codigo IN ('42', '44'))
+        OR (t.tipo = 'CALZADO' AND t.codigo IN ('39', '40'))
+        OR c.nombre IN ('Vino', 'Camel', 'Rosa Palo'));
+
+-- ---------------------------------------------------------------------
 -- INVENTARIO: cada variante en cada sucursal, repartido SEGUN EL CLIMA
 --
 -- Las sucursales estan en climas distintos, asi que la misma coleccion no se
@@ -2406,8 +2431,10 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     -- Lo lee el job periodico (app/core/jobs.py): pedidos online en efectivo/QR que nadie pago
     -- ni informo en este plazo se anulan solos.
     ('pago_pendiente_horas_vigencia', '48', 'Horas antes de anular un pedido online en efectivo/QR sin pagar ni informar'),
-    -- Lo lee devoluciones/router.py: pasado este plazo desde la venta no se registra la devolucion.
-    ('devolucion_plazo_dias',  '30',  'Dias desde la venta para aceptar una devolucion'),
+    -- Lo lee devoluciones/servicio.py: pasado este plazo desde la venta no se registra la devolucion.
+    ('devolucion_plazo_dias',  '3',   'Dias desde la venta para aceptar una devolucion'),
+    -- Tope de prendas por compra, sumando devolucion e intercambio (hay una sola por compra).
+    ('devolucion_max_unidades', '3',  'Prendas que se pueden devolver o cambiar como maximo por compra'),
     -- CU20: los lee fn_cotizar_envio(). Valores tomados del mercado boliviano de delivery
     -- (Yango / PedidosYa en Santa Cruz y La Paz, tramo corto urbano en moto).
     ('delivery_tarifa_base',   '8',   'Bs fijos por salida de reparto'),
@@ -2420,10 +2447,10 @@ INSERT INTO configuracion (clave, valor, descripcion) VALUES
     ('login_max_intentos',     '5',   'Intentos fallidos de login permitidos antes de bloquear la cuenta'),
     ('login_bloqueo_minutos',  '15',  'Minutos que la cuenta queda bloqueada tras superar login_max_intentos');
 
--- Segundo parcial (PENDIENTES 5.8): el cambio por talla/color tiene su propio plazo, mas corto
--- que la devolucion con reintegro. Lo lee devoluciones/router.py.
+-- El intercambio por talla/color tiene su propio parametro de plazo (PENDIENTES 5.8). Hoy vale lo
+-- mismo que la devolucion: 3 dias desde la compra. Lo lee devoluciones/servicio.py.
 INSERT INTO configuracion (clave, valor, descripcion) VALUES
-    ('cambio_plazo_dias', '15', 'Dias desde la venta para aceptar un cambio de prenda por talla o color');
+    ('cambio_plazo_dias', '3', 'Dias desde la venta para aceptar un intercambio de prenda por talla o color');
 
 -- ---------------------------------------------------------------------
 -- SAAS: dos planes (los de la consigna) y una suscripcion por EMPRESA.

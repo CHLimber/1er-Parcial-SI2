@@ -52,7 +52,8 @@
         <div class="detalle__info">
           <span class="detalle__categoria">{{ p.categoria }} · {{ p.marca ?? 'FashionStore' }}</span>
           <h1 class="detalle__nombre">{{ p.nombre }}</h1>
-          <span class="detalle__precio">{{ formatearPrecio(p.precio_base) }}</span>
+          <!-- cada talla/color puede tener su propio precio (producto_variante.precio) -->
+          <span class="detalle__precio">{{ formatearPrecio(varianteSeleccionada()?.precio ?? p.precio_base) }}</span>
 
           @if (p.descripcion) {
             <p class="detalle__descripcion">{{ p.descripcion }}</p>

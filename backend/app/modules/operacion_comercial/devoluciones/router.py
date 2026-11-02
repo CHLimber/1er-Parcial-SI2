@@ -1,64 +1,43 @@
-"""Devoluciones de ventas (objetivo 11 de la consigna, PENDIENTES 2.7).
+"""Devoluciones e intercambios de ventas, lado del personal (ENCARGADO, CAJERO o ADMIN).
 
-Flujo en dos pasos, los dos del personal de la sucursal (ENCARGADO o ADMIN):
-  1. Registrar (POST /devoluciones): sobre una venta PAGADA o ENTREGADA de la sucursal, se
-     eligen lineas de venta_detalle y cantidades. Nace SOLICITADA y NO mueve stock.
-  2. Resolver: aprobar (POST /{id}/aprobar) o rechazar (POST /{id}/rechazar, con motivo).
-     Aprobar solo cambia devolucion.estado; el trigger tg_devolucion_stock (db/02_logica.sql)
-     reingresa cada linea con fn_mover_inventario tipo DEVOLUCION y deja el kardex, mismo
-     patron que tg_confirmar_recepcion. Este modulo nunca toca inventario.
+Dos tipos, con las mismas reglas (PENDIENTES 10):
+  - DEVOLUCION (motivo DEFECTO, NO_GUSTO u OTRO): vuelve la prenda y vuelve la plata.
+  - INTERCAMBIO (motivo TALLA o COLOR): vuelve la prenda y la clienta se lleva otra talla/color de
+    la misma prenda. Lo devuelto queda como credito; si lo nuevo cuesta mas paga la diferencia en
+    caja, si cuesta menos se le devuelve lo que sobra. Antes un cambio se aprobaba como devolucion
+    (reintegraba todo, Stripe incluido) y la prenda nueva se cobraba aparte: eso se termino.
 
-Reglas de negocio:
-  - Tope por linea: no se devuelve mas de lo vendido. Al REGISTRAR se descuenta lo ya
-    APROBADO y tambien lo que esta en tramite (SOLICITADA), para que dos solicitudes
-    pendientes no sumen mas de lo vendido; al APROBAR la base vuelve a verificar contra lo
-    aprobado, con la venta bloqueada (FOR UPDATE), asi dos aprobaciones simultaneas no se
-    pisan. Exceso -> 409.
-  - Monto a reintegrar: se prorratea lo que la clienta pago POR LA MERCADERIA
-    (venta.total - venta.costo_envio, es decir, ya con el descuento de la promo y el IVA)
-    en proporcion al subtotal de lista de cada linea:
-        monto = sum(cantidad * subtotal_linea / cantidad_linea) * (total - envio) / sum(subtotales)
-    Asi un descuento global de la venta se reparte parejo entre todas las prendas y el IVA
-    cobrado se devuelve. El costo de envio NO se devuelve: el servicio de delivery se presto.
-    La devolucion que completa la venta (ya no queda ninguna unidad sin devolver) se lleva el
-    resto exacto (total - envio - lo ya devuelto) para que los centavos de redondeo cierren.
-    El monto se guarda al registrar como estimado y se recalcula al aprobar.
-  - Pago: si la devolucion aprobada completa la venta, los pagos APROBADO de la venta pasan a
-    REEMBOLSADO. En una devolucion parcial el pago queda APROBADO (el enum no tiene un estado
-    "reembolsado en parte") y lo reintegrado queda en devolucion.monto_devuelto. La venta no
-    cambia de estado (sigue PAGADA/ENTREGADA: la venta existio).
-  - Reintegro (al aprobar, segun como se pago la venta; queda en devolucion.reintegro_*):
-      STRIPE -> reembolso parcial real por la API (idempotente por devolucion); si Stripe lo
-                rechaza la aprobacion se deshace (502).
-      EFECTIVO -> sale del cajon: exige una sesion de caja abierta de quien aprueba y la
-                devolucion queda atada a ella (fn_total_efectivo_sesion la resta del arqueo).
-      TARJETA/QR/TRANSFERENCIA -> se devuelve fuera del sistema (el QR es simulado); queda
-                registrado el metodo, quien aprobo y cuando.
-  - Plazo: configuracion.devolucion_plazo_dias (30 por defecto) desde la fecha de la venta. El
-    cambio por talla/color (motivo_tipo TALLA/COLOR) corre su propio plazo, mas corto:
-    configuracion.cambio_plazo_dias (15 por defecto). PENDIENTES 5.8.
-  - Condiciones de la prenda (las verifica el personal al recibirla): para TALLA, COLOR,
-    NO_GUSTO y OTRO tiene que volver con etiqueta, sin uso y con el comprobante de compra; por
-    DEFECTO alcanza con el comprobante (la falla es de la tienda). Si falta alguna -> 409.
-  - Cambio por talla/color: cada linea dice que variante se lleva la clienta a cambio
-    (variante_solicitada_id): la misma prenda, otra talla (TALLA) u otro color (COLOR), con stock
-    disponible en la sucursal. En los otros motivos no se acepta una variante solicitada.
-  - Cambio de prenda = devolucion + venta nueva cobrada en caja; POST /{id}/cambio vincula esa
-    venta a la devolucion (venta_cambio_id) para que quede la trazabilidad.
-  - Nota de devolucion: cada devolucion tiene un numero correlativo NDV-xxxxxx (secuencia de la
-    base) y GET /{id}/nota devuelve los datos del comprobante imprimible (PENDIENTES 5.9).
-  - GET /cambios-mes responde "que prendas solicitaron cambio en el mes" (PENDIENTES 5.10).
-  - Sucursal: la devolucion se registra y el stock reingresa en la sucursal de la venta.
-  - La clienta recibe una notificacion (tipo VENTA, entidad VENTA) al aprobar o rechazar. Las
-    ventas POS sin clienta identificada (venta.usuario_id NULL) no notifican a nadie.
-  - Multi-tenant: la venta, la devolucion y la sucursal tienen que ser de la empresa del
-    usuario; lo de otra empresa responde 404 (ni siquiera se confirma que el numero existe). La
-    nota de devolucion sale con la razon social y el NIT de la empresa (tabla empresa).
+Dos origenes:
+  - CAJA: la clienta esta en la sucursal. Registrar (POST /devoluciones) -> SOLICITADA, y concretar
+    (POST /{id}/aprobar) o rechazar.
+  - ONLINE: la clienta la pide desde Mis compras (cliente_router.py) con fecha y hora de visita,
+    como una reserva. El personal la acepta (POST /{id}/confirmar -> CONFIRMADA) o la rechaza, y
+    cuando la clienta llega se concreta en caja con el mismo POST /{id}/aprobar. Vence en expira_en
+    (fn_expirar_devoluciones) y la clienta puede cancelarla.
+
+Reglas (las comunes viven en servicio.py):
+  - Plazo: 3 dias desde la venta (configuracion devolucion_plazo_dias / cambio_plazo_dias).
+  - Una sola devolucion/intercambio por compra (las rechazadas/canceladas/expiradas no cuentan) y
+    hasta configuracion.devolucion_max_unidades prendas (3). La venta que nace de un intercambio no
+    se devuelve de nuevo.
+  - Condiciones de la prenda: TALLA, COLOR, NO_GUSTO y OTRO exigen etiqueta, sin uso y comprobante;
+    DEFECTO solo el comprobante. En una solicitud online se verifican al concretar.
+  - Stock: aprobar solo cambia el estado y tg_devolucion_stock reingresa lo devuelto; las prendas
+    pedidas a cambio se comprometen al registrar y el trigger libera ese compromiso al cerrar. La
+    venta del intercambio (venta_cambio_id) la arma este modulo al aprobar y su venta_detalle
+    descuenta el stock como cualquier venta.
+  - Reintegro (por donde entro la plata): STRIPE -> reembolso parcial por la API (si Stripe lo
+    rechaza se deshace todo, 502); EFECTIVO y QR -> en efectivo desde el cajon de la sesion de caja
+    abierta de quien aprueba (fn_total_efectivo_sesion lo resta del arqueo); TARJETA/TRANSFERENCIA
+    -> fuera del sistema, queda registrado.
+  - La clienta recibe una notificacion en cada paso y, al aprobarse, el comprobante por correo
+    (job de avisos, app/core/comprobante_devolucion.py).
+  - Multi-tenant: lo de otra empresa responde 404; el personal de sucursal ve solo la suya (403).
 """
 
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
-from uuid import UUID
+from decimal import Decimal
+from uuid import UUID, uuid4
 
 import asyncpg
 import stripe
@@ -75,8 +54,9 @@ from app.core.tenant import (
     sucursal_visible,
 )
 from app.modules.operacion_comercial.caja.router import obtener_sesion_abierta
+from app.modules.operacion_comercial.devoluciones import servicio
 from app.modules.operacion_comercial.devoluciones.schemas import (
-    CambioIn,
+    AprobacionIn,
     CambioMesOut,
     CambiosMesOut,
     DetalleDevolucionOut,
@@ -89,6 +69,10 @@ from app.modules.operacion_comercial.devoluciones.schemas import (
     VarianteCambioOut,
     VentaDevolvibleOut,
 )
+from app.modules.operacion_comercial.devoluciones.servicio import (  # noqa: F401 (los tests los usan)
+    condiciones_faltantes,
+    validar_variante_cambio,
+)
 from app.modules.operacion_comercial.pagos.servicio import reembolsar_parcial_stripe
 
 router = APIRouter(prefix="/devoluciones", tags=["devoluciones"])
@@ -97,25 +81,25 @@ puede_ver = requiere_permiso("devoluciones.leer", "devoluciones.crear", "devoluc
 puede_crear = requiere_permiso("devoluciones.crear")
 puede_resolver = requiere_permiso("devoluciones.actualizar")
 
-CENTAVO = Decimal("0.01")
-ESTADOS_VENTA_DEVOLVIBLE = ("PAGADA", "ENTREGADA")
-PLAZO_DIAS_POR_DEFECTO = 30  # si falta configuracion.devolucion_plazo_dias
-PLAZO_CAMBIO_POR_DEFECTO = 15  # si falta configuracion.cambio_plazo_dias
-MOTIVOS_CAMBIO = ("TALLA", "COLOR")
+_metodo_reintegro = servicio.metodo_reintegro  # nombre historico, lo usan los tests
 
 # texto de la notificacion a la clienta segun como vuelve la plata
 _COMO_SE_REINTEGRA = {
     "STRIPE": " a tu tarjeta (puede tardar unos dias en verse)",
     "EFECTIVO": " en efectivo en la sucursal",
+    "QR": " en efectivo en la sucursal",
 }
 
 SELECT_DEVOLUCION = """
-SELECT d.id, d.numero, d.venta_id, v.numero AS venta_numero, v.total AS venta_total,
-       d.sucursal_id, s.nombre AS sucursal,
+SELECT d.id, d.numero, d.tipo, d.origen, d.venta_id, v.numero AS venta_numero,
+       v.total AS venta_total, d.sucursal_id, s.nombre AS sucursal,
        (cli.nombre || ' ' || cli.apellido) AS cliente,
        d.motivo_tipo::text AS motivo_tipo, d.motivo,
        d.con_etiqueta, d.sin_uso, d.con_comprobante,
-       d.monto_devuelto, d.estado, d.fecha,
+       d.monto_devuelto, d.monto_cambio,
+       CASE WHEN d.tipo = 'INTERCAMBIO' THEN d.monto_cambio - d.monto_devuelto ELSE 0 END AS diferencia,
+       d.monto_reintegrado, d.diferencia_cobrada, d.diferencia_metodo,
+       d.estado::text AS estado, d.fecha, d.fecha_visita, d.hora_visita, d.expira_en,
        (reg.nombre || ' ' || reg.apellido) AS registrada_por,
        (res.nombre || ' ' || res.apellido) AS resuelta_por,
        d.resuelta_en, d.motivo_rechazo,
@@ -133,6 +117,25 @@ LEFT JOIN usuario res ON res.id = d.resuelta_por_id
 LEFT JOIN venta vc    ON vc.id = d.venta_cambio_id
 """
 
+SELECT_DETALLE = """
+SELECT dd.id, dd.venta_detalle_id, vd.variante_id, pv.sku, pr.nombre AS producto,
+       t.codigo AS talla, c.nombre AS color, dd.cantidad,
+       vd.cantidad AS cantidad_vendida, vd.precio_unitario,
+       dd.variante_solicitada_id, ts.codigo AS talla_solicitada,
+       cs.nombre AS color_solicitado, ps.sku AS sku_solicitado, dd.precio_solicitado
+FROM devolucion_detalle dd
+JOIN venta_detalle vd     ON vd.id = dd.venta_detalle_id
+JOIN producto_variante pv ON pv.id = vd.variante_id
+JOIN producto pr          ON pr.id = pv.producto_id
+JOIN talla t              ON t.id = pv.talla_id
+JOIN color c              ON c.id = pv.color_id
+LEFT JOIN producto_variante ps ON ps.id = dd.variante_solicitada_id
+LEFT JOIN talla ts             ON ts.id = ps.talla_id
+LEFT JOIN color cs             ON cs.id = ps.color_id
+WHERE dd.devolucion_id = $1
+ORDER BY pr.nombre, t.orden, c.nombre
+"""
+
 
 async def _exigir_alcance(
     conn: asyncpg.Connection, staff: dict, sucursal_id: UUID, que: str
@@ -145,123 +148,31 @@ async def _exigir_alcance(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"{que} es de otra sucursal")
 
 
-async def _config_dias(conn: asyncpg.Connection, clave: str, por_defecto: int) -> int:
-    valor = await conn.fetchval("SELECT valor FROM configuracion WHERE clave = $1", clave)
-    try:
-        return int(valor) if valor is not None else por_defecto
-    except ValueError:
-        return por_defecto
-
-
-async def _plazo_dias(conn: asyncpg.Connection) -> int:
-    return await _config_dias(conn, "devolucion_plazo_dias", PLAZO_DIAS_POR_DEFECTO)
-
-
-async def _plazo_cambio_dias(conn: asyncpg.Connection) -> int:
-    return await _config_dias(conn, "cambio_plazo_dias", PLAZO_CAMBIO_POR_DEFECTO)
-
-
-def condiciones_faltantes(
-    motivo_tipo: str, con_etiqueta: bool, sin_uso: bool, con_comprobante: bool
-) -> list[str]:
-    """Condiciones que la prenda no cumple para el motivo dado (vacio = se acepta). Por DEFECTO
-    solo se exige el comprobante: la prenda pudo usarse hasta notar la falla."""
-    faltan = []
-    if not con_comprobante:
-        faltan.append("el comprobante de compra")
-    if motivo_tipo != "DEFECTO":
-        if not con_etiqueta:
-            faltan.append("la etiqueta original")
-        if not sin_uso:
-            faltan.append("la prenda sin uso")
-    return faltan
-
-
-def validar_variante_cambio(motivo_tipo: str, original, solicitada) -> str | None:
-    """Error de negocio si la variante pedida a cambio no sirve para el motivo, o None.
-    original/solicitada son filas (o dicts) con producto_id, talla_id y color_id."""
-    if solicitada["producto_id"] != original["producto_id"]:
-        return "el cambio tiene que ser por la misma prenda"
-    if motivo_tipo == "TALLA" and solicitada["talla_id"] == original["talla_id"]:
-        return "un cambio por talla tiene que pedir otra talla"
-    if motivo_tipo == "COLOR" and solicitada["color_id"] == original["color_id"]:
-        return "un cambio por color tiene que pedir otro color"
-    return None
-
-
-async def _pago_de_venta(conn: asyncpg.Connection, venta_id: UUID) -> asyncpg.Record | None:
-    return await conn.fetchrow(
-        """
-        SELECT metodo::text AS metodo, pasarela::text AS pasarela, id_transaccion
-        FROM pago WHERE venta_id = $1 AND estado = 'APROBADO'
-        ORDER BY creado_en DESC LIMIT 1
-        """,
-        venta_id,
-    )
-
-
-def _metodo_reintegro(pago: asyncpg.Record | None) -> str | None:
-    """Por donde vuelve la plata: por donde entro. Un pago online va por pasarela (STRIPE o el QR
-    simulado); uno de caja, por su metodo."""
-    if pago is None:
+async def armar_detalle(conn: asyncpg.Connection, devolucion_id: UUID) -> DevolucionDetalleOut | None:
+    """La devolucion con su detalle, sin chequeo de alcance (lo hace quien llama)."""
+    cabecera = await conn.fetchrow(SELECT_DEVOLUCION + "WHERE d.id = $1", devolucion_id)
+    if cabecera is None:
         return None
-    if pago["pasarela"] in ("STRIPE", "QR"):
-        return pago["pasarela"]
-    if pago["metodo"] in ("EFECTIVO", "TARJETA", "QR", "TRANSFERENCIA"):
-        return pago["metodo"]
-    return None
-
-
-# ---------------------------------------------------------------------
-#  CALCULO DEL MONTO
-# ---------------------------------------------------------------------
-
-
-async def _base_venta(conn: asyncpg.Connection, venta_id: UUID) -> tuple[Decimal, Decimal]:
-    """(lo pagado por la mercaderia, suma de subtotales de lista de sus lineas)."""
-    fila = await conn.fetchrow(
-        """
-        SELECT v.total - v.costo_envio AS mercaderia,
-               (SELECT COALESCE(SUM(vd.subtotal), 0) FROM venta_detalle vd
-                 WHERE vd.venta_id = v.id) AS suma_lineas
-        FROM venta v WHERE v.id = $1
-        """,
-        venta_id,
+    filas = await conn.fetch(SELECT_DETALLE, devolucion_id)
+    reembolsado = await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM pago WHERE venta_id = $1 AND estado = 'REEMBOLSADO')",
+        cabecera["venta_id"],
     )
-    return fila["mercaderia"], fila["suma_lineas"]
-
-
-def _prorratear(bruto: Decimal, mercaderia: Decimal, suma_lineas: Decimal) -> Decimal:
-    if suma_lineas <= 0:
-        return Decimal("0.00")
-    return (bruto * mercaderia / suma_lineas).quantize(CENTAVO, rounding=ROUND_HALF_UP)
-
-
-async def _monto_devolucion(
-    conn: asyncpg.Connection, venta_id: UUID, devolucion_id: UUID, cierra_la_venta: bool
-) -> Decimal:
-    mercaderia, suma_lineas = await _base_venta(conn, venta_id)
-    if cierra_la_venta:
-        ya_devuelto = await conn.fetchval(
-            """
-            SELECT COALESCE(SUM(monto_devuelto), 0) FROM devolucion
-             WHERE venta_id = $1 AND estado = 'APROBADA' AND id <> $2
-            """,
-            venta_id,
-            devolucion_id,
-        )
-        return max(mercaderia - ya_devuelto, Decimal("0.00"))
-
-    bruto = await conn.fetchval(
-        """
-        SELECT COALESCE(SUM(dd.cantidad * vd.subtotal / vd.cantidad), 0)
-        FROM devolucion_detalle dd
-        JOIN venta_detalle vd ON vd.id = dd.venta_detalle_id
-        WHERE dd.devolucion_id = $1
-        """,
-        devolucion_id,
+    return DevolucionDetalleOut(
+        **dict(cabecera),
+        detalle=[DetalleDevolucionOut(**dict(f)) for f in filas],
+        pago_reembolsado=bool(reembolsado),
     )
-    return _prorratear(bruto, mercaderia, suma_lineas)
+
+
+async def _con_detalle(
+    conn: asyncpg.Connection, devolucion_id: UUID, staff: dict
+) -> DevolucionDetalleOut:
+    devolucion = await armar_detalle(conn, devolucion_id)
+    if devolucion is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
+    await _exigir_alcance(conn, staff, devolucion.sucursal_id, "Esa devolucion")
+    return devolucion
 
 
 # ---------------------------------------------------------------------
@@ -269,76 +180,13 @@ async def _monto_devolucion(
 # ---------------------------------------------------------------------
 
 
-async def _lineas_de_venta(conn: asyncpg.Connection, venta_id: UUID) -> list[asyncpg.Record]:
-    return await conn.fetch(
-        """
-        SELECT vd.id AS venta_detalle_id, vd.variante_id, pv.sku, pr.nombre AS producto,
-               t.codigo AS talla, c.nombre AS color,
-               vd.cantidad AS cantidad_vendida, vd.precio_unitario, vd.subtotal,
-               COALESCE(SUM(dd.cantidad) FILTER (WHERE dv.estado = 'APROBADA'), 0)::int AS devuelta,
-               COALESCE(SUM(dd.cantidad) FILTER (WHERE dv.estado = 'SOLICITADA'), 0)::int AS en_tramite
-        FROM venta_detalle vd
-        JOIN producto_variante pv ON pv.id = vd.variante_id
-        JOIN producto pr          ON pr.id = pv.producto_id
-        JOIN talla t              ON t.id = pv.talla_id
-        JOIN color c              ON c.id = pv.color_id
-        LEFT JOIN devolucion_detalle dd ON dd.venta_detalle_id = vd.id
-        LEFT JOIN devolucion dv         ON dv.id = dd.devolucion_id
-        WHERE vd.venta_id = $1
-        GROUP BY vd.id, pv.sku, pr.nombre, t.codigo, t.orden, c.nombre
-        ORDER BY pr.nombre, t.orden, c.nombre
-        """,
-        venta_id,
-    )
-
-
-async def _obtener(conn: asyncpg.Connection, devolucion_id: UUID, staff: dict) -> DevolucionOut:
-    fila = await conn.fetchrow(SELECT_DEVOLUCION + "WHERE d.id = $1", devolucion_id)
-    if fila is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
-    await _exigir_alcance(conn, staff, fila["sucursal_id"], "Esa devolucion")
-    return DevolucionOut(**dict(fila))
-
-
-async def _con_detalle(
-    conn: asyncpg.Connection, devolucion_id: UUID, staff: dict
-) -> DevolucionDetalleOut:
-    cabecera = await _obtener(conn, devolucion_id, staff)
-    filas = await conn.fetch(
-        """
-        SELECT dd.id, dd.venta_detalle_id, vd.variante_id, pv.sku, pr.nombre AS producto,
-               t.codigo AS talla, c.nombre AS color, dd.cantidad,
-               vd.cantidad AS cantidad_vendida, vd.precio_unitario,
-               dd.variante_solicitada_id, ts.codigo AS talla_solicitada,
-               cs.nombre AS color_solicitado, ps.sku AS sku_solicitado
-        FROM devolucion_detalle dd
-        JOIN venta_detalle vd     ON vd.id = dd.venta_detalle_id
-        JOIN producto_variante pv ON pv.id = vd.variante_id
-        JOIN producto pr          ON pr.id = pv.producto_id
-        JOIN talla t              ON t.id = pv.talla_id
-        JOIN color c              ON c.id = pv.color_id
-        LEFT JOIN producto_variante ps ON ps.id = dd.variante_solicitada_id
-        LEFT JOIN talla ts             ON ts.id = ps.talla_id
-        LEFT JOIN color cs             ON cs.id = ps.color_id
-        WHERE dd.devolucion_id = $1
-        ORDER BY pr.nombre, t.orden, c.nombre
-        """,
-        devolucion_id,
-    )
-    reembolsado = await conn.fetchval(
-        "SELECT EXISTS (SELECT 1 FROM pago WHERE venta_id = $1 AND estado = 'REEMBOLSADO')",
-        cabecera.venta_id,
-    )
-    return DevolucionDetalleOut(
-        **cabecera.model_dump(),
-        detalle=[DetalleDevolucionOut(**dict(f)) for f in filas],
-        pago_reembolsado=reembolsado,
-    )
-
-
 @router.get("", response_model=list[DevolucionOut])
 async def listar_devoluciones(
-    estado: str | None = Query(default=None, pattern="^(SOLICITADA|APROBADA|RECHAZADA)$"),
+    tipo: str | None = Query(default=None, pattern="^(DEVOLUCION|INTERCAMBIO)$"),
+    origen: str | None = Query(default=None, pattern="^(CAJA|ONLINE)$"),
+    estado: str | None = Query(
+        default=None, pattern="^(SOLICITADA|CONFIRMADA|APROBADA|RECHAZADA|CANCELADA|EXPIRADA)$"
+    ),
     venta: str | None = Query(
         default=None, max_length=40, description="Numero de venta o de nota (parcial)"
     ),
@@ -359,7 +207,10 @@ async def listar_devoluciones(
           AND ($4::text IS NULL OR d.motivo_tipo::text = $4)
           AND ($5::date IS NULL OR d.fecha >= $5::date)
           AND ($6::date IS NULL OR d.fecha < $6::date + 1)
-        ORDER BY d.fecha DESC
+          AND ($8::text IS NULL OR d.tipo = $8)
+          AND ($9::text IS NULL OR d.origen = $9)
+        -- lo que espera al personal primero (solicitudes online por aceptar o por concretar)
+        ORDER BY (d.estado IN ('SOLICITADA', 'CONFIRMADA')) DESC, d.fecha DESC
         LIMIT 200
         """,
         limite,
@@ -369,8 +220,31 @@ async def listar_devoluciones(
         desde,
         hasta,
         empresa_de(staff),
+        tipo,
+        origen,
     )
     return [DevolucionOut(**dict(fila)) for fila in filas]
+
+
+@router.get("/pendientes", response_model=dict)
+async def contar_pendientes(
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_ver),
+) -> dict:
+    """Cuantas solicitudes esperan al personal en su sucursal: por aceptar (SOLICITADA online) y
+    por concretar en caja (CONFIRMADA). Lo muestra la pantalla de Caja."""
+    fila = await conn.fetchrow(
+        """
+        SELECT COUNT(*) FILTER (WHERE d.estado = 'SOLICITADA' AND d.origen = 'ONLINE') AS por_aceptar,
+               COUNT(*) FILTER (WHERE d.estado = 'CONFIRMADA') AS por_concretar
+        FROM devolucion d JOIN sucursal s ON s.id = d.sucursal_id
+        WHERE s.empresa_id = $1 AND ($2::uuid IS NULL OR d.sucursal_id = $2)
+          AND d.estado IN ('SOLICITADA', 'CONFIRMADA')
+        """,
+        empresa_de(staff),
+        sucursal_visible(staff),
+    )
+    return {"por_aceptar": fila["por_aceptar"] or 0, "por_concretar": fila["por_concretar"] or 0}
 
 
 @router.get("/venta", response_model=VentaDevolvibleOut)
@@ -380,11 +254,11 @@ async def buscar_venta(
     staff: dict = Depends(puede_ver),
 ) -> VentaDevolvibleOut:
     """La venta sobre la que se va a registrar la devolucion, con lo que queda por devolver
-    de cada linea y cuanto se reintegra por unidad."""
+    de cada linea y cuanto vale cada unidad."""
     venta = await conn.fetchrow(
         """
-        SELECT v.id AS venta_id, v.numero, v.fecha, v.estado, v.canal, v.sucursal_id,
-               s.nombre AS sucursal, (cli.nombre || ' ' || cli.apellido) AS cliente,
+        SELECT v.id AS venta_id, v.numero, v.fecha, v.estado::text AS estado, v.canal::text AS canal,
+               v.sucursal_id, s.nombre AS sucursal, (cli.nombre || ' ' || cli.apellido) AS cliente,
                v.subtotal, v.descuento, v.costo_envio, v.total,
                (SELECT COALESCE(SUM(monto_devuelto), 0) FROM devolucion
                  WHERE venta_id = v.id AND estado = 'APROBADA') AS total_devuelto,
@@ -398,31 +272,34 @@ async def buscar_venta(
         WHERE upper(v.numero) = upper($1) AND s.empresa_id = $4
         """,
         numero.strip(),
-        await _plazo_dias(conn),
-        await _plazo_cambio_dias(conn),
+        await servicio.plazo_dias(conn, "DEVOLUCION"),
+        await servicio.plazo_dias(conn, "INTERCAMBIO"),
         empresa_de(staff),
     )
     if venta is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe una venta con ese numero")
     await _exigir_alcance(conn, staff, venta["sucursal_id"], "Esa venta")
-    if venta["estado"] not in ESTADOS_VENTA_DEVOLVIBLE:
+    if venta["estado"] not in servicio.ESTADOS_VENTA_DEVOLVIBLE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"La venta esta {venta['estado'].lower()}: solo se devuelve una venta pagada o entregada",
         )
 
-    mercaderia, suma_lineas = await _base_venta(conn, venta["venta_id"])
+    mercaderia, suma_lineas = await servicio.base_venta(conn, venta["venta_id"])
     lineas = []
-    for fila in await _lineas_de_venta(conn, venta["venta_id"]):
+    for fila in await servicio.lineas_de_venta(conn, venta["venta_id"]):
         datos = dict(fila)
         datos["devolvible"] = max(datos["cantidad_vendida"] - datos["devuelta"] - datos["en_tramite"], 0)
-        datos["reembolso_unitario"] = _prorratear(
+        datos["reembolso_unitario"] = servicio.prorratear(
             datos["subtotal"] / datos["cantidad_vendida"], mercaderia, suma_lineas
         )
         lineas.append(LineaVentaOut(**datos))
     return VentaDevolvibleOut(
         **dict(venta),
-        reintegro_metodo=_metodo_reintegro(await _pago_de_venta(conn, venta["venta_id"])),
+        reintegro_metodo=servicio.metodo_reintegro(await servicio.pago_de_venta(conn, venta["venta_id"])),
+        max_unidades=await servicio.max_unidades(conn),
+        solicitud_vigente=await servicio.solicitud_vigente(conn, venta["venta_id"]),
+        es_venta_de_cambio=await servicio.es_venta_de_cambio(conn, venta["venta_id"]),
         lineas=lineas,
     )
 
@@ -440,25 +317,11 @@ async def variantes_para_cambio(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> list[VarianteCambioOut]:
-    """Las otras tallas/colores de la misma prenda con su disponible en la sucursal, para elegir
-    que se lleva la clienta en un cambio."""
+    """Las otras tallas/colores de la misma prenda con su precio y disponible en la sucursal, para
+    elegir que se lleva la clienta en un intercambio."""
     await _exigir_alcance(conn, staff, sucursal_id, "Esa sucursal")
     await exigir_variantes(conn, [variante_id], empresa_de(staff))
-    filas = await conn.fetch(
-        """
-        SELECT pv.id AS variante_id, pv.sku, t.codigo AS talla, c.nombre AS color,
-               COALESCE(i.disponible, 0) AS disponible
-        FROM producto_variante pv
-        JOIN producto_variante orig ON orig.id = $1 AND orig.producto_id = pv.producto_id
-        JOIN talla t ON t.id = pv.talla_id
-        JOIN color c ON c.id = pv.color_id
-        LEFT JOIN inventario i ON i.variante_id = pv.id AND i.sucursal_id = $2
-        WHERE pv.activa AND pv.id <> $1
-        ORDER BY t.orden, c.nombre
-        """,
-        variante_id,
-        sucursal_id,
-    )
+    filas = await servicio.variantes_de_cambio(conn, variante_id, sucursal_id)
     return [VarianteCambioOut(**dict(f)) for f in filas]
 
 
@@ -467,14 +330,14 @@ async def cambios_del_mes(
     anio: int | None = Query(default=None, ge=2020, le=2100),
     mes: int | None = Query(default=None, ge=1, le=12),
     incluir_otros_motivos: bool = Query(
-        default=False, description="False: solo TALLA/COLOR (cambios). True: toda devolucion"
+        default=False, description="False: solo intercambios (TALLA/COLOR). True: toda devolucion"
     ),
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> CambiosMesOut:
     """Que prendas solicitaron cambio en el mes (PENDIENTES 5.10). Agrupa por prenda, talla/
-    color original y lo que se pidio a cambio; por defecto el mes en curso. Un ENCARGADO ve su
-    sucursal, el ADMIN toda la cadena."""
+    color original y lo que se pidio a cambio; por defecto el mes en curso. El personal de
+    sucursal ve la suya, el ADMIN toda la cadena."""
     hoy = date.today()
     anio = anio or hoy.year
     mes = mes or hoy.month
@@ -488,8 +351,10 @@ async def cambios_del_mes(
                COUNT(DISTINCT d.id)::int AS solicitudes,
                SUM(dd.cantidad)::int AS unidades,
                COUNT(DISTINCT d.id) FILTER (WHERE d.estado = 'APROBADA')::int AS aprobadas,
-               COUNT(DISTINCT d.id) FILTER (WHERE d.estado = 'RECHAZADA')::int AS rechazadas,
-               COUNT(DISTINCT d.id) FILTER (WHERE d.estado = 'SOLICITADA')::int AS pendientes,
+               COUNT(DISTINCT d.id) FILTER (
+                   WHERE d.estado IN ('RECHAZADA', 'CANCELADA', 'EXPIRADA'))::int AS rechazadas,
+               COUNT(DISTINCT d.id) FILTER (
+                   WHERE d.estado IN ('SOLICITADA', 'CONFIRMADA'))::int AS pendientes,
                array_agg(DISTINCT s.nombre) AS sucursales
         FROM devolucion d
         JOIN devolucion_detalle dd ON dd.devolucion_id = d.id
@@ -504,7 +369,7 @@ async def cambios_del_mes(
         LEFT JOIN color cs             ON cs.id = ps.color_id
         WHERE d.fecha >= $1 AND d.fecha < $2 AND s.empresa_id = $5
           AND ($3::uuid IS NULL OR d.sucursal_id = $3)
-          AND ($4 OR d.motivo_tipo IN ('TALLA','COLOR'))
+          AND ($4 OR d.tipo = 'INTERCAMBIO')
         GROUP BY pr.id, pr.nombre, d.motivo_tipo, t.codigo, t.orden, c.nombre, ts.codigo, cs.nombre
         ORDER BY SUM(dd.cantidad) DESC, pr.nombre, t.orden
         """,
@@ -532,8 +397,8 @@ async def nota_de_devolucion(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_ver),
 ) -> NotaDevolucionOut:
-    """Datos de la nota de devolucion imprimible (PENDIENTES 5.9): la devolucion con su detalle
-    mas los datos de la empresa y de la sucursal. El front la arma y la imprime."""
+    """Datos de la nota imprimible (PENDIENTES 5.9): la devolucion con su detalle mas los datos de
+    la empresa y de la sucursal. El front la arma y la imprime."""
     devolucion = await _con_detalle(conn, devolucion_id, staff)
     extra = await conn.fetchrow(
         """
@@ -547,16 +412,13 @@ async def nota_de_devolucion(
         """,
         devolucion_id,
     )
-    plazo = await (
-        _plazo_cambio_dias(conn) if devolucion.motivo_tipo in MOTIVOS_CAMBIO else _plazo_dias(conn)
-    )
     return NotaDevolucionOut(
         empresa_razon_social=extra["razon"],
         empresa_nit=extra["nit"] or "-",
         sucursal_direccion=extra["sucursal_direccion"],
         sucursal_ciudad=extra["sucursal_ciudad"],
         venta_fecha=extra["venta_fecha"],
-        plazo_dias=plazo,
+        plazo_dias=await servicio.plazo_dias(conn, devolucion.tipo),
         devolucion=devolucion,
     )
 
@@ -571,60 +433,8 @@ async def obtener_devolucion(
 
 
 # ---------------------------------------------------------------------
-#  REGISTRO
+#  REGISTRO EN CAJA
 # ---------------------------------------------------------------------
-
-
-async def _validar_cambio_linea(
-    conn: asyncpg.Connection,
-    motivo_tipo: str,
-    sucursal_id: UUID,
-    linea: asyncpg.Record,
-    variante_solicitada_id: UUID,
-    cantidad: int,
-) -> None:
-    """La variante pedida a cambio: misma prenda, otra talla/color y con stock en la sucursal.
-    No compromete el stock (eso lo hace la venta del cambio en caja); solo evita aceptar un
-    cambio que la tienda no puede cumplir."""
-    variantes = {
-        f["id"]: f
-        for f in await conn.fetch(
-            """
-            SELECT pv.id, pv.producto_id, pv.talla_id, pv.color_id, pv.activa,
-                   t.codigo AS talla, c.nombre AS color,
-                   COALESCE((SELECT disponible FROM inventario
-                              WHERE sucursal_id = $3 AND variante_id = pv.id), 0) AS disponible
-            FROM producto_variante pv
-            JOIN talla t ON t.id = pv.talla_id
-            JOIN color c ON c.id = pv.color_id
-            WHERE pv.id IN ($1, $2)
-            """,
-            linea["variante_id"],
-            variante_solicitada_id,
-            sucursal_id,
-        )
-    }
-    solicitada = variantes.get(variante_solicitada_id)
-    if solicitada is None or not solicitada["activa"]:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="La prenda pedida a cambio no existe o esta dada de baja",
-        )
-    error = validar_variante_cambio(motivo_tipo, variantes[linea["variante_id"]], solicitada)
-    if error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"{linea['producto']}: {error}",
-        )
-    if solicitada["disponible"] < cantidad:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"No hay stock para el cambio: {linea['producto']} talla {solicitada['talla']} "
-                f"color {solicitada['color']} tiene {max(solicitada['disponible'], 0)} disponibles "
-                "en la sucursal (se puede pedir por traspaso)"
-            ),
-        )
 
 
 @router.post("", response_model=DevolucionDetalleOut, status_code=status.HTTP_201_CREATED)
@@ -633,7 +443,6 @@ async def registrar_devolucion(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_crear),
 ) -> DevolucionDetalleOut:
-    es_cambio = body.motivo_tipo in MOTIVOS_CAMBIO
     faltan = condiciones_faltantes(
         body.motivo_tipo, body.con_etiqueta, body.sin_uso, body.con_comprobante
     )
@@ -642,131 +451,26 @@ async def registrar_devolucion(
             status_code=status.HTTP_409_CONFLICT,
             detail="No se acepta la devolucion: falta " + ", ".join(faltan),
         )
+    # rechazos tempranos sin tocar la base (el registro los vuelve a chequear)
+    servicio.agrupar_lineas(body.lineas, servicio.tipo_de(body.motivo_tipo) == "INTERCAMBIO")
 
-    # la misma linea dos veces en el pedido se suma, como en recepciones
-    pedidas: dict[UUID, int] = {}
-    solicitadas: dict[UUID, UUID | None] = {}
-    for linea in body.lineas:
-        pedidas[linea.venta_detalle_id] = pedidas.get(linea.venta_detalle_id, 0) + linea.cantidad
-        if es_cambio and linea.variante_solicitada_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="En un cambio por talla o color cada prenda tiene que decir que se lleva a cambio",
-            )
-        if not es_cambio and linea.variante_solicitada_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Solo un cambio por talla o color lleva una prenda a cambio",
-            )
-        anterior = solicitadas.get(linea.venta_detalle_id)
-        if anterior is not None and anterior != linea.variante_solicitada_id:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="La misma prenda no puede pedir dos variantes distintas a cambio",
-            )
-        solicitadas[linea.venta_detalle_id] = linea.variante_solicitada_id
+    async def _alcance(venta) -> None:
+        await _exigir_alcance(conn, staff, venta["sucursal_id"], "Esa venta")
 
     async with conn.transaction():
-        # Se bloquea la venta: dos registros simultaneos sobre la misma venta se serializan y
-        # el segundo ve lo que el primero dejo en tramite.
-        venta = await conn.fetchrow(
-            "SELECT id, sucursal_id, estado, numero FROM venta WHERE id = $1 FOR UPDATE",
-            body.venta_id,
-        )
-        if venta is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venta no encontrada")
-        await _exigir_alcance(conn, staff, venta["sucursal_id"], "Esa venta")
-        if venta["estado"] not in ESTADOS_VENTA_DEVOLVIBLE:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"La venta esta {venta['estado'].lower()}: solo se devuelve una venta pagada o entregada",
-            )
-        dias = await (_plazo_cambio_dias(conn) if es_cambio else _plazo_dias(conn))
-        vencida = await conn.fetchval(
-            "SELECT now() > fecha + make_interval(days => $2) FROM venta WHERE id = $1",
-            venta["id"],
-            dias,
-        )
-        if vencida:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"La venta {venta['numero']} tiene mas de {dias} dias: ya paso el plazo para "
-                    + ("cambiar la prenda" if es_cambio else "devolverla")
-                ),
-            )
-
-        lineas = {f["venta_detalle_id"]: f for f in await _lineas_de_venta(conn, venta["id"])}
-        for venta_detalle_id, cantidad in pedidas.items():
-            linea = lineas.get(venta_detalle_id)
-            if linea is None:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Una de las lineas no pertenece a esta venta",
-                )
-            disponible = linea["cantidad_vendida"] - linea["devuelta"] - linea["en_tramite"]
-            if cantidad > disponible:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=(
-                        f"{linea['producto']} ({linea['talla']} · {linea['color']}): se vendieron "
-                        f"{linea['cantidad_vendida']}, ya se devolvieron {linea['devuelta']} y hay "
-                        f"{linea['en_tramite']} en tramite; se pueden devolver {max(disponible, 0)}"
-                    ),
-                )
-            if es_cambio:
-                await _validar_cambio_linea(
-                    conn,
-                    body.motivo_tipo,
-                    venta["sucursal_id"],
-                    linea,
-                    solicitadas[venta_detalle_id],
-                    cantidad,
-                )
-
-        devolucion_id = await conn.fetchval(
-            """
-            INSERT INTO devolucion (venta_id, sucursal_id, motivo, monto_devuelto, usuario_id,
-                                    motivo_tipo, con_etiqueta, sin_uso, con_comprobante)
-            VALUES ($1, $2, $3, 0, $4, $5::motivo_devolucion, $6, $7, $8)
-            RETURNING id
-            """,
-            venta["id"],
-            venta["sucursal_id"],
-            body.motivo.strip(),
-            staff["id"],
-            body.motivo_tipo,
-            body.con_etiqueta,
-            body.sin_uso,
-            body.con_comprobante,
-        )
-        await conn.executemany(
-            """
-            INSERT INTO devolucion_detalle (devolucion_id, venta_detalle_id, cantidad,
-                                            variante_solicitada_id)
-            VALUES ($1, $2, $3, $4)
-            """,
-            [(devolucion_id, vd_id, cantidad, solicitadas[vd_id]) for vd_id, cantidad in pedidas.items()],
-        )
-        # estimado: el definitivo se recalcula al aprobar (puede cerrar la venta y absorber centavos)
-        monto = await _monto_devolucion(conn, venta["id"], devolucion_id, cierra_la_venta=False)
-        await conn.execute("UPDATE devolucion SET monto_devuelto = $2 WHERE id = $1", devolucion_id, monto)
-
-        await registrar_auditoria(
+        devolucion_id = await servicio.registrar(
             conn,
+            venta_id=body.venta_id,
+            motivo_tipo=body.motivo_tipo,
+            motivo=body.motivo,
+            lineas=body.lineas,
             usuario_id=staff["id"],
-            entidad="devolucion",
-            entidad_id=devolucion_id,
-            accion="CREAR",
-            datos_despues={
-                "venta": venta["numero"],
-                "motivo_tipo": body.motivo_tipo,
-                "motivo": body.motivo.strip(),
-                "lineas": {str(k): v for k, v in pedidas.items()},
-                "monto_estimado": monto,
-            },
+            origen="CAJA",
+            con_etiqueta=body.con_etiqueta,
+            sin_uso=body.sin_uso,
+            con_comprobante=body.con_comprobante,
+            validar_venta_extra=_alcance,
         )
-
     return await _con_detalle(conn, devolucion_id, staff)
 
 
@@ -775,11 +479,18 @@ async def registrar_devolucion(
 # ---------------------------------------------------------------------
 
 
-async def _bloquear_solicitada(conn: asyncpg.Connection, devolucion_id: UUID, staff: dict) -> asyncpg.Record:
+async def _bloquear_en_tramite(
+    conn: asyncpg.Connection, devolucion_id: UUID, staff: dict, estados=servicio.ESTADOS_EN_TRAMITE
+) -> asyncpg.Record:
     fila = await conn.fetchrow(
         """
-        SELECT d.id, d.venta_id, d.sucursal_id, d.estado, d.monto_devuelto, v.numero AS venta_numero
-        FROM devolucion d JOIN venta v ON v.id = d.venta_id
+        SELECT d.id, d.venta_id, d.sucursal_id, d.estado::text AS estado, d.tipo, d.origen,
+               d.motivo_tipo::text AS motivo_tipo, d.con_etiqueta, d.sin_uso, d.con_comprobante,
+               d.monto_devuelto, d.monto_cambio, d.numero, d.fecha_visita, d.hora_visita,
+               v.numero AS venta_numero, v.usuario_id AS cliente_id, s.nombre AS sucursal
+        FROM devolucion d
+        JOIN venta v    ON v.id = d.venta_id
+        JOIN sucursal s ON s.id = d.sucursal_id
         WHERE d.id = $1
         FOR UPDATE OF d
         """,
@@ -788,7 +499,7 @@ async def _bloquear_solicitada(conn: asyncpg.Connection, devolucion_id: UUID, st
     if fila is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
     await _exigir_alcance(conn, staff, fila["sucursal_id"], "Esa devolucion")
-    if fila["estado"] != "SOLICITADA":
+    if fila["estado"] not in estados:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"La devolucion ya esta {fila['estado'].lower()}",
@@ -796,19 +507,170 @@ async def _bloquear_solicitada(conn: asyncpg.Connection, devolucion_id: UUID, st
     return fila
 
 
-@router.post("/{devolucion_id}/aprobar", response_model=DevolucionDetalleOut)
-async def aprobar_devolucion(
+async def _notificar_cliente(
+    conn: asyncpg.Connection, devolucion: asyncpg.Record, titulo: str, mensaje: str
+) -> None:
+    """Aviso en la campana (y push/correo segun el job). entidad DEVOLUCION: la campana de la
+    clienta abre Mis devoluciones."""
+    if devolucion["cliente_id"] is None:  # venta de mostrador sin clienta identificada
+        return
+    await conn.execute(
+        """
+        INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
+        VALUES ($1, 'VENTA', $2, $3, 'DEVOLUCION', $4)
+        """,
+        devolucion["cliente_id"],
+        titulo,
+        mensaje,
+        devolucion["id"],
+    )
+
+
+def _nombre(devolucion) -> str:
+    return "intercambio" if devolucion["tipo"] == "INTERCAMBIO" else "devolucion"
+
+
+@router.post("/{devolucion_id}/confirmar", response_model=DevolucionDetalleOut)
+async def confirmar_solicitud(
     devolucion_id: UUID,
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_resolver),
 ) -> DevolucionDetalleOut:
-    """Punto sin retorno: el UPDATE del estado dispara tg_devolucion_stock, que reingresa el
-    stock de cada linea (tipo DEVOLUCION) y vuelve a verificar el tope contra lo vendido."""
+    """Acepta una solicitud online: la sucursal espera a la clienta en la fecha y hora que eligio.
+    No mueve stock ni plata (eso pasa al concretarla en caja)."""
+    async with conn.transaction():
+        devolucion = await _bloquear_en_tramite(conn, devolucion_id, staff, ("SOLICITADA",))
+        if devolucion["origen"] != "ONLINE":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Solo se confirma una solicitud online: la registrada en caja se concreta directo",
+            )
+        await conn.execute(
+            "UPDATE devolucion SET estado = 'CONFIRMADA' WHERE id = $1", devolucion_id
+        )
+        extra = ""
+        if devolucion["tipo"] == "INTERCAMBIO":
+            extra = " " + servicio.texto_diferencia(
+                devolucion["monto_cambio"] - devolucion["monto_devuelto"]
+            )
+        await _notificar_cliente(
+            conn,
+            devolucion,
+            "Intercambio aceptado" if devolucion["tipo"] == "INTERCAMBIO" else "Devolucion aceptada",
+            f"Aceptamos tu solicitud {devolucion['numero']} de la compra {devolucion['venta_numero']}. "
+            f"Te esperamos en {devolucion['sucursal']} el {devolucion['fecha_visita']:%d/%m} a las "
+            f"{devolucion['hora_visita']:%H:%M} con la prenda y su etiqueta.{extra}",
+        )
+        await registrar_auditoria(
+            conn,
+            usuario_id=staff["id"],
+            entidad="devolucion",
+            entidad_id=devolucion_id,
+            accion="ACTUALIZAR",
+            datos_antes={"estado": "SOLICITADA"},
+            datos_despues={"estado": "CONFIRMADA"},
+        )
+    return await _con_detalle(conn, devolucion_id, staff)
+
+
+async def _crear_venta_cambio(
+    conn: asyncpg.Connection,
+    devolucion,
+    sesion_id: UUID,
+    staff: dict,
+    diferencia: Decimal,
+    diferencia_metodo: str | None,
+) -> UUID:
+    """La venta de las prendas nuevas del intercambio, a su precio pactado + IVA. Lo devuelto es
+    credito: solo se registra como pago lo que la clienta pone de mas. Su venta_detalle descuenta
+    el stock (tg_venta_descuenta_stock); el compromiso ya lo libero tg_devolucion_stock."""
+    lineas = await conn.fetch(
+        """
+        SELECT variante_solicitada_id AS variante_id, cantidad, precio_solicitado AS precio
+        FROM devolucion_detalle
+        WHERE devolucion_id = $1 AND variante_solicitada_id IS NOT NULL
+        """,
+        devolucion["id"],
+    )
+    subtotal = sum((f["precio"] * f["cantidad"] for f in lineas), Decimal("0"))
+    total = servicio.con_iva(subtotal)
+    venta_id = await conn.fetchval(
+        """
+        INSERT INTO venta (sucursal_id, usuario_id, canal, entrega, sesion_caja_id, numero,
+                           subtotal, descuento, iva, total, estado, registrada_por_id)
+        VALUES ($1, $2, 'POS', 'RETIRO_SUCURSAL', $3, $4, $5, 0, $6, $7, 'ENTREGADA', $8)
+        RETURNING id
+        """,
+        devolucion["sucursal_id"],
+        devolucion["cliente_id"],
+        sesion_id,
+        f"V-{uuid4().hex[:10].upper()}",
+        subtotal,
+        total - subtotal,
+        total,
+        staff["id"],
+    )
+    for linea in lineas:
+        await conn.execute(
+            """
+            INSERT INTO venta_detalle (venta_id, variante_id, cantidad, precio_unitario, subtotal)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            venta_id,
+            linea["variante_id"],
+            linea["cantidad"],
+            linea["precio"],
+            linea["precio"] * linea["cantidad"],
+        )
+    if diferencia > 0:
+        await conn.execute(
+            """
+            INSERT INTO pago (venta_id, metodo, monto, estado, confirmado_en, verificado_por_id)
+            VALUES ($1, $2::metodo_pago, $3, 'APROBADO', now(), $4)
+            """,
+            venta_id,
+            diferencia_metodo,
+            diferencia,
+            staff["id"],
+        )
+    # el comprobante de la venta queda para Mis compras; el correo lo cubre el del intercambio
+    await conn.execute(
+        "INSERT INTO comprobante (venta_id, numero, correo_enviado_en) VALUES ($1, $2, now())",
+        venta_id,
+        f"C-{uuid4().hex[:10].upper()}",
+    )
+    return venta_id
+
+
+@router.post("/{devolucion_id}/aprobar", response_model=DevolucionDetalleOut)
+async def aprobar_devolucion(
+    devolucion_id: UUID,
+    body: AprobacionIn | None = None,
+    conn: asyncpg.Connection = Depends(get_connection),
+    staff: dict = Depends(puede_resolver),
+) -> DevolucionDetalleOut:
+    """Concreta la devolucion o el intercambio en caja (punto sin retorno). El UPDATE del estado
+    dispara tg_devolucion_stock: reingresa lo devuelto y libera lo comprometido para el cambio."""
+    body = body or AprobacionIn()
     try:
         async with conn.transaction():
-            devolucion = await _bloquear_solicitada(conn, devolucion_id, staff)
-            await conn.execute("SELECT 1 FROM venta WHERE id = $1 FOR UPDATE", devolucion["venta_id"])
+            # una solicitud online SOLICITADA tambien se puede concretar directo: se acepta y se
+            # concreta a la vez porque la clienta ya esta en la caja
+            devolucion = await _bloquear_en_tramite(conn, devolucion_id, staff)
+            con_etiqueta = devolucion["con_etiqueta"] if body.con_etiqueta is None else body.con_etiqueta
+            sin_uso = devolucion["sin_uso"] if body.sin_uso is None else body.sin_uso
+            con_comprobante = (
+                devolucion["con_comprobante"] if body.con_comprobante is None else body.con_comprobante
+            )
+            faltan = condiciones_faltantes(devolucion["motivo_tipo"], con_etiqueta, sin_uso, con_comprobante)
+            if faltan:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"No se acepta la {_nombre(devolucion)}: falta " + ", ".join(faltan)
+                    + ". Rechazala con ese motivo.",
+                )
 
+            await conn.execute("SELECT 1 FROM venta WHERE id = $1 FOR UPDATE", devolucion["venta_id"])
             pendientes_despues = await conn.fetchval(
                 """
                 SELECT (SELECT COALESCE(SUM(cantidad), 0) FROM venta_detalle WHERE venta_id = $1)
@@ -820,79 +682,120 @@ async def aprobar_devolucion(
                 devolucion_id,
             )
             cierra = pendientes_despues <= 0
-            monto = await _monto_devolucion(conn, devolucion["venta_id"], devolucion_id, cierra)
+            valor = await servicio.monto_devolucion(conn, devolucion["venta_id"], devolucion_id, cierra)
+            es_intercambio = devolucion["tipo"] == "INTERCAMBIO"
+            valor_cambio = devolucion["monto_cambio"] if es_intercambio else Decimal("0")
+            reintegro, cobrar = servicio.liquidar(devolucion["tipo"], valor, valor_cambio)
+            if cobrar > 0 and body.diferencia_metodo is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"La clienta paga Bs {cobrar:.2f} de diferencia: elegi como paga (efectivo, tarjeta o QR)",
+                )
 
-            pago = await _pago_de_venta(conn, devolucion["venta_id"])
-            metodo = _metodo_reintegro(pago)
+            pago = await servicio.pago_de_venta(conn, devolucion["venta_id"])
+            metodo = servicio.metodo_reintegro(pago) if reintegro > 0 else None
             sesion_caja_id = None
-            if metodo == "EFECTIVO" and monto > 0:
-                # la plata sale del cajon: tiene que salir de una sesion abierta para que el
-                # arqueo la descuente (fn_total_efectivo_sesion), si no el cierre da faltante
+            necesita_caja = (
+                es_intercambio
+                or (reintegro > 0 and servicio.sale_del_cajon(metodo))
+                or (cobrar > 0 and body.diferencia_metodo == "EFECTIVO")
+            )
+            if necesita_caja:
+                # la plata sale (o entra) por el cajon y la venta del cambio es de caja: tiene
+                # que haber una sesion abierta para que el arqueo la cuente
                 sesion = await obtener_sesion_abierta(conn, staff["id"])
                 if sesion is None:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail=(
-                            "La venta se pago en efectivo: abri una sesion de caja para devolver "
-                            "la plata desde el cajon"
-                        ),
+                        detail="Abri una sesion de caja para concretar la "
+                        + _nombre(devolucion)
+                        + " (la plata sale o entra por el cajon)",
                     )
                 sesion_caja_id = sesion["id"]
 
             await conn.execute(
                 """
                 UPDATE devolucion
-                   SET estado = 'APROBADA', monto_devuelto = $2,
-                       resuelta_por_id = $3, resuelta_en = now(),
-                       reintegro_metodo = $4, sesion_caja_id = $5
+                   SET estado = 'APROBADA', monto_devuelto = $2, monto_reintegrado = $3,
+                       diferencia_cobrada = $4, diferencia_metodo = $5,
+                       resuelta_por_id = $6, resuelta_en = now(),
+                       reintegro_metodo = $7, sesion_caja_id = $8,
+                       con_etiqueta = $9, sin_uso = $10, con_comprobante = $11
                  WHERE id = $1
                 """,
                 devolucion_id,
-                monto,
+                valor,
+                reintegro,
+                cobrar,
+                body.diferencia_metodo if cobrar > 0 else None,
                 staff["id"],
                 metodo,
                 sesion_caja_id,
+                con_etiqueta,
+                sin_uso,
+                con_comprobante,
             )
-            if cierra:
+            if cierra and not es_intercambio:
                 await conn.execute(
                     "UPDATE pago SET estado = 'REEMBOLSADO' WHERE venta_id = $1 AND estado = 'APROBADO'",
                     devolucion["venta_id"],
                 )
+            venta_cambio_id = None
+            if es_intercambio:
+                venta_cambio_id = await _crear_venta_cambio(
+                    conn, devolucion, sesion_caja_id, staff, cobrar, body.diferencia_metodo
+                )
+                await conn.execute(
+                    "UPDATE devolucion SET venta_cambio_id = $2 WHERE id = $1", devolucion_id, venta_cambio_id
+                )
 
-            await conn.execute(
-                """
-                INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-                SELECT usuario_id, 'VENTA', 'Devolucion aprobada',
-                       'Aprobamos la devolucion de tu compra ' || numero || '. Se te reintegran Bs '
-                       || to_char($2::numeric, 'FM999999990.00') || $3 || '.',
-                       'VENTA', id
-                FROM venta WHERE id = $1 AND usuario_id IS NOT NULL
-                """,
-                devolucion["venta_id"],
-                monto,
-                _COMO_SE_REINTEGRA.get(metodo, ""),
-            )
+            if es_intercambio:
+                if cobrar > 0:
+                    plata = f" Pagaste Bs {cobrar:.2f} de diferencia."
+                elif reintegro > 0:
+                    plata = f" Te devolvimos Bs {reintegro:.2f} de diferencia{_COMO_SE_REINTEGRA.get(metodo, '')}."
+                else:
+                    plata = ""
+                await _notificar_cliente(
+                    conn,
+                    devolucion,
+                    "Intercambio realizado",
+                    f"Listo el intercambio de tu compra {devolucion['venta_numero']}.{plata} "
+                    "Te mandamos el comprobante por correo.",
+                )
+            else:
+                await _notificar_cliente(
+                    conn,
+                    devolucion,
+                    "Devolucion aprobada",
+                    f"Aprobamos la devolucion de tu compra {devolucion['venta_numero']}. Se te reintegran "
+                    f"Bs {reintegro:.2f}{_COMO_SE_REINTEGRA.get(metodo, '')}. Te mandamos el comprobante por correo.",
+                )
             await registrar_auditoria(
                 conn,
                 usuario_id=staff["id"],
                 entidad="devolucion",
                 entidad_id=devolucion_id,
                 accion="ACTUALIZAR",
-                datos_antes={"estado": "SOLICITADA", "monto_devuelto": devolucion["monto_devuelto"]},
+                datos_antes={"estado": devolucion["estado"], "monto_devuelto": devolucion["monto_devuelto"]},
                 datos_despues={
                     "estado": "APROBADA",
-                    "monto_devuelto": monto,
+                    "tipo": devolucion["tipo"],
+                    "monto_devuelto": valor,
+                    "monto_reintegrado": reintegro,
+                    "diferencia_cobrada": cobrar,
                     "venta_completa": cierra,
                     "reintegro_metodo": metodo,
+                    "venta_cambio": str(venta_cambio_id) if venta_cambio_id else None,
                 },
             )
 
-            if metodo == "STRIPE" and monto > 0 and pago["id_transaccion"]:
+            if metodo == "STRIPE" and reintegro > 0 and pago["id_transaccion"]:
                 # ultimo paso antes del commit: si Stripe no devuelve la plata, la HTTPException
-                # deshace toda la aprobacion (estado, stock, notificacion) y se puede reintentar
+                # deshace toda la aprobacion (estado, stock, venta del cambio) y se puede reintentar
                 try:
                     referencia = await reembolsar_parcial_stripe(
-                        pago["id_transaccion"], monto, f"devolucion-{devolucion_id}"
+                        pago["id_transaccion"], reintegro, f"devolucion-{devolucion_id}"
                     )
                 except stripe.error.StripeError as error:
                     raise HTTPException(
@@ -906,7 +809,7 @@ async def aprobar_devolucion(
                 )
     except asyncpg.RaiseError as error:
         # tope de lo vendido (tg_devolucion_stock) o cualquier error de fn_mover_inventario
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     return await _con_detalle(conn, devolucion_id, staff)
 
@@ -918,9 +821,11 @@ async def rechazar_devolucion(
     conn: asyncpg.Connection = Depends(get_connection),
     staff: dict = Depends(puede_resolver),
 ) -> DevolucionDetalleOut:
+    """Rechaza una devolucion/intercambio en tramite (registrada en caja, solicitud online o una
+    ya confirmada cuya prenda no cumple las condiciones). Libera lo comprometido para el cambio."""
     motivo = body.motivo.strip()
     async with conn.transaction():
-        devolucion = await _bloquear_solicitada(conn, devolucion_id, staff)
+        devolucion = await _bloquear_en_tramite(conn, devolucion_id, staff)
         await conn.execute(
             """
             UPDATE devolucion
@@ -932,16 +837,11 @@ async def rechazar_devolucion(
             motivo,
             staff["id"],
         )
-        await conn.execute(
-            """
-            INSERT INTO notificacion (usuario_id, tipo, titulo, mensaje, entidad_tipo, entidad_id)
-            SELECT usuario_id, 'VENTA', 'Devolucion rechazada',
-                   'No pudimos aceptar la devolucion de tu compra ' || numero || ': ' || $2,
-                   'VENTA', id
-            FROM venta WHERE id = $1 AND usuario_id IS NOT NULL
-            """,
-            devolucion["venta_id"],
-            motivo,
+        await _notificar_cliente(
+            conn,
+            devolucion,
+            "Intercambio rechazado" if devolucion["tipo"] == "INTERCAMBIO" else "Devolucion rechazada",
+            f"No pudimos aceptar la {_nombre(devolucion)} de tu compra {devolucion['venta_numero']}: {motivo}",
         )
         await registrar_auditoria(
             conn,
@@ -949,94 +849,7 @@ async def rechazar_devolucion(
             entidad="devolucion",
             entidad_id=devolucion_id,
             accion="ACTUALIZAR",
-            datos_antes={"estado": "SOLICITADA"},
+            datos_antes={"estado": devolucion["estado"]},
             datos_despues={"estado": "RECHAZADA", "motivo_rechazo": motivo},
         )
-
-    return await _con_detalle(conn, devolucion_id, staff)
-
-
-@router.post("/{devolucion_id}/cambio", response_model=DevolucionDetalleOut)
-async def vincular_cambio(
-    devolucion_id: UUID,
-    body: CambioIn,
-    conn: asyncpg.Connection = Depends(get_connection),
-    staff: dict = Depends(puede_crear),
-) -> DevolucionDetalleOut:
-    """Cambio de prenda: la clienta devolvio algo y se llevo otra talla/color. No hay flujo propio:
-    se aprueba la devolucion (reintegra) y la prenda nueva se cobra en caja como cualquier venta;
-    esto vincula esa venta nueva a la devolucion para que quede la trazabilidad."""
-    async with conn.transaction():
-        devolucion = await conn.fetchrow(
-            "SELECT id, venta_id, sucursal_id, estado, fecha, venta_cambio_id "
-            "FROM devolucion WHERE id = $1 FOR UPDATE",
-            devolucion_id,
-        )
-        if devolucion is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Devolucion no encontrada")
-        await _exigir_alcance(conn, staff, devolucion["sucursal_id"], "Esa devolucion")
-        if devolucion["estado"] != "APROBADA":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Solo se vincula un cambio a una devolucion aprobada",
-            )
-        if devolucion["venta_cambio_id"] is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Esta devolucion ya tiene una venta de cambio vinculada",
-            )
-
-        venta = await conn.fetchrow(
-            "SELECT v.id, v.numero, v.sucursal_id, v.estado::text AS estado, v.fecha "
-            "FROM venta v JOIN sucursal s ON s.id = v.sucursal_id "
-            "WHERE upper(v.numero) = upper($1) AND s.empresa_id = $2",
-            body.venta_numero.strip(),
-            empresa_de(staff),
-        )
-        if venta is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe una venta con ese numero")
-        if venta["id"] == devolucion["venta_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="La venta del cambio no puede ser la misma venta que se devolvio",
-            )
-        if venta["sucursal_id"] != devolucion["sucursal_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="La venta del cambio es de otra sucursal",
-            )
-        if venta["estado"] not in ESTADOS_VENTA_DEVOLVIBLE:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"La venta del cambio esta {venta['estado'].lower()}: tiene que estar cobrada",
-            )
-        if venta["fecha"] < devolucion["fecha"]:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="La venta del cambio es anterior a la devolucion",
-            )
-        otra = await conn.fetchval(
-            "SELECT id FROM devolucion WHERE venta_cambio_id = $1 AND id <> $2",
-            venta["id"],
-            devolucion_id,
-        )
-        if otra is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Esa venta ya esta vinculada como cambio de otra devolucion",
-            )
-
-        await conn.execute(
-            "UPDATE devolucion SET venta_cambio_id = $2 WHERE id = $1", devolucion_id, venta["id"]
-        )
-        await registrar_auditoria(
-            conn,
-            usuario_id=staff["id"],
-            entidad="devolucion",
-            entidad_id=devolucion_id,
-            accion="ACTUALIZAR",
-            datos_antes={"venta_cambio": None},
-            datos_despues={"venta_cambio": venta["numero"]},
-        )
-
     return await _con_detalle(conn, devolucion_id, staff)

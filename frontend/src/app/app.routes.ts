@@ -78,6 +78,15 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    // Devoluciones e intercambios de la clienta (PENDIENTES 10); ?venta=<id> abre la solicitud
+    path: 'mis-devoluciones',
+    loadComponent: () =>
+      import('./pages/operacion-comercial/mis-devoluciones/mis-devoluciones.page').then(
+        (m) => m.MisDevolucionesPage,
+      ),
+    canActivate: [authGuard],
+  },
+  {
     path: 'carrito',
     loadComponent: () => import('./pages/operacion-comercial/carrito/carrito.page').then((m) => m.CarritoPage),
     canActivate: [authGuard],

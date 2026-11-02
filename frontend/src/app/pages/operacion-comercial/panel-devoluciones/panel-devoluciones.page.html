@@ -1,12 +1,14 @@
 <app-panel-shell
-  titulo="Devoluciones"
-  bajada="Registrá la devolución sobre una venta pagada y resolvela. Recién al aprobarla las prendas vuelven al stock de la sucursal y queda el asiento en el kardex."
+  titulo="Devoluciones e intercambios"
+  bajada="Hasta 3 días desde la compra, una sola por compra y hasta 3 prendas. Las solicitudes online se aceptan acá y se concretan en caja cuando llega la clienta."
 >
   <div class="solapas" role="tablist">
-    <button type="button" role="tab" class="solapa" [class.solapa--activa]="vista() === 'lista'"
-      [attr.aria-selected]="vista() === 'lista'" (click)="vista.set('lista')">Devoluciones y cambios</button>
+    <button type="button" role="tab" class="solapa" [class.solapa--activa]="vista() === 'DEVOLUCION'"
+      [attr.aria-selected]="vista() === 'DEVOLUCION'" (click)="elegirVista('DEVOLUCION')">Devoluciones</button>
+    <button type="button" role="tab" class="solapa" [class.solapa--activa]="vista() === 'INTERCAMBIO'"
+      [attr.aria-selected]="vista() === 'INTERCAMBIO'" (click)="elegirVista('INTERCAMBIO')">Intercambios</button>
     <button type="button" role="tab" class="solapa" [class.solapa--activa]="vista() === 'cambios'"
-      [attr.aria-selected]="vista() === 'cambios'" (click)="verCambios()">Cambios del mes</button>
+      [attr.aria-selected]="vista() === 'cambios'" (click)="elegirVista('cambios')">Cambios del mes</button>
   </div>
 
   @if (vista() === 'cambios') {
@@ -17,7 +19,7 @@
       </div>
       <label class="check">
         <input type="checkbox" [(ngModel)]="incluirOtrosMotivos" name="otros" (change)="cargarCambios()" />
-        Incluir devoluciones que no son cambio (defecto, no le gustó…)
+        Incluir devoluciones (defecto, no le gustó…)
       </label>
     </div>
     @if (errorCambios()) {
@@ -60,7 +62,7 @@
                     <td class="tabla__numero">{{ fila.solicitudes }}</td>
                     <td class="tabla__numero">{{ fila.unidades }}</td>
                     <td class="secundario">
-                      {{ fila.aprobadas }} aprob. · {{ fila.pendientes }} pend. · {{ fila.rechazadas }} rech.
+                      {{ fila.aprobadas }} realiz. · {{ fila.pendientes }} pend. · {{ fila.rechazadas }} no concretadas
                     </td>
                     <td class="secundario">{{ fila.sucursales.join(', ') }}</td>
                   </tr>
@@ -76,18 +78,26 @@
     <div class="campo">
       <label for="estado">Estado</label>
       <select id="estado" [value]="filtroEstado" (change)="filtroEstado = $any($event.target).value; cargar()">
-        <option value="">Todas</option>
-        <option value="SOLICITADA">Pendientes</option>
-        <option value="APROBADA">Aprobadas</option>
-        <option value="RECHAZADA">Rechazadas</option>
+        <option value="">Todos</option>
+        @for (e of estados; track e[0]) {
+          <option [value]="e[0]">{{ e[1] }}</option>
+        }
       </select>
     </div>
     <div class="campo">
-      <label for="filtro-venta">Venta</label>
+      <label for="origen">Origen</label>
+      <select id="origen" [value]="filtroOrigen" (change)="filtroOrigen = $any($event.target).value; cargar()">
+        <option value="">Todos</option>
+        <option value="ONLINE">Solicitud online</option>
+        <option value="CAJA">En caja</option>
+      </select>
+    </div>
+    <div class="campo">
+      <label for="filtro-venta">Venta o nota</label>
       <input
         id="filtro-venta"
         type="search"
-        placeholder="Nº de venta"
+        placeholder="V-… o NDV-…"
         [(ngModel)]="filtroVenta"
         name="filtro-venta"
         (keyup.enter)="cargar()"
@@ -97,7 +107,7 @@
       <label for="filtro-motivo">Motivo</label>
       <select id="filtro-motivo" [value]="filtroMotivo" (change)="filtroMotivo = $any($event.target).value; cargar()">
         <option value="">Todos</option>
-        @for (m of motivos; track m.valor) {
+        @for (m of motivosDelTipo(); track m.valor) {
           <option [value]="m.valor">{{ m.etiqueta }}</option>
         }
       </select>
@@ -114,7 +124,9 @@
     <span class="barra__espacio"></span>
 
     @if (puedeRegistrar) {
-      <button type="button" class="boton" (click)="abrirNueva()">Nueva devolución</button>
+      <button type="button" class="boton" (click)="abrirNueva()">
+        {{ esIntercambio() ? 'Nuevo intercambio' : 'Nueva devolución' }}
+      </button>
     }
   </div>
 
@@ -124,12 +136,12 @@
 
   <div class="columnas columnas--detalle">
     <section class="panel">
-      <h2 class="panel__titulo">Devoluciones</h2>
+      <h2 class="panel__titulo">{{ esIntercambio() ? 'Intercambios' : 'Devoluciones' }}</h2>
 
       @if (cargando()) {
         <p class="estado">Cargando…</p>
       } @else if (devoluciones().length === 0) {
-        <p class="estado">No hay devoluciones registradas.</p>
+        <p class="estado">{{ esIntercambio() ? 'No hay intercambios.' : 'No hay devoluciones.' }}</p>
       } @else {
         <ul class="lista">
           @for (devolucion of devoluciones(); track devolucion.id) {
@@ -141,19 +153,28 @@
                 (click)="abrir(devolucion)"
               >
                 <span class="tarjeta__numero">{{ devolucion.numero }} · {{ devolucion.venta_numero }}</span>
-                <span class="tarjeta__meta">{{ etiquetaMotivo(devolucion.motivo_tipo) }}</span>
+                <span class="tarjeta__meta">
+                  {{ etiquetaMotivo(devolucion.motivo_tipo) }} ·
+                  {{ devolucion.origen === 'ONLINE' ? 'online' : 'en caja' }}
+                  @if (devolucion.fecha_visita && enTramite(devolucion)) { · visita {{ visita(devolucion) }} }
+                </span>
                 <span class="tarjeta__proveedor">{{ devolucion.cliente ?? 'Venta sin clienta identificada' }}</span>
                 <span class="tarjeta__meta">{{ fecha(devolucion.fecha) }} · {{ devolucion.sucursal }}</span>
                 <span class="tarjeta__meta">
                   <span
                     class="badge"
                     [class.badge--ok]="devolucion.estado === 'APROBADA'"
-                    [class.badge--alerta]="devolucion.estado === 'SOLICITADA'"
-                    [class.badge--baja]="devolucion.estado === 'RECHAZADA'"
+                    [class.badge--alerta]="enTramite(devolucion)"
+                    [class.badge--baja]="!enTramite(devolucion) && devolucion.estado !== 'APROBADA'"
                   >
                     {{ etiquetaEstado(devolucion.estado) }}
                   </span>
-                  {{ devolucion.unidades }} u. · {{ precio(devolucion.monto_devuelto) }}
+                  {{ devolucion.unidades }} u. ·
+                  @if (devolucion.tipo === 'INTERCAMBIO') {
+                    diferencia {{ precio(devolucion.diferencia) }}
+                  } @else {
+                    {{ precio(devolucion.monto_devuelto) }}
+                  }
                 </span>
               </button>
             </li>
@@ -164,7 +185,7 @@
 
     <section class="panel">
       @if (creando()) {
-        <h2 class="panel__titulo">Nueva devolución</h2>
+        <h2 class="panel__titulo">{{ esIntercambio() ? 'Nuevo intercambio en caja' : 'Nueva devolución en caja' }}</h2>
 
         <div class="buscador">
           <input
@@ -194,38 +215,28 @@
               Total {{ precio(v.total) }}
               @if (Number(v.descuento) > 0) { · descuento {{ precio(v.descuento) }} }
               @if (Number(v.costo_envio) > 0) { · envío {{ precio(v.costo_envio) }} (no se reintegra) }
-              @if (Number(v.total_devuelto) > 0) { · ya devuelto {{ precio(v.total_devuelto) }} }
             </p>
             <p class="estado">
-              Reintegro: {{ etiquetaReintegro(v.reintegro_metodo) }}
-              @if (v.reintegro_metodo === 'EFECTIVO') {
-                <span class="secundario">(para aprobarla hace falta una sesión de caja abierta)</span>
-              }
+              Si sobra plata vuelve: {{ etiquetaReintegro(v.reintegro_metodo) }}
             </p>
+
+            @if (bloqueoVenta(); as motivoBloqueo) {
+              <p class="error" role="alert">{{ motivoBloqueo }}</p>
+            } @else {
+              <p class="estado secundario">
+                Se puede hasta el {{ fecha(esIntercambio() ? v.cambio_vence_en : v.plazo_vence_en) }} · máximo
+                {{ v.max_unidades }} prendas.
+              </p>
+            }
+
             <div class="campo">
               <label for="motivo-tipo">Motivo</label>
               <select id="motivo-tipo" [value]="motivoTipo()" (change)="cambiarMotivo($any($event.target).value)">
-                @for (m of motivos; track m.valor) {
+                @for (m of motivosDelTipo(); track m.valor) {
                   <option [value]="m.valor">{{ m.etiqueta }}</option>
                 }
               </select>
             </div>
-
-            @if (esCambio()) {
-              @if (v.fuera_de_plazo_cambio) {
-                <p class="error" role="alert">
-                  Venció el plazo de cambio el {{ fecha(v.cambio_vence_en) }}: ya no se puede cambiar la prenda.
-                </p>
-              } @else {
-                <p class="estado secundario">Se puede cambiar hasta el {{ fecha(v.cambio_vence_en) }}.</p>
-              }
-            } @else if (v.fuera_de_plazo) {
-              <p class="error" role="alert">
-                Venció el plazo de devolución el {{ fecha(v.plazo_vence_en) }}: ya no se puede registrar.
-              </p>
-            } @else {
-              <p class="estado secundario">Se puede devolver hasta el {{ fecha(v.plazo_vence_en) }}.</p>
-            }
 
             <fieldset class="condiciones">
               <legend>Condiciones de la prenda (verificalas al recibirla)</legend>
@@ -242,7 +253,7 @@
                 @if (motivoTipo() === 'DEFECTO') {
                   Por defecto de fábrica alcanza con el comprobante.
                 } @else {
-                  Para cambios y devoluciones se exigen las tres.
+                  Se exigen las tres.
                 }
               </p>
             </fieldset>
@@ -252,11 +263,10 @@
                 <thead>
                   <tr>
                     <th>Prenda</th>
-                    <th class="tabla__numero">Vendidas</th>
-                    <th class="tabla__numero">Devueltas</th>
-                    <th class="tabla__numero">Reintegro u.</th>
-                    <th class="tabla__numero">A devolver</th>
-                    @if (esCambio()) {
+                    <th class="tabla__numero">Compradas</th>
+                    <th class="tabla__numero">Vale u.</th>
+                    <th class="tabla__numero">{{ esIntercambio() ? 'A cambiar' : 'A devolver' }}</th>
+                    @if (esIntercambio()) {
                       <th>Se lleva a cambio</th>
                     }
                   </tr>
@@ -268,11 +278,10 @@
                         {{ linea.producto }}
                         <div class="secundario">{{ linea.sku }} · {{ linea.talla }} · {{ linea.color }}</div>
                       </td>
-                      <td class="tabla__numero">{{ linea.cantidad_vendida }}</td>
                       <td class="tabla__numero">
-                        {{ linea.devuelta }}
-                        @if (linea.en_tramite > 0) {
-                          <div class="secundario">+{{ linea.en_tramite }} en trámite</div>
+                        {{ linea.cantidad_vendida }}
+                        @if (linea.devuelta > 0) {
+                          <div class="secundario">{{ linea.devuelta }} ya devuelta(s)</div>
                         }
                       </td>
                       <td class="tabla__numero">{{ precio(linea.reembolso_unitario) }}</td>
@@ -286,14 +295,14 @@
                             [ngModel]="cantidades()[linea.venta_detalle_id] ?? 0"
                             (ngModelChange)="fijarCantidad(linea.venta_detalle_id, $event, linea.devolvible)"
                             [name]="'cant-' + linea.venta_detalle_id"
-                            [attr.aria-label]="'Unidades a devolver de ' + linea.producto"
+                            [attr.aria-label]="'Unidades de ' + linea.producto"
                           />
                           <div class="secundario">máx. {{ linea.devolvible }}</div>
                         } @else {
                           <span class="secundario">—</span>
                         }
                       </td>
-                      @if (esCambio()) {
+                      @if (esIntercambio()) {
                         <td>
                           @if ((cantidades()[linea.venta_detalle_id] ?? 0) > 0) {
                             <select
@@ -304,7 +313,7 @@
                               <option value="" disabled>Elegí…</option>
                               @for (o of opcionesPara(linea.variante_id, linea.talla, linea.color); track o.variante_id) {
                                 <option [value]="o.variante_id" [disabled]="o.disponible < (cantidades()[linea.venta_detalle_id] ?? 0)">
-                                  {{ o.talla }} · {{ o.color }} ({{ o.disponible }} disp.)
+                                  {{ o.talla }} · {{ o.color }} · {{ precio(o.precio) }} ({{ o.disponible }} disp.)
                                 </option>
                               } @empty {
                                 <option value="" disabled>Sin otras opciones</option>
@@ -324,22 +333,36 @@
             <div class="campo">
               <label for="motivo">Detalle del motivo</label>
               <textarea id="motivo" rows="2" maxlength="250" [(ngModel)]="motivo" name="motivo"
-                placeholder="Ej.: le quedó chica, pide una talla más"></textarea>
+                [placeholder]="esIntercambio() ? 'Ej.: le quedó chica, pide una talla más' : 'Ej.: no le gustó el calce'"></textarea>
             </div>
 
+            @if (unidadesElegidas() > v.max_unidades) {
+              <p class="error" role="alert">Máximo {{ v.max_unidades }} prendas por compra.</p>
+            }
             <p class="estado">
-              {{ unidadesElegidas() }} unidad(es) · reintegro estimado <strong>{{ precio(estimado()) }}</strong>
-              <span class="secundario">(descuento e IVA prorrateados; el monto final se fija al aprobar)</span>
+              {{ unidadesElegidas() }} prenda(s) · {{ esIntercambio() ? 'crédito' : 'reintegro estimado' }}
+              <strong>{{ precio(estimado()) }}</strong>
+              @if (esIntercambio()) {
+                · lo nuevo {{ precio(estimadoNuevo()) }} ·
+                @if (estimadoNuevo() > estimado()) {
+                  <strong>paga {{ precio(estimadoNuevo() - estimado()) }}</strong>
+                } @else if (estimadoNuevo() < estimado()) {
+                  <strong>se le devuelve {{ precio(estimado() - estimadoNuevo()) }}</strong>
+                } @else {
+                  sin diferencia
+                }
+              }
+              <span class="secundario">(con IVA; el monto final se fija al concretar)</span>
             </p>
 
             <div class="acciones">
               <button
                 type="button"
                 class="boton"
-                [disabled]="ocupado() || unidadesElegidas() === 0 || (esCambio() ? v.fuera_de_plazo_cambio : v.fuera_de_plazo)"
+                [disabled]="ocupado() || unidadesElegidas() === 0 || unidadesElegidas() > v.max_unidades || !!bloqueoVenta()"
                 (click)="registrar()"
               >
-                {{ ocupado() ? 'Registrando…' : esCambio() ? 'Registrar cambio' : 'Registrar devolución' }}
+                {{ ocupado() ? 'Registrando…' : esIntercambio() ? 'Registrar intercambio' : 'Registrar devolución' }}
               </button>
               <button type="button" class="boton boton--secundario" (click)="creando.set(false)">Cancelar</button>
             </div>
@@ -347,18 +370,24 @@
         }
       } @else if (seleccionada(); as devolucion) {
         <div class="ficha">
-          <h2 class="panel__titulo">Nota {{ devolucion.numero }} · venta {{ devolucion.venta_numero }}</h2>
+          <h2 class="panel__titulo">
+            {{ devolucion.tipo === 'INTERCAMBIO' ? 'Intercambio' : 'Devolución' }} {{ devolucion.numero }} · venta
+            {{ devolucion.venta_numero }}
+          </h2>
           <p class="estado">
             {{ devolucion.cliente ?? 'Sin clienta identificada' }} · {{ devolucion.sucursal }} ·
-            {{ fecha(devolucion.fecha) }}
-            @if (devolucion.registrada_por) { · registró {{ devolucion.registrada_por }} }
+            {{ fecha(devolucion.fecha) }} · {{ devolucion.origen === 'ONLINE' ? 'pedida online' : 'registrada en caja' }}
+            @if (devolucion.registrada_por) { por {{ devolucion.registrada_por }} }
           </p>
+          @if (devolucion.fecha_visita) {
+            <p class="estado"><strong>Visita:</strong> {{ visita(devolucion) }}</p>
+          }
           <p>
             <span
               class="badge"
               [class.badge--ok]="devolucion.estado === 'APROBADA'"
-              [class.badge--alerta]="devolucion.estado === 'SOLICITADA'"
-              [class.badge--baja]="devolucion.estado === 'RECHAZADA'"
+              [class.badge--alerta]="enTramite(devolucion)"
+              [class.badge--baja]="!enTramite(devolucion) && devolucion.estado !== 'APROBADA'"
             >
               {{ etiquetaEstado(devolucion.estado) }}
             </span>
@@ -367,32 +396,17 @@
             }
           </p>
           <p class="estado"><strong>{{ etiquetaMotivo(devolucion.motivo_tipo) }}:</strong> {{ devolucion.motivo }}</p>
-          <p class="estado secundario">
-            Comprobante {{ devolucion.con_comprobante ? '✓' : '✗' }} · etiqueta {{ devolucion.con_etiqueta ? '✓' : '✗' }} ·
-            sin uso {{ devolucion.sin_uso ? '✓' : '✗' }}
-          </p>
           <div class="acciones">
-            <button type="button" class="boton boton--secundario" (click)="imprimirNota()">Imprimir nota de devolución</button>
+            <button type="button" class="boton boton--secundario" (click)="imprimirNota()">Imprimir nota</button>
           </div>
           @if (devolucion.resuelta_por) {
             <p class="estado">
-              {{ devolucion.estado === 'APROBADA' ? 'Aprobó' : 'Rechazó' }} {{ devolucion.resuelta_por }} ·
+              {{ devolucion.estado === 'APROBADA' ? 'Concretó' : 'Cerró' }} {{ devolucion.resuelta_por }} ·
               {{ fecha(devolucion.resuelta_en) }}
             </p>
           }
           @if (devolucion.motivo_rechazo) {
             <p class="estado"><strong>Motivo del rechazo:</strong> {{ devolucion.motivo_rechazo }}</p>
-          }
-          @if (devolucion.estado === 'APROBADA') {
-            <p class="estado">
-              <strong>Reintegro:</strong> {{ etiquetaReintegro(devolucion.reintegro_metodo) }}
-              @if (devolucion.reintegro_referencia) {
-                <span class="secundario mono">· {{ devolucion.reintegro_referencia }}</span>
-              }
-            </p>
-            @if (devolucion.venta_cambio_numero) {
-              <p class="estado"><strong>Cambio de prenda:</strong> venta {{ devolucion.venta_cambio_numero }}</p>
-            }
           }
 
           @if (aviso()) {
@@ -406,51 +420,113 @@
             <table class="tabla">
               <thead>
                 <tr>
-                  <th>SKU</th>
-                  <th>Prenda</th>
-                  <th class="tabla__numero">Vendidas</th>
-                  <th class="tabla__numero">Devuelve</th>
+                  <th>Prenda devuelta</th>
+                  <th class="tabla__numero">Cant.</th>
                   <th class="tabla__numero">Precio u.</th>
-                  <th>A cambio</th>
+                  @if (devolucion.tipo === 'INTERCAMBIO') {
+                    <th>Se lleva</th>
+                    <th class="tabla__numero">Precio u. nuevo</th>
+                  }
                 </tr>
               </thead>
               <tbody>
                 @for (linea of devolucion.detalle; track linea.id) {
                   <tr>
-                    <td class="mono">{{ linea.sku }}</td>
                     <td>
                       {{ linea.producto }}
-                      <div class="secundario">{{ linea.talla }} · {{ linea.color }}</div>
+                      <div class="secundario">{{ linea.sku }} · {{ linea.talla }} · {{ linea.color }}</div>
                     </td>
-                    <td class="tabla__numero">{{ linea.cantidad_vendida }}</td>
                     <td class="tabla__numero">{{ linea.cantidad }}</td>
                     <td class="tabla__numero">{{ precio(linea.precio_unitario) }}</td>
-                    <td>
-                      @if (linea.talla_solicitada) { {{ linea.talla_solicitada }} · {{ linea.color_solicitado }} } @else { — }
-                    </td>
+                    @if (devolucion.tipo === 'INTERCAMBIO') {
+                      <td>{{ linea.talla_solicitada }} · {{ linea.color_solicitado }}</td>
+                      <td class="tabla__numero">{{ precio(linea.precio_solicitado) }}</td>
+                    }
                   </tr>
                 }
               </tbody>
-              <tfoot>
-                <tr>
-                  <td colspan="4">
-                    <strong>{{ devolucion.estado === 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado' }}</strong>
-                  </td>
-                  <td class="tabla__numero"><strong>{{ precio(devolucion.monto_devuelto) }}</strong></td>
-                  <td></td>
-                </tr>
-              </tfoot>
             </table>
           </div>
 
-          @if (devolucion.estado === 'SOLICITADA' && puedeResolver) {
-            <div class="acciones cierre">
-              <button type="button" class="boton" [disabled]="ocupado()" (click)="aprobar()">
-                {{ ocupado() ? 'Procesando…' : 'Aprobar y reingresar al stock' }}
-              </button>
-              <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="rechazando.set(!rechazando())">
-                Rechazar
-              </button>
+          <dl class="resumen">
+            @if (devolucion.tipo === 'INTERCAMBIO') {
+              <dt>Vale lo devuelto (crédito)</dt>
+              <dd>{{ precio(devolucion.monto_devuelto) }}</dd>
+              <dt>Vale lo nuevo (con IVA)</dt>
+              <dd>{{ precio(devolucion.monto_cambio) }}</dd>
+              @if (devolucion.estado === 'APROBADA') {
+                <dt>Pagó de diferencia</dt>
+                <dd>{{ precio(devolucion.diferencia_cobrada) }}
+                  @if (devolucion.diferencia_metodo) { ({{ devolucion.diferencia_metodo.toLowerCase() }}) }</dd>
+                <dt>Se le devolvió</dt>
+                <dd>{{ precio(devolucion.monto_reintegrado) }}</dd>
+              } @else {
+                <dt>Diferencia</dt>
+                <dd>
+                  <strong>
+                    @if (Number(devolucion.diferencia) > 0) { paga {{ precio(devolucion.diferencia) }} }
+                    @else if (Number(devolucion.diferencia) < 0) { se le devuelve {{ precio(-Number(devolucion.diferencia)) }} }
+                    @else { sin diferencia }
+                  </strong>
+                </dd>
+              }
+            } @else {
+              <dt>{{ devolucion.estado === 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado' }}</dt>
+              <dd>
+                <strong>{{ precio(devolucion.estado === 'APROBADA' ? devolucion.monto_reintegrado : devolucion.monto_devuelto) }}</strong>
+              </dd>
+            }
+            @if (devolucion.reintegro_metodo) {
+              <dt>Reintegro</dt>
+              <dd>
+                {{ etiquetaReintegro(devolucion.reintegro_metodo) }}
+                @if (devolucion.reintegro_referencia) { <span class="secundario mono">· {{ devolucion.reintegro_referencia }}</span> }
+              </dd>
+            }
+            @if (devolucion.venta_cambio_numero) {
+              <dt>Venta del cambio</dt>
+              <dd class="mono">{{ devolucion.venta_cambio_numero }}</dd>
+            }
+          </dl>
+
+          @if (enTramite(devolucion) && puedeResolver) {
+            @if (devolucion.origen === 'ONLINE' && devolucion.estado === 'SOLICITADA') {
+              <div class="acciones cierre">
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="confirmar()">
+                  Aceptar solicitud
+                </button>
+                <span class="secundario">La clienta recibe el aviso y pasa por la sucursal el día elegido.</span>
+              </div>
+            }
+
+            <div class="carga">
+              <p class="estado"><strong>Concretar en caja</strong> (con la prenda en mano)</p>
+              <fieldset class="condiciones">
+                <legend>Condiciones de la prenda</legend>
+                <label class="check"><input type="checkbox" [(ngModel)]="aprConComprobante" name="apr-comp" /> Trae el comprobante</label>
+                <label class="check"><input type="checkbox" [(ngModel)]="aprConEtiqueta" name="apr-etiq" /> Conserva la etiqueta</label>
+                <label class="check"><input type="checkbox" [(ngModel)]="aprSinUso" name="apr-uso" /> Sin uso ni lavado</label>
+              </fieldset>
+              @if (devolucion.tipo === 'INTERCAMBIO' && Number(devolucion.diferencia) > 0) {
+                <div class="campo">
+                  <label for="metodo-dif">Cómo paga la diferencia ({{ precio(devolucion.diferencia) }})</label>
+                  <select id="metodo-dif" [(ngModel)]="metodoDiferencia" name="metodo-dif">
+                    <option value="" disabled>Elegí…</option>
+                    <option value="EFECTIVO">Efectivo</option>
+                    <option value="TARJETA">Tarjeta</option>
+                    <option value="QR">QR</option>
+                  </select>
+                </div>
+              }
+              <div class="acciones">
+                <button type="button" class="boton" [disabled]="ocupado()" (click)="aprobar()">
+                  {{ ocupado() ? 'Procesando…' : devolucion.tipo === 'INTERCAMBIO' ? 'Concretar intercambio' : 'Concretar devolución' }}
+                </button>
+                <button type="button" class="boton boton--peligro" [disabled]="ocupado()" (click)="rechazando.set(!rechazando())">
+                  Rechazar
+                </button>
+              </div>
+              <p class="secundario">Si la plata sale o entra en efectivo (o la compra se pagó con QR) hace falta tu caja abierta.</p>
             </div>
             @if (rechazando()) {
               <div class="carga">
@@ -467,37 +543,9 @@
               </div>
             }
           }
-
-          <!-- Cambio de prenda: la prenda nueva se cobra en caja como una venta normal y aca se
-               vincula esa venta a la devolucion aprobada. -->
-          @if (devolucion.estado === 'APROBADA' && !devolucion.venta_cambio_id && puedeRegistrar) {
-            <div class="carga">
-              <div class="campo">
-                <label for="venta-cambio">¿Se la cambió por otra prenda? Nº de la venta nueva</label>
-                <input
-                  id="venta-cambio"
-                  type="search"
-                  placeholder="V-…"
-                  [(ngModel)]="numeroVentaCambio"
-                  name="venta-cambio"
-                  (keyup.enter)="vincularCambio()"
-                />
-              </div>
-              <div class="acciones">
-                <button
-                  type="button"
-                  class="boton boton--secundario"
-                  [disabled]="ocupado() || !numeroVentaCambio.trim()"
-                  (click)="vincularCambio()"
-                >
-                  Vincular cambio
-                </button>
-              </div>
-            </div>
-          }
         </div>
       } @else {
-        <p class="estado">Elegí una devolución de la lista o registrá una nueva.</p>
+        <p class="estado">Elegí una de la lista o registrá una nueva.</p>
       }
     </section>
   </div>

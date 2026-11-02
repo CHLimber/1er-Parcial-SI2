@@ -82,3 +82,26 @@
 .ficha--venta {
   min-width: 0;
 }
+
+/* Resumen de plata de la devolucion / intercambio */
+.resumen {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  gap: 0.3rem 1.25rem;
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+.resumen dt {
+  color: var(--ink-soft, #555);
+}
+
+.resumen dd {
+  margin: 0;
+  text-align: right;
+}
+
+.cierre .secundario {
+  align-self: center;
+}

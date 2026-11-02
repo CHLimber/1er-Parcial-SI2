@@ -3,12 +3,36 @@
   bajada="Abrí tu sesión, registrá las ventas del mostrador y verificá los pagos online y retiros pendientes."
 >
   <div acciones>
+    @if (sesion()) {
+      <!-- efectivo esperado en el cajon ahora mismo; tocarlo lo recalcula -->
+      <button
+        type="button"
+        class="efectivo"
+        (click)="refrescarEfectivo()"
+        [attr.aria-busy]="actualizandoEfectivo()"
+        title="Actualizar el efectivo en caja"
+      >
+        <span class="efectivo__etiqueta">Efectivo en caja</span>
+        <span class="efectivo__monto">{{ efectivo() === null ? '…' : formatearPrecio(efectivo()!) }}</span>
+      </button>
+    }
     @if (sesion() && !cerrandoCaja() && !comprobante()) {
       <button type="button" class="boton" (click)="abrirCierreCaja()">Cerrar caja</button>
     }
   </div>
 
   <div class="contenido">
+    @if (pendientesDevolucion(); as p) {
+      @if (p.por_aceptar + p.por_concretar > 0) {
+        <a class="aviso-devoluciones" routerLink="/panel/devoluciones">
+          Devoluciones e intercambios:
+          @if (p.por_aceptar > 0) { <strong>{{ p.por_aceptar }} por aceptar</strong> }
+          @if (p.por_aceptar > 0 && p.por_concretar > 0) { · }
+          @if (p.por_concretar > 0) { <strong>{{ p.por_concretar }} esperando a la clienta</strong> }
+          → atender
+        </a>
+      }
+    }
     @if (cargando()) {
       <p class="estado">Cargando caja…</p>
     } @else if (!sesion()) {

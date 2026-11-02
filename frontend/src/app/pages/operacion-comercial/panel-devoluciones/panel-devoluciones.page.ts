@@ -5,30 +5,36 @@ import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 import {
   CambiosMesOut,
+  COMO_SE_REINTEGRA,
   DevolucionDetalleOut,
   DevolucionOut,
+  ESTADO_DEVOLUCION_TEXTO,
   EstadoDevolucion,
   MOTIVOS_DEVOLUCION,
+  MetodoDiferencia,
   MetodoReintegro,
   MotivoDevolucion,
   NotaDevolucionOut,
+  OrigenDevolucion,
+  TipoDevolucion,
   VarianteCambioOut,
   VentaDevolvibleOut,
+  motivosDe,
 } from '../../../core/operacion-comercial/devoluciones/devoluciones.models';
 import { DevolucionesService } from '../../../core/operacion-comercial/devoluciones/devoluciones.service';
 import { interpretarError } from '../../../shared/errores';
 import { PanelShell } from '../../../shared/panel/panel-shell';
 
+const IVA = 0.13;
+
 /**
- * Devoluciones de ventas (PENDIENTES 2.7). Dos pasos, los dos del personal: registrar la
- * devolucion sobre una venta pagada (nace SOLICITADA, no mueve stock) y resolverla: aprobar
- * reingresa el stock (trigger en la base) y calcula lo que se reintegra; rechazar pide motivo.
- * PENDIENTES 4.11: plazo desde la venta (configuracion.devolucion_plazo_dias), reintegro segun
- * como se pago (Stripe por la API, efectivo desde la caja abierta, el resto manual) y cambio de
- * prenda = devolucion aprobada + venta nueva en caja vinculada aca.
- * Segundo parcial (PENDIENTES 5.8-5.10): motivo estructurado (TALLA/COLOR son cambios, con su
- * propio plazo y la variante que se lleva la clienta), condiciones de la prenda, nota de
- * devolucion imprimible y la consulta "que prendas solicitaron cambio en el mes".
+ * Devoluciones e intercambios (PENDIENTES 10), en dos pestañas con las mismas reglas: 3 días desde
+ * la compra, una sola por compra y hasta 3 prendas.
+ *  - Devolución: vuelve la prenda y vuelve la plata (Stripe por la API; efectivo y QR desde la caja).
+ *  - Intercambio: otra talla/color de la misma prenda. Lo devuelto es crédito: si lo nuevo cuesta
+ *    más la clienta paga la diferencia al concretarlo; si cuesta menos se le devuelve lo que sobra.
+ * Dos orígenes: registrada acá en caja (la clienta está presente) o pedida online desde Mis compras,
+ * que el personal acepta y concreta cuando la clienta llega a la sucursal.
  */
 @Component({
   selector: 'app-panel-devoluciones-page',
@@ -50,19 +56,23 @@ export class PanelDevolucionesPage implements OnInit {
   protected readonly puedeResolver = this.auth.tienePermiso('devoluciones.actualizar');
   /** los montos Decimal llegan como string: el template los compara con Number() */
   protected readonly Number = Number;
+  protected readonly estados = Object.entries(ESTADO_DEVOLUCION_TEXTO) as [EstadoDevolucion, string][];
+
+  /** pestaña: una por tipo, más la consulta de cambios del mes */
+  protected readonly vista = signal<TipoDevolucion | 'cambios'>('DEVOLUCION');
+  protected readonly tipo = computed<TipoDevolucion>(() => (this.vista() === 'INTERCAMBIO' ? 'INTERCAMBIO' : 'DEVOLUCION'));
+  protected readonly motivosDelTipo = computed(() => motivosDe(this.tipo()));
 
   protected readonly cargando = signal(true);
   protected readonly devoluciones = signal<DevolucionOut[]>([]);
   protected readonly error = signal<string | null>(null);
   protected filtroEstado: '' | EstadoDevolucion = '';
+  protected filtroOrigen: '' | OrigenDevolucion = '';
   protected filtroVenta = '';
   protected filtroMotivo: '' | MotivoDevolucion = '';
   protected filtroDesde = '';
   protected filtroHasta = '';
-  protected readonly motivos = MOTIVOS_DEVOLUCION;
 
-  /** 'lista' = devoluciones; 'cambios' = consulta de cambios del mes */
-  protected readonly vista = signal<'lista' | 'cambios'>('lista');
   protected mesConsulta = new Date().toISOString().slice(0, 7); // YYYY-MM
   protected incluirOtrosMotivos = false;
   protected readonly cambiosMes = signal<CambiosMesOut | null>(null);
@@ -75,28 +85,33 @@ export class PanelDevolucionesPage implements OnInit {
   protected readonly ocupado = signal(false);
   protected motivoRechazo = '';
   protected readonly rechazando = signal(false);
-  protected numeroVentaCambio = '';
+  /** al concretar: condiciones vistas al recibir la prenda y cómo paga la diferencia */
+  protected aprConEtiqueta = true;
+  protected aprSinUso = true;
+  protected aprConComprobante = true;
+  protected metodoDiferencia: MetodoDiferencia | '' = '';
 
-  // --- alta ---
+  // --- alta en caja ---
   protected readonly creando = signal(false);
   protected numeroVenta = '';
   protected readonly venta = signal<VentaDevolvibleOut | null>(null);
   protected readonly buscandoVenta = signal(false);
   protected readonly errorNueva = signal<string | null>(null);
-  /** cantidad a devolver por venta_detalle_id */
+  /** cantidad por venta_detalle_id */
   protected readonly cantidades = signal<Partial<Record<string, number>>>({});
   protected motivo = '';
-  protected readonly motivoTipo = signal<MotivoDevolucion>('TALLA');
+  protected readonly motivoTipo = signal<MotivoDevolucion>('NO_GUSTO');
   protected conEtiqueta = true;
   protected sinUso = true;
   protected conComprobante = true;
-  /** variante elegida a cambio, por venta_detalle_id (solo TALLA/COLOR) */
+  /** variante elegida a cambio, por venta_detalle_id (solo intercambio) */
   protected readonly solicitadas = signal<Partial<Record<string, string>>>({});
   /** opciones de cambio por variante vendida: otras tallas/colores de la misma prenda */
   protected readonly opcionesCambio = signal<Partial<Record<string, VarianteCambioOut[]>>>({});
 
-  protected readonly esCambio = computed(() => ['TALLA', 'COLOR'].includes(this.motivoTipo()));
+  protected readonly esIntercambio = computed(() => this.tipo() === 'INTERCAMBIO');
 
+  /** lo que vale lo devuelto (crédito en un intercambio) */
   protected readonly estimado = computed(() => {
     const venta = this.venta();
     if (!venta) return 0;
@@ -107,11 +122,52 @@ export class PanelDevolucionesPage implements OnInit {
     );
   });
 
+  /** lo que valen las prendas nuevas elegidas, con IVA */
+  protected readonly estimadoNuevo = computed(() => {
+    const venta = this.venta();
+    if (!venta || !this.esIntercambio()) return 0;
+    const cantidades = this.cantidades();
+    const solicitadas = this.solicitadas();
+    let subtotal = 0;
+    for (const linea of venta.lineas) {
+      const elegida = solicitadas[linea.venta_detalle_id];
+      const opcion = (this.opcionesCambio()[linea.variante_id] ?? []).find((o) => o.variante_id === elegida);
+      if (opcion) subtotal += (cantidades[linea.venta_detalle_id] ?? 0) * Number(opcion.precio);
+    }
+    return Math.round(subtotal * (1 + IVA) * 100) / 100;
+  });
+
   protected readonly unidadesElegidas = computed(() =>
     Object.values(this.cantidades()).reduce((suma: number, cantidad) => suma + (cantidad ?? 0), 0),
   );
 
+  /** motivo por el que la venta buscada no admite otra devolución/intercambio (o null) */
+  protected readonly bloqueoVenta = computed(() => {
+    const v = this.venta();
+    if (!v) return null;
+    if (v.es_venta_de_cambio) return 'Esta venta salió de un intercambio: ya usó su devolución.';
+    if (v.solicitud_vigente) return `La venta ya tiene la ${v.solicitud_vigente}: se permite una sola por compra.`;
+    const vencida = this.esIntercambio() ? v.fuera_de_plazo_cambio : v.fuera_de_plazo;
+    if (vencida) {
+      const hasta = this.esIntercambio() ? v.cambio_vence_en : v.plazo_vence_en;
+      return `Venció el plazo el ${this.fecha(hasta)}: ya no se puede registrar.`;
+    }
+    return null;
+  });
+
   ngOnInit(): void {
+    this.cargar();
+  }
+
+  protected elegirVista(vista: TipoDevolucion | 'cambios'): void {
+    this.vista.set(vista);
+    if (vista === 'cambios') {
+      this.cargarCambios();
+      return;
+    }
+    this.filtroMotivo = '';
+    this.creando.set(false);
+    this.seleccionada.set(null);
     this.cargar();
   }
 
@@ -120,6 +176,8 @@ export class PanelDevolucionesPage implements OnInit {
     this.error.set(null);
     this.servicio
       .listar({
+        tipo: this.tipo(),
+        origen: this.filtroOrigen || null,
         estado: this.filtroEstado || null,
         venta: this.filtroVenta.trim() || null,
         motivo_tipo: this.filtroMotivo || null,
@@ -140,11 +198,6 @@ export class PanelDevolucionesPage implements OnInit {
 
   // ------------------------------------------------------------ cambios del mes
 
-  protected verCambios(): void {
-    this.vista.set('cambios');
-    this.cargarCambios();
-  }
-
   protected cargarCambios(): void {
     const [anio, mes] = this.mesConsulta.split('-').map(Number);
     if (!anio || !mes) return;
@@ -162,7 +215,7 @@ export class PanelDevolucionesPage implements OnInit {
     });
   }
 
-  // ------------------------------------------------------------ alta
+  // ------------------------------------------------------------ alta en caja
 
   protected abrirNueva(): void {
     this.creando.set(true);
@@ -170,7 +223,7 @@ export class PanelDevolucionesPage implements OnInit {
     this.venta.set(null);
     this.numeroVenta = '';
     this.motivo = '';
-    this.motivoTipo.set('TALLA');
+    this.motivoTipo.set(this.esIntercambio() ? 'TALLA' : 'NO_GUSTO');
     this.conEtiqueta = this.sinUso = this.conComprobante = true;
     this.cantidades.set({});
     this.solicitadas.set({});
@@ -181,10 +234,10 @@ export class PanelDevolucionesPage implements OnInit {
   protected cambiarMotivo(motivo: MotivoDevolucion): void {
     this.motivoTipo.set(motivo);
     this.solicitadas.set({});
-    if (this.esCambio()) this.cargarOpcionesCambio();
+    if (this.esIntercambio()) this.cargarOpcionesCambio();
   }
 
-  /** Para cada prenda de la venta, las otras tallas/colores con su stock en la sucursal. */
+  /** Para cada prenda de la venta, las otras tallas/colores con su precio y stock en la sucursal. */
   private cargarOpcionesCambio(): void {
     const venta = this.venta();
     if (!venta) return;
@@ -197,7 +250,7 @@ export class PanelDevolucionesPage implements OnInit {
     }
   }
 
-  /** Opciones validas segun el motivo: TALLA = mismo color, otra talla; COLOR = misma talla, otro color. */
+  /** Opciones válidas según el motivo: TALLA = mismo color, otra talla; COLOR = misma talla, otro color. */
   protected opcionesPara(varianteId: string, talla: string, color: string): VarianteCambioOut[] {
     const todas = this.opcionesCambio()[varianteId] ?? [];
     return this.motivoTipo() === 'TALLA'
@@ -220,7 +273,7 @@ export class PanelDevolucionesPage implements OnInit {
       next: (venta) => {
         this.venta.set(venta);
         this.buscandoVenta.set(false);
-        if (this.esCambio()) this.cargarOpcionesCambio();
+        if (this.esIntercambio()) this.cargarOpcionesCambio();
       },
       error: (e: HttpErrorResponse) => {
         this.buscandoVenta.set(false);
@@ -242,51 +295,57 @@ export class PanelDevolucionesPage implements OnInit {
       .map(([venta_detalle_id, cantidad]) => ({
         venta_detalle_id,
         cantidad: cantidad ?? 0,
-        variante_solicitada_id: this.esCambio() ? (solicitadas[venta_detalle_id] ?? null) : null,
+        variante_solicitada_id: this.esIntercambio() ? (solicitadas[venta_detalle_id] ?? null) : null,
       }))
       .filter((linea) => linea.cantidad > 0);
     if (lineas.length === 0) {
-      this.errorNueva.set('Indicá al menos una prenda a devolver.');
+      this.errorNueva.set('Indicá al menos una prenda.');
       return;
     }
-    if (this.esCambio() && lineas.some((linea) => !linea.variante_solicitada_id)) {
+    if (this.unidadesElegidas() > venta.max_unidades) {
+      this.errorNueva.set(`Se pueden devolver o cambiar hasta ${venta.max_unidades} prendas por compra.`);
+      return;
+    }
+    if (this.esIntercambio() && lineas.some((linea) => !linea.variante_solicitada_id)) {
       this.errorNueva.set('Elegí qué talla o color se lleva la clienta por cada prenda.');
       return;
     }
     if (this.motivo.trim().length < 3) {
-      this.errorNueva.set('Escribí el motivo de la devolución.');
+      this.errorNueva.set('Escribí el detalle del motivo.');
       return;
     }
 
     this.ocupado.set(true);
     this.errorNueva.set(null);
-    const datos = {
-      venta_id: venta.venta_id,
-      motivo_tipo: this.motivoTipo(),
-      motivo: this.motivo.trim(),
-      con_etiqueta: this.conEtiqueta,
-      sin_uso: this.sinUso,
-      con_comprobante: this.conComprobante,
-      lineas,
-    };
-    this.servicio.registrar(datos).subscribe({
-      next: (devolucion) => {
-        this.ocupado.set(false);
-        this.creando.set(false);
-        this.seleccionada.set(devolucion);
-        this.aviso.set(
-          `Nota ${devolucion.numero} registrada. Queda pendiente de aprobación: todavía no volvió al stock.`,
-        );
-        this.cargar();
-      },
-      error: (e: HttpErrorResponse) => {
-        this.ocupado.set(false);
-        this.errorNueva.set(interpretarError(e));
-      },
-    });
+    this.servicio
+      .registrar({
+        venta_id: venta.venta_id,
+        motivo_tipo: this.motivoTipo(),
+        motivo: this.motivo.trim(),
+        con_etiqueta: this.conEtiqueta,
+        sin_uso: this.sinUso,
+        con_comprobante: this.conComprobante,
+        lineas,
+      })
+      .subscribe({
+        next: (devolucion) => {
+          this.ocupado.set(false);
+          this.creando.set(false);
+          this.prepararAprobacion(devolucion);
+          this.seleccionada.set(devolucion);
+          this.aviso.set(
+            `Nota ${devolucion.numero} registrada. Concretala abajo para mover el stock y la plata.`,
+          );
+          this.cargar();
+        },
+        error: (e: HttpErrorResponse) => {
+          this.ocupado.set(false);
+          this.errorNueva.set(interpretarError(e));
+        },
+      });
   }
 
-  // ------------------------------------------------------------ detalle
+  // ------------------------------------------------------------ detalle y resolución
 
   protected abrir(devolucion: DevolucionOut): void {
     this.creando.set(false);
@@ -294,25 +353,35 @@ export class PanelDevolucionesPage implements OnInit {
     this.aviso.set(null);
     this.rechazando.set(false);
     this.servicio.obtener(devolucion.id).subscribe({
-      next: (detalle) => this.seleccionada.set(detalle),
+      next: (detalle) => {
+        this.prepararAprobacion(detalle);
+        this.seleccionada.set(detalle);
+      },
       error: (e: HttpErrorResponse) => this.errorDetalle.set(interpretarError(e)),
     });
   }
 
-  protected aprobar(): void {
+  private prepararAprobacion(devolucion: DevolucionOut): void {
+    this.aprConEtiqueta = devolucion.con_etiqueta;
+    this.aprSinUso = devolucion.sin_uso;
+    this.aprConComprobante = devolucion.con_comprobante;
+    this.metodoDiferencia = '';
+  }
+
+  protected enTramite(devolucion: DevolucionOut): boolean {
+    return devolucion.estado === 'SOLICITADA' || devolucion.estado === 'CONFIRMADA';
+  }
+
+  protected confirmar(): void {
     const devolucion = this.seleccionada();
     if (!devolucion) return;
     this.ocupado.set(true);
     this.errorDetalle.set(null);
-    this.servicio.aprobar(devolucion.id).subscribe({
+    this.servicio.confirmar(devolucion.id).subscribe({
       next: (detalle) => {
         this.ocupado.set(false);
         this.seleccionada.set(detalle);
-        this.aviso.set(
-          `Devolución aprobada: ${detalle.unidades} unidad(es) volvieron al stock de ${detalle.sucursal}. ` +
-            this.instruccionReintegro(detalle.reintegro_metodo, detalle.monto_devuelto) +
-            (detalle.pago_reembolsado ? ' La venta quedó devuelta completa y el pago pasó a reembolsado.' : ''),
-        );
+        this.aviso.set('Solicitud aceptada. Se le avisó a la clienta; concretala en caja cuando llegue.');
         this.cargar();
       },
       error: (e: HttpErrorResponse) => {
@@ -322,11 +391,54 @@ export class PanelDevolucionesPage implements OnInit {
     });
   }
 
+  protected aprobar(): void {
+    const devolucion = this.seleccionada();
+    if (!devolucion) return;
+    if (devolucion.tipo === 'INTERCAMBIO' && Number(devolucion.diferencia) > 0 && !this.metodoDiferencia) {
+      this.errorDetalle.set('Elegí cómo paga la clienta la diferencia.');
+      return;
+    }
+    this.ocupado.set(true);
+    this.errorDetalle.set(null);
+    this.servicio
+      .aprobar(devolucion.id, {
+        con_etiqueta: this.aprConEtiqueta,
+        sin_uso: this.aprSinUso,
+        con_comprobante: this.aprConComprobante,
+        diferencia_metodo: this.metodoDiferencia || null,
+      })
+      .subscribe({
+        next: (detalle) => {
+          this.ocupado.set(false);
+          this.seleccionada.set(detalle);
+          this.aviso.set(this.resumenAprobacion(detalle));
+          this.cargar();
+        },
+        error: (e: HttpErrorResponse) => {
+          this.ocupado.set(false);
+          this.errorDetalle.set(interpretarError(e));
+        },
+      });
+  }
+
+  private resumenAprobacion(d: DevolucionDetalleOut): string {
+    const reintegro = Number(d.monto_reintegrado);
+    const cobrado = Number(d.diferencia_cobrada);
+    let plata = 'No hay diferencia de plata.';
+    if (cobrado > 0) plata = `Cobrá ${this.precio(cobrado)} de diferencia (${(d.diferencia_metodo ?? '').toLowerCase()}).`;
+    else if (reintegro > 0) plata = this.instruccionReintegro(d.reintegro_metodo, reintegro);
+    const base =
+      d.tipo === 'INTERCAMBIO'
+        ? `Intercambio realizado: entregale la prenda nueva (venta ${d.venta_cambio_numero}).`
+        : `Devolución realizada: ${d.unidades} unidad(es) volvieron al stock de ${d.sucursal}.`;
+    return `${base} ${plata} El comprobante le llega por correo.`;
+  }
+
   protected rechazar(): void {
     const devolucion = this.seleccionada();
     if (!devolucion) return;
     if (this.motivoRechazo.trim().length < 3) {
-      this.errorDetalle.set('Escribí por qué se rechaza la devolución.');
+      this.errorDetalle.set('Escribí por qué se rechaza.');
       return;
     }
     this.ocupado.set(true);
@@ -337,7 +449,7 @@ export class PanelDevolucionesPage implements OnInit {
         this.rechazando.set(false);
         this.motivoRechazo = '';
         this.seleccionada.set(detalle);
-        this.aviso.set('Devolución rechazada. Se le avisó a la clienta.');
+        this.aviso.set('Rechazada. Se le avisó a la clienta.');
         this.cargar();
       },
       error: (e: HttpErrorResponse) => {
@@ -347,30 +459,9 @@ export class PanelDevolucionesPage implements OnInit {
     });
   }
 
-  /** Cambio de prenda: la prenda nueva se cobra en caja y aca se vincula esa venta. */
-  protected vincularCambio(): void {
-    const devolucion = this.seleccionada();
-    const numero = this.numeroVentaCambio.trim();
-    if (!devolucion || !numero) return;
-    this.ocupado.set(true);
-    this.errorDetalle.set(null);
-    this.servicio.vincularCambio(devolucion.id, numero).subscribe({
-      next: (detalle) => {
-        this.ocupado.set(false);
-        this.numeroVentaCambio = '';
-        this.seleccionada.set(detalle);
-        this.aviso.set(`Cambio registrado: la venta ${detalle.venta_cambio_numero} reemplaza lo devuelto.`);
-      },
-      error: (e: HttpErrorResponse) => {
-        this.ocupado.set(false);
-        this.errorDetalle.set(interpretarError(e));
-      },
-    });
-  }
+  // ------------------------------------------------------------ nota imprimible
 
-  // ------------------------------------------------------------ nota de devolucion
-
-  /** Arma la nota en una ventana aparte y abre el dialogo de impresion (o "Guardar como PDF"). */
+  /** Arma la nota en una ventana aparte y abre el diálogo de impresión (o "Guardar como PDF"). */
   protected imprimirNota(): void {
     const devolucion = this.seleccionada();
     if (!devolucion) return;
@@ -400,9 +491,17 @@ export class PanelDevolucionesPage implements OnInit {
         (l) =>
           `<tr><td>${esc(l.sku)}</td><td>${esc(l.producto)}<br><small>${esc(l.talla)} · ${esc(l.color)}</small></td>` +
           `<td class="n">${l.cantidad}</td><td class="n">${this.precio(l.precio_unitario)}</td>` +
-          `<td>${l.talla_solicitada ? `${esc(l.talla_solicitada)} · ${esc(l.color_solicitado)}` : '—'}</td></tr>`,
+          `<td>${l.talla_solicitada ? `${esc(l.talla_solicitada)} · ${esc(l.color_solicitado)} (${this.precio(l.precio_solicitado)} + IVA)` : '—'}</td></tr>`,
       )
       .join('');
+    const titulo = d.tipo === 'INTERCAMBIO' ? 'NOTA DE INTERCAMBIO' : 'NOTA DE DEVOLUCIÓN';
+    const plata =
+      d.tipo === 'INTERCAMBIO'
+        ? `<strong>Valor devuelto (crédito):</strong> ${this.precio(d.monto_devuelto)} · <strong>Valor nuevo:</strong> ${this.precio(d.monto_cambio)} · ` +
+          (d.estado === 'APROBADA'
+            ? `<strong>Pagó:</strong> ${this.precio(d.diferencia_cobrada)} · <strong>Se le devolvió:</strong> ${this.precio(d.monto_reintegrado)}`
+            : `<strong>Diferencia estimada:</strong> ${this.precio(d.diferencia)}`)
+        : `<strong>${d.estado === 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado'}:</strong> ${this.precio(d.estado === 'APROBADA' ? d.monto_reintegrado : d.monto_devuelto)}`;
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Nota ${esc(d.numero)}</title>
       <style>
         body{font-family:Arial,sans-serif;color:#111;margin:32px;font-size:13px}
@@ -416,17 +515,16 @@ export class PanelDevolucionesPage implements OnInit {
       </style></head><body>
       <div class="cab"><div><h1>${esc(nota.empresa_razon_social)}</h1>NIT ${esc(nota.empresa_nit)}<br>
         ${esc(d.sucursal)} · ${esc(nota.sucursal_direccion)} · ${esc(nota.sucursal_ciudad)}</div>
-        <div style="text-align:right"><h1>NOTA DE DEVOLUCIÓN</h1><strong>${esc(d.numero)}</strong><br>
+        <div style="text-align:right"><h1>${titulo}</h1><strong>${esc(d.numero)}</strong><br>
         ${this.fecha(d.fecha)}</div></div>
       <p><strong>Venta:</strong> ${esc(d.venta_numero)} del ${this.fecha(nota.venta_fecha)} ·
-        <strong>Clienta:</strong> ${esc(d.cliente) || 'sin identificar'}</p>
+        <strong>Clienta:</strong> ${esc(d.cliente) || 'sin identificar'} · <strong>Origen:</strong> ${d.origen === 'ONLINE' ? 'solicitud online' : 'caja'}</p>
       <p><strong>Motivo:</strong> ${esc(this.etiquetaMotivo(d.motivo_tipo))} — ${esc(d.motivo)}</p>
       <p><strong>Condiciones verificadas:</strong> etiqueta ${si(d.con_etiqueta)} · sin uso ${si(d.sin_uso)} ·
-        comprobante ${si(d.con_comprobante)} · plazo aplicado: ${nota.plazo_dias} días desde la compra</p>
+        comprobante ${si(d.con_comprobante)} · plazo: ${nota.plazo_dias} días desde la compra</p>
       <table><thead><tr><th>SKU</th><th>Prenda devuelta</th><th class="n">Cant.</th><th class="n">Precio u.</th>
         <th>Se lleva a cambio</th></tr></thead><tbody>${filas}</tbody></table>
-      <p><strong>Estado:</strong> ${esc(this.etiquetaEstado(d.estado))} ·
-        <strong>${d.estado === 'APROBADA' ? 'Reintegrado' : 'Reintegro estimado'}:</strong> ${this.precio(d.monto_devuelto)}
+      <p><strong>Estado:</strong> ${esc(this.etiquetaEstado(d.estado))} · ${plata}
         ${d.reintegro_metodo ? ` (${esc(this.etiquetaReintegro(d.reintegro_metodo))})` : ''}
         ${d.venta_cambio_numero ? ` · <strong>Venta del cambio:</strong> ${esc(d.venta_cambio_numero)}` : ''}</p>
       <div class="firmas"><div>Firma de la clienta</div><div>Registró: ${esc(d.registrada_por)}</div></div>
@@ -436,33 +534,23 @@ export class PanelDevolucionesPage implements OnInit {
   // ------------------------------------------------------------ formato
 
   protected etiquetaMotivo(motivo: MotivoDevolucion): string {
-    return this.motivos.find((m) => m.valor === motivo)?.etiqueta ?? motivo;
+    return MOTIVOS_DEVOLUCION.find((m) => m.valor === motivo)?.etiqueta ?? motivo;
   }
 
   protected etiquetaReintegro(metodo: MetodoReintegro | null): string {
-    switch (metodo) {
-      case 'STRIPE':
-        return 'Reembolso automático a la tarjeta (Stripe)';
-      case 'EFECTIVO':
-        return 'Efectivo, desde la caja abierta';
-      case 'TARJETA':
-        return 'Tarjeta (reversar en el POS, fuera del sistema)';
-      case 'QR':
-        return 'QR / transferencia a la clienta (fuera del sistema)';
-      case 'TRANSFERENCIA':
-        return 'Transferencia a la clienta (fuera del sistema)';
-      default:
-        return 'Sin pago aprobado registrado';
-    }
+    if (!metodo) return 'Sin pago aprobado registrado';
+    if (metodo === 'STRIPE') return 'Reembolso automático a la tarjeta (Stripe)';
+    return COMO_SE_REINTEGRA[metodo].charAt(0).toUpperCase() + COMO_SE_REINTEGRA[metodo].slice(1);
   }
 
-  private instruccionReintegro(metodo: MetodoReintegro | null, monto: number | string): string {
+  private instruccionReintegro(metodo: MetodoReintegro | null, monto: number): string {
     const importe = this.precio(monto);
     switch (metodo) {
       case 'STRIPE':
         return `Stripe ya reembolsó ${importe} a la tarjeta de la clienta.`;
       case 'EFECTIVO':
-        return `Entregale ${importe} en efectivo: ya se descontó del arqueo de tu caja.`;
+      case 'QR':
+        return `Entregale ${importe} en efectivo: ya se descontó del efectivo de tu caja.`;
       default:
         return `Reintegrar ${importe} a la clienta (${this.etiquetaReintegro(metodo).toLowerCase()}).`;
     }
@@ -476,14 +564,13 @@ export class PanelDevolucionesPage implements OnInit {
     return valor ? new Date(valor).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' }) : '—';
   }
 
+  protected visita(d: DevolucionOut): string {
+    if (!d.fecha_visita) return '';
+    const [anio, mes, dia] = d.fecha_visita.split('-');
+    return `${dia}/${mes}/${anio} ${d.hora_visita?.slice(0, 5) ?? ''}`;
+  }
+
   protected etiquetaEstado(estado: EstadoDevolucion): string {
-    switch (estado) {
-      case 'SOLICITADA':
-        return 'Pendiente';
-      case 'APROBADA':
-        return 'Aprobada';
-      case 'RECHAZADA':
-        return 'Rechazada';
-    }
+    return ESTADO_DEVOLUCION_TEXTO[estado] ?? estado;
   }
 }

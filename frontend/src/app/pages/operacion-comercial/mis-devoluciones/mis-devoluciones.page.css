@@ -1,0 +1,253 @@
+/* Cabecera, contenido, titulo, lista y estado vienen de mis-compras.page.css */
+
+.reglas {
+  margin: -0.75rem 0 1.5rem;
+  font-size: 0.92rem;
+}
+
+.subtitulo {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 1.35rem;
+  color: var(--ink);
+  margin: 1.5rem 0 0.75rem;
+}
+
+.aviso {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  border-left: 4px solid var(--gold);
+  color: var(--ink);
+}
+
+.formulario {
+  background: var(--white);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  display: grid;
+  gap: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.formulario__cabecera {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.formulario__cabecera .subtitulo {
+  margin: 0;
+}
+
+.tipos {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.tipo {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tipo span {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.tipo--activo {
+  border-color: var(--flame);
+  background: var(--white);
+  box-shadow: inset 0 0 0 1px var(--flame);
+}
+
+.campo {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.campo label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.campo select,
+.campo input,
+.campo textarea {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--ink);
+  font: inherit;
+  min-width: 0;
+}
+
+.prendas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.prenda {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+}
+
+.prenda__info {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.prenda__nombre {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.prenda__cambio {
+  grid-column: 1 / -1;
+}
+
+.contador {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.contador button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.contador span {
+  min-width: 2rem;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.visita {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.resumen {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+
+.resumen p {
+  margin: 0.2rem 0;
+}
+
+.boton {
+  justify-self: start;
+  padding: 0.7rem 1.4rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  color: var(--white);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.boton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.enlace {
+  color: var(--flame-dark);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.enlace--boton {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.solicitud {
+  background: var(--white);
+  padding: 1rem 1.25rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.solicitud .estado {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.solicitud__prendas {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.pastilla {
+  flex: none;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: var(--paper);
+  color: var(--ink-soft);
+}
+
+/* mismos tonos que los estados de Mis compras */
+.pastilla--espera {
+  background: #fdf0e6;
+  color: var(--flame-dark);
+}
+
+.pastilla--ok {
+  background: #e7f4ec;
+  color: #2f7d4f;
+}
+
+@media (max-width: 30rem) {
+  .visita,
+  .tipos {
+    grid-template-columns: 1fr;
+  }
+
+  .boton {
+    justify-self: stretch;
+  }
+}
+

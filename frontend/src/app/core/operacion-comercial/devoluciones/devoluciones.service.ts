@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
 import {
+  AprobacionIn,
   CambiosMesOut,
   DevolucionDetalleOut,
   DevolucionIn,
@@ -11,11 +12,18 @@ import {
   EstadoDevolucion,
   MotivoDevolucion,
   NotaDevolucionOut,
+  OpcionesDevolucionOut,
+  OrigenDevolucion,
+  PendientesDevolucionOut,
+  SolicitudClienteIn,
+  TipoDevolucion,
   VarianteCambioOut,
   VentaDevolvibleOut,
 } from './devoluciones.models';
 
 export interface FiltroDevoluciones {
+  tipo?: TipoDevolucion | null;
+  origen?: OrigenDevolucion | null;
   estado?: EstadoDevolucion | null;
   venta?: string | null;
   motivo_tipo?: MotivoDevolucion | null;
@@ -23,7 +31,8 @@ export interface FiltroDevoluciones {
   hasta?: string | null;
 }
 
-/** Devoluciones de ventas (PENDIENTES 2.7): registrar, aprobar (reingresa stock) o rechazar. */
+/** Devoluciones e intercambios, lado del personal: registrar en caja, aceptar las solicitudes
+ * online, concretar (stock + plata) o rechazar. */
 @Injectable({ providedIn: 'root' })
 export class DevolucionesService {
   private readonly http = inject(HttpClient);
@@ -37,14 +46,19 @@ export class DevolucionesService {
     return this.http.get<DevolucionOut[]>(this.base, { params });
   }
 
-  /** Otras tallas/colores de la misma prenda con su disponible, para elegir el cambio. */
+  /** Cuántas solicitudes esperan al personal de la sucursal. */
+  pendientes(): Observable<PendientesDevolucionOut> {
+    return this.http.get<PendientesDevolucionOut>(`${this.base}/pendientes`);
+  }
+
+  /** Otras tallas/colores de la misma prenda con su precio y disponible, para elegir el cambio. */
   variantesCambio(varianteId: string, sucursalId: string): Observable<VarianteCambioOut[]> {
     return this.http.get<VarianteCambioOut[]>(`${this.base}/variantes-cambio`, {
       params: new HttpParams().set('variante_id', varianteId).set('sucursal_id', sucursalId),
     });
   }
 
-  /** Que prendas solicitaron cambio en el mes (PENDIENTES 5.10). */
+  /** Qué prendas solicitaron cambio en el mes (PENDIENTES 5.10). */
   cambiosDelMes(anio: number, mes: number, incluirOtrosMotivos = false): Observable<CambiosMesOut> {
     return this.http.get<CambiosMesOut>(`${this.base}/cambios-mes`, {
       params: new HttpParams()
@@ -72,18 +86,40 @@ export class DevolucionesService {
     return this.http.post<DevolucionDetalleOut>(this.base, datos);
   }
 
-  aprobar(id: string): Observable<DevolucionDetalleOut> {
-    return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/aprobar`, {});
+  /** Acepta una solicitud online: la sucursal espera a la clienta. */
+  confirmar(id: string): Observable<DevolucionDetalleOut> {
+    return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/confirmar`, {});
+  }
+
+  /** Concreta en caja: reingresa el stock, devuelve la plata o cobra la diferencia. */
+  aprobar(id: string, datos: AprobacionIn = {}): Observable<DevolucionDetalleOut> {
+    return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/aprobar`, datos);
   }
 
   rechazar(id: string, motivo: string): Observable<DevolucionDetalleOut> {
     return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/rechazar`, { motivo });
   }
+}
 
-  /** Cambio de prenda: vincula la venta nueva (cobrada en caja) a una devolución aprobada. */
-  vincularCambio(id: string, ventaNumero: string): Observable<DevolucionDetalleOut> {
-    return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/cambio`, {
-      venta_numero: ventaNumero,
-    });
+/** Lado de la clienta: pedir una devolución o un intercambio desde Mis compras. */
+@Injectable({ providedIn: 'root' })
+export class MisDevolucionesService {
+  private readonly http = inject(HttpClient);
+  private readonly base = `${environment.apiUrl}/mis-devoluciones`;
+
+  listar(): Observable<DevolucionDetalleOut[]> {
+    return this.http.get<DevolucionDetalleOut[]>(this.base);
+  }
+
+  opciones(ventaId: string): Observable<OpcionesDevolucionOut> {
+    return this.http.get<OpcionesDevolucionOut>(`${this.base}/venta/${ventaId}`);
+  }
+
+  solicitar(datos: SolicitudClienteIn): Observable<DevolucionDetalleOut> {
+    return this.http.post<DevolucionDetalleOut>(this.base, datos);
+  }
+
+  cancelar(id: string): Observable<DevolucionDetalleOut> {
+    return this.http.post<DevolucionDetalleOut>(`${this.base}/${id}/cancelar`, {});
   }
 }

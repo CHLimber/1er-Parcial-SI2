@@ -1,0 +1,203 @@
+<div class="pagina">
+  <header class="cabecera">
+    <span class="cabecera__marca">FashionStore</span>
+    <div class="cabecera__acciones">
+      <a class="cabecera__enlace" routerLink="/mis-compras">Mis compras</a>
+      <a class="cabecera__volver" routerLink="/tienda">← Volver al catálogo</a>
+    </div>
+  </header>
+
+  <main class="contenido">
+    <h1 class="titulo">Devoluciones e intercambios</h1>
+    <p class="estado reglas">
+      Tenés 3 días desde la compra, una sola solicitud por compra y hasta 3 prendas. Elegís cuándo pasás
+      por la sucursal: ahí revisamos la prenda (con etiqueta, sin uso y con el comprobante) y te
+      devolvemos la plata o pagás la diferencia del cambio.
+    </p>
+
+    @if (aviso()) {
+      <p class="aviso" role="status">{{ aviso() }}</p>
+    }
+
+    @if (opciones(); as op) {
+      <section class="formulario" aria-labelledby="titulo-form">
+        <div class="formulario__cabecera">
+          <h2 id="titulo-form" class="subtitulo">Compra {{ op.numero }}</h2>
+          <a class="enlace" routerLink="/mis-devoluciones">Cerrar</a>
+        </div>
+        <p class="estado">{{ op.sucursal }}@if (op.sucursal_direccion) { · {{ op.sucursal_direccion }} }</p>
+
+        @if (!op.puede_solicitar) {
+          <p class="estado estado--error" role="alert">{{ op.motivo_no }}</p>
+        } @else {
+          <div class="tipos" role="radiogroup" aria-label="Qué querés hacer">
+            <button type="button" class="tipo" [class.tipo--activo]="tipo() === 'DEVOLUCION'"
+              [attr.aria-checked]="tipo() === 'DEVOLUCION'" role="radio" (click)="elegirTipo('DEVOLUCION')">
+              <strong>Devolver</strong><span>Te devolvemos la plata</span>
+            </button>
+            <button type="button" class="tipo" [class.tipo--activo]="tipo() === 'INTERCAMBIO'"
+              [attr.aria-checked]="tipo() === 'INTERCAMBIO'" role="radio" (click)="elegirTipo('INTERCAMBIO')">
+              <strong>Cambiar</strong><span>Otra talla o color</span>
+            </button>
+          </div>
+
+          <div class="campo">
+            <label for="motivo-tipo">Motivo</label>
+            <select id="motivo-tipo" [value]="motivoTipo()" (change)="cambiarMotivo($any($event.target).value)">
+              @for (m of motivosDelTipo(); track m.valor) {
+                <option [value]="m.valor">{{ m.etiqueta }}</option>
+              }
+            </select>
+          </div>
+
+          <ul class="prendas">
+            @for (linea of op.lineas; track linea.venta_detalle_id) {
+              <li class="prenda">
+                <div class="prenda__info">
+                  <span class="prenda__nombre">{{ linea.producto }}</span>
+                  <span class="estado">{{ linea.talla }} · {{ linea.color }} · vale {{ precio(linea.reembolso_unitario) }}</span>
+                </div>
+                @if (linea.devolvible > 0) {
+                  <div class="contador" [attr.aria-label]="'Cantidad de ' + linea.producto">
+                    <button type="button" (click)="cambiarCantidad(linea, -1)" aria-label="Una menos">−</button>
+                    <span>{{ cantidades()[linea.venta_detalle_id] ?? 0 }}</span>
+                    <button type="button" (click)="cambiarCantidad(linea, 1)" aria-label="Una más">+</button>
+                  </div>
+                } @else {
+                  <span class="estado">Ya devuelta</span>
+                }
+                @if (tipo() === 'INTERCAMBIO' && (cantidades()[linea.venta_detalle_id] ?? 0) > 0) {
+                  <div class="campo prenda__cambio">
+                    <label [for]="'var-' + linea.venta_detalle_id">Te llevás</label>
+                    <select [id]="'var-' + linea.venta_detalle_id" [value]="solicitadas()[linea.venta_detalle_id] ?? ''"
+                      (change)="elegirVariante(linea.venta_detalle_id, $any($event.target).value)">
+                      <option value="" disabled>Elegí…</option>
+                      @for (v of opcionesPara(linea); track v.variante_id) {
+                        <option [value]="v.variante_id" [disabled]="v.disponible < (cantidades()[linea.venta_detalle_id] ?? 0)">
+                          Talla {{ v.talla }} · {{ v.color }} · {{ precio(v.precio) }}{{ v.disponible < 1 ? ' (sin stock)' : '' }}
+                        </option>
+                      } @empty {
+                        <option value="" disabled>No hay otra {{ motivoTipo() === 'TALLA' ? 'talla' : 'color' }}</option>
+                      }
+                    </select>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+          <p class="estado">{{ unidades() }} de {{ op.max_unidades }} prendas como máximo.</p>
+
+          <div class="campo">
+            <label for="motivo">Contanos qué pasó</label>
+            <textarea id="motivo" rows="2" maxlength="250" [(ngModel)]="motivo" name="motivo"
+              [placeholder]="tipo() === 'INTERCAMBIO' ? 'Ej.: me quedó chica' : 'Ej.: no me convenció el color'"></textarea>
+          </div>
+
+          <div class="visita">
+            <div class="campo">
+              <label for="fecha">Día de la visita</label>
+              <input id="fecha" type="date" [min]="hoy" [max]="ultimoDia()" [(ngModel)]="fechaVisita" name="fecha" />
+            </div>
+            <div class="campo">
+              <label for="hora">Hora</label>
+              <input id="hora" type="time" [min]="op.hora_apertura?.slice(0, 5) ?? ''" [max]="op.hora_cierre?.slice(0, 5) ?? ''"
+                [(ngModel)]="horaVisita" name="hora" />
+            </div>
+          </div>
+          @if (op.hora_apertura && op.hora_cierre) {
+            <p class="estado">La sucursal atiende de {{ op.hora_apertura.slice(0, 5) }} a {{ op.hora_cierre.slice(0, 5) }}.</p>
+          }
+
+          @if (unidades() > 0) {
+            <div class="resumen">
+              @if (tipo() === 'DEVOLUCION') {
+                <p>Te devolvemos <strong>{{ precio(valorDevuelto()) }}</strong> {{ comoSeDevuelve(op.reintegro_metodo) }}.</p>
+              } @else {
+                <p>Lo que devolvés vale {{ precio(valorDevuelto()) }} y lo nuevo {{ precio(valorNuevo()) }}.</p>
+                @if (valorNuevo() > 0) {
+                  @if (diferencia() > 0.004) {
+                    <p><strong>Pagás {{ precio(diferencia()) }} de diferencia en caja.</strong></p>
+                  } @else if (diferencia() < -0.004) {
+                    <p><strong>Te devolvemos {{ precio(-diferencia()) }}</strong> {{ comoSeDevuelve(op.reintegro_metodo) }}.</p>
+                  } @else {
+                    <p><strong>No hay diferencia de precio.</strong></p>
+                  }
+                }
+              }
+              <p class="estado">Montos con IVA. Se confirman en la sucursal al revisar la prenda.</p>
+            </div>
+          }
+
+          @if (errorForm()) {
+            <p class="estado estado--error" role="alert">{{ errorForm() }}</p>
+          }
+          <button type="button" class="boton" [disabled]="enviando() || unidades() === 0" (click)="enviar()">
+            {{ enviando() ? 'Enviando…' : tipo() === 'INTERCAMBIO' ? 'Pedir el cambio' : 'Pedir la devolución' }}
+          </button>
+        }
+      </section>
+    } @else if (errorForm()) {
+      <p class="estado estado--error" role="alert">{{ errorForm() }}</p>
+    }
+
+    <h2 class="subtitulo">Mis solicitudes</h2>
+    @if (cargando()) {
+      <p class="estado">Cargando…</p>
+    } @else if (error()) {
+      <p class="estado estado--error" role="alert">{{ error() }}</p>
+    } @else if (solicitudes().length === 0) {
+      <p class="estado">
+        No pediste ninguna todavía. Para empezar, entrá a <a routerLink="/mis-compras">Mis compras</a> y tocá
+        «Devolver o cambiar» en la compra.
+      </p>
+    } @else {
+      <ul class="lista">
+        @for (s of solicitudes(); track s.id) {
+          <li class="solicitud">
+            <div class="compra__cabecera">
+              <span class="compra__numero">{{ s.numero }} · {{ s.tipo === 'INTERCAMBIO' ? 'Cambio' : 'Devolución' }}</span>
+              <span class="pastilla" [class.pastilla--ok]="s.estado === 'APROBADA'" [class.pastilla--espera]="enTramite(s)">
+                {{ estadoTexto(s) }}
+              </span>
+            </div>
+            <p class="estado">Compra {{ s.venta_numero }} · {{ s.sucursal }} · {{ fechaCorta(s.fecha) }}</p>
+            <ul class="solicitud__prendas">
+              @for (l of s.detalle; track l.id) {
+                <li>
+                  {{ l.cantidad }} × {{ l.producto }} ({{ l.talla }} · {{ l.color }})
+                  @if (l.talla_solicitada) { → {{ l.talla_solicitada }} · {{ l.color_solicitado }} }
+                </li>
+              }
+            </ul>
+            @if (s.fecha_visita && enTramite(s)) {
+              <p class="estado">Visita: {{ visita(s) }}</p>
+            }
+            @if (s.estado === 'APROBADA') {
+              <p class="estado">
+                @if (Number(s.diferencia_cobrada) > 0) { Pagaste {{ precio(s.diferencia_cobrada) }} de diferencia. }
+                @if (Number(s.monto_reintegrado) > 0) { Te devolvimos {{ precio(s.monto_reintegrado) }}. }
+                Te mandamos el comprobante por correo.
+              </p>
+            } @else if (s.tipo === 'INTERCAMBIO' && enTramite(s)) {
+              <p class="estado">
+                @if (Number(s.diferencia) > 0) { Pagás {{ precio(s.diferencia) }} de diferencia en caja. }
+                @else if (Number(s.diferencia) < 0) { Te devolvemos {{ precio(-Number(s.diferencia)) }}. }
+                @else { Sin diferencia de precio. }
+              </p>
+            } @else if (enTramite(s)) {
+              <p class="estado">Te devolvemos {{ precio(s.monto_devuelto) }} al concretarla.</p>
+            }
+            @if (s.motivo_rechazo) {
+              <p class="estado estado--error">Motivo: {{ s.motivo_rechazo }}</p>
+            }
+            @if (enTramite(s) && s.origen === 'ONLINE') {
+              <button type="button" class="enlace enlace--boton" [disabled]="cancelando() === s.id" (click)="cancelar(s)">
+                {{ cancelando() === s.id ? 'Cancelando…' : 'Cancelar solicitud' }}
+              </button>
+            }
+          </li>
+        }
+      </ul>
+    }
+  </main>
+</div>

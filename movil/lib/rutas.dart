@@ -11,6 +11,7 @@ import 'paginas/operacion_comercial/compra_pagina.dart';
 import 'paginas/acceso_y_organizacion/cuenta_pagina.dart';
 import 'paginas/acceso_y_organizacion/login_pagina.dart';
 import 'paginas/operacion_comercial/mis_compras_pagina.dart';
+import 'paginas/operacion_comercial/mis_devoluciones_pagina.dart';
 import 'paginas/operacion_comercial/mis_direcciones_pagina.dart';
 import 'paginas/operacion_comercial/mis_reservas_pagina.dart';
 import 'paginas/nucleo/notificaciones_pagina.dart';
@@ -158,6 +159,12 @@ GoRouter construirRouter(AuthService auth) {
       ),
       GoRoute(path: '/reservar', builder: (contexto, estado) => const ReservarPagina()),
       GoRoute(path: '/mis-compras', builder: (contexto, estado) => const MisComprasPagina()),
+      // Devoluciones e intercambios de la clienta (PENDIENTES 10); ?venta=<id> abre la solicitud
+      GoRoute(
+        path: '/mis-devoluciones',
+        builder: (contexto, estado) =>
+            MisDevolucionesPagina(ventaId: estado.uri.queryParameters['venta']),
+      ),
       GoRoute(
         path: '/mis-direcciones',
         builder: (contexto, estado) => const MisDireccionesPagina(),

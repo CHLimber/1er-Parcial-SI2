@@ -51,7 +51,16 @@ class _MisComprasPaginaState extends State<MisComprasPagina> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Mis compras')),
+        appBar: AppBar(
+          title: const Text('Mis compras'),
+          actions: [
+            IconButton(
+              tooltip: 'Devoluciones y cambios',
+              icon: const Icon(Icons.assignment_return_outlined),
+              onPressed: () => context.push('/mis-devoluciones'),
+            ),
+          ],
+        ),
         body: VistaAsincrona(
           cargando: _cargando,
           error: _error,
@@ -100,6 +109,16 @@ class _MisComprasPaginaState extends State<MisComprasPagina> {
                                       ),
                                     ),
                                   ],
+                                  // devolucion o intercambio (el backend decide si sigue en plazo)
+                                  if (compra.estado == 'PAGADA' || compra.estado == 'ENTREGADA')
+                                    TextButton(
+                                      style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                      ),
+                                      onPressed: () => context.push('/mis-devoluciones?venta=${compra.id}'),
+                                      child: const Text('Devolver o cambiar'),
+                                    ),
                                 ],
                               ),
                             ),

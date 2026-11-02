@@ -128,6 +128,7 @@ export class CampanaNotificaciones {
    *  - VENTA / ENVIO (clienta): el detalle de la compra (venta_id lo resuelve el backend).
    *  - VENTA (cajero): la caja, donde se cobran/verifican los pagos.
    *  - PROMO: la tienda.
+   *  - DEVOLUCION: la clienta a Mis devoluciones; el personal al panel de devoluciones.
    */
   private destino(n: NotificacionOut): string[] | null {
     const usuario = this.auth.usuario();
@@ -142,6 +143,12 @@ export class CampanaNotificaciones {
         : null;
     }
     if (n.tipo === 'PROMO') return ['/tienda'];
+
+    // devoluciones e intercambios: la clienta va a sus solicitudes, el personal al panel
+    if (n.entidad_tipo === 'DEVOLUCION') {
+      if (!esStaff) return ['/mis-devoluciones'];
+      return this.auth.tienePermiso('devoluciones.leer', 'devoluciones.actualizar') ? ['/panel/devoluciones'] : null;
+    }
 
     if (n.entidad_tipo === 'RESERVA' || n.tipo === 'RESERVA') {
       if (!esStaff) return ['/mis-reservas'];

@@ -22,6 +22,7 @@ import logging
 import asyncpg
 
 from app.core.comprobante import MAX_INTENTOS_CORREO, enviar_comprobante
+from app.core.comprobante_devolucion import enviar_comprobante_devolucion
 from app.core.correo import correo_configurado
 from app.core.db import get_pool
 from app.core.push import enviar_push, push_configurado
@@ -57,6 +58,37 @@ async def procesar_correos_pendientes(conn: asyncpg.Connection) -> int:
     enviados = 0
     for fila in reclamados:
         if await enviar_comprobante(conn, fila["venta_id"]):
+            enviados += 1
+    return enviados
+
+
+async def procesar_correos_devolucion(conn: asyncpg.Connection) -> int:
+    """Manda el comprobante de las devoluciones e intercambios recien aprobados (mismo criterio
+    que el de compra: reclama con SKIP LOCKED y reintenta hasta MAX_INTENTOS_CORREO)."""
+    if not correo_configurado():
+        return 0
+    reclamadas = await conn.fetch(
+        f"""
+        UPDATE devolucion SET correo_intentos = correo_intentos + 1
+        WHERE id IN (
+            SELECT d.id FROM devolucion d
+            JOIN venta v ON v.id = d.venta_id
+            WHERE d.estado = 'APROBADA'
+              AND d.correo_enviado_en IS NULL
+              AND d.correo_intentos < $1
+              AND d.resuelta_en > now() - {VENTANA}
+              AND v.usuario_id IS NOT NULL
+            ORDER BY d.resuelta_en
+            LIMIT 10
+            FOR UPDATE OF d SKIP LOCKED
+        )
+        RETURNING id
+        """,
+        MAX_INTENTOS_CORREO,
+    )
+    enviados = 0
+    for fila in reclamadas:
+        if await enviar_comprobante_devolucion(conn, fila["id"]):
             enviados += 1
     return enviados
 
@@ -132,6 +164,12 @@ async def job_avisos(intervalo_segundos: int) -> None:
                         log.info("job_avisos: %s comprobante(s) enviado(s) por correo", correos)
                 except Exception:  # noqa: BLE001
                     log.exception("job_avisos: fallo el envio de comprobantes")
+                try:
+                    notas = await procesar_correos_devolucion(conn)
+                    if notas:
+                        log.info("job_avisos: %s comprobante(s) de devolucion enviado(s)", notas)
+                except Exception:  # noqa: BLE001
+                    log.exception("job_avisos: fallo el envio de comprobantes de devolucion")
                 try:
                     pushes = await procesar_push_pendientes(conn)
                     if pushes:

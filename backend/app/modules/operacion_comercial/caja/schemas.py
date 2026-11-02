@@ -29,8 +29,9 @@ class SesionCajaOut(BaseModel):
 class ArqueoOut(BaseModel):
     """Foto de la sesion abierta para que el cajero cuente el cajon ANTES de declarar el cierre.
     monto_sistema es lo que deberia haber en efectivo: monto_inicial + ventas cobradas en
-    EFECTIVO - efectivo devuelto por devoluciones aprobadas en la sesion (las de TARJETA/QR/
-    TRANSFERENCIA/PASARELA no tocan el cajon fisico)."""
+    EFECTIVO - lo devuelto en mano por devoluciones e intercambios aprobados en la sesion (las
+    ventas pagadas en efectivo o QR se reintegran en efectivo; Stripe, tarjeta y transferencia no
+    tocan el cajon). La pantalla de Caja lo muestra siempre como "efectivo en caja"."""
 
     sesion_id: UUID
     monto_inicial: float

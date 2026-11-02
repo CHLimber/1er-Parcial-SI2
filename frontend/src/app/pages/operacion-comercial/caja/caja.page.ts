@@ -2,7 +2,7 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 import {
@@ -15,6 +15,8 @@ import {
   VarianteBusquedaOut,
 } from '../../../core/operacion-comercial/caja/caja.models';
 import { CajaService } from '../../../core/operacion-comercial/caja/caja.service';
+import { PendientesDevolucionOut } from '../../../core/operacion-comercial/devoluciones/devoluciones.models';
+import { DevolucionesService } from '../../../core/operacion-comercial/devoluciones/devoluciones.service';
 import { MetodoPagoPos, VentaPosOut } from '../../../core/operacion-comercial/ventas/ventas.models';
 import { VentasService } from '../../../core/operacion-comercial/ventas/ventas.service';
 import { PanelShell } from '../../../shared/panel/panel-shell';
@@ -29,7 +31,7 @@ interface TicketItem extends VarianteBusquedaOut {
 @Component({
   selector: 'app-caja-page',
   standalone: true,
-  imports: [FormsModule, DatePipe, PanelShell],
+  imports: [FormsModule, DatePipe, PanelShell, RouterLink],
   templateUrl: './caja.page.html',
   styleUrls: ['./caja.page.css', '../../../shared/responsive.css'],
 })
@@ -37,7 +39,16 @@ export class CajaPage implements OnInit {
   private readonly cajaService = inject(CajaService);
   private readonly ventasService = inject(VentasService);
   private readonly router = inject(Router);
+  private readonly devolucionesService = inject(DevolucionesService);
   protected readonly auth = inject(AuthService);
+
+  /** efectivo que deberia haber en el cajon ahora (apertura + cobros en efectivo - lo devuelto en
+   * mano), el mismo calculo del arqueo; se muestra siempre arriba a la derecha */
+  protected readonly efectivo = signal<number | null>(null);
+  protected readonly actualizandoEfectivo = signal(false);
+  /** devoluciones/intercambios que esperan al personal (solicitudes online por aceptar o concretar) */
+  protected readonly pendientesDevolucion = signal<PendientesDevolucionOut | null>(null);
+  protected readonly veDevoluciones = this.auth.tienePermiso('devoluciones.leer', 'devoluciones.actualizar');
 
   protected readonly cargando = signal(true);
   protected readonly sesion = signal<SesionCajaOut | null>(null);
@@ -101,6 +112,30 @@ export class CajaPage implements OnInit {
     this.cargarSesion();
     this.cargarPagosPendientes();
     this.cargarPedidosPorRetirar();
+    this.cargarPendientesDevolucion();
+  }
+
+  /** Recalcula el efectivo del cajon con el mismo endpoint del arqueo. */
+  protected refrescarEfectivo(): void {
+    if (!this.sesion()) {
+      this.efectivo.set(null);
+      return;
+    }
+    this.actualizandoEfectivo.set(true);
+    this.cajaService.obtenerArqueo().subscribe({
+      next: (arqueo) => {
+        this.efectivo.set(arqueo.monto_sistema);
+        this.actualizandoEfectivo.set(false);
+      },
+      error: () => this.actualizandoEfectivo.set(false),
+    });
+  }
+
+  private cargarPendientesDevolucion(): void {
+    if (!this.veDevoluciones) return;
+    this.devolucionesService.pendientes().subscribe({
+      next: (pendientes) => this.pendientesDevolucion.set(pendientes),
+    });
   }
 
   protected cargarPedidosPorRetirar(): void {
@@ -157,6 +192,7 @@ export class CajaPage implements OnInit {
       next: (resultado) => {
         this.pagoEnProceso.set(null);
         const aprobado = resultado.pago_estado === 'APROBADO';
+        this.refrescarEfectivo();
         this.mensajePagos.set({
           texto: aprobado
             ? `Pedido ${resultado.numero} aprobado: se descontó el stock y se emitió el comprobante.`
@@ -210,6 +246,7 @@ export class CajaPage implements OnInit {
         this.sesion.set(sesion);
         this.cargando.set(false);
         if (!sesion) this.cargarCajas();
+        else this.refrescarEfectivo();
       },
       error: () => this.cargando.set(false),
     });
@@ -238,6 +275,7 @@ export class CajaPage implements OnInit {
         next: (sesion) => {
           this.abriendo.set(false);
           this.sesion.set(sesion);
+          this.refrescarEfectivo();
         },
         error: (error: HttpErrorResponse) => {
           this.abriendo.set(false);
@@ -321,6 +359,7 @@ export class CajaPage implements OnInit {
         next: (resultado) => {
           this.cobrando.set(false);
           this.comprobante.set(resultado);
+          this.refrescarEfectivo();
           this.ticket.set([]);
           this.montoRecibido = null;
         },
@@ -400,6 +439,7 @@ export class CajaPage implements OnInit {
     this.arqueo.set(null);
     this.cierreResultado.set(null);
     this.sesion.set(null);
+    this.efectivo.set(null);
     this.cargarCajas();
   }
 

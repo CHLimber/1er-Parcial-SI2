@@ -97,8 +97,8 @@ class PanelPagina extends StatelessWidget {
       _AccesoPanel(
         ruta: '/panel/devoluciones',
         icono: Icons.assignment_return_outlined,
-        titulo: 'Devoluciones',
-        detalle: 'Aprobar o rechazar devoluciones de ventas',
+        titulo: 'Devoluciones e intercambios',
+        detalle: 'Aceptar solicitudes online y concretarlas en caja',
         permisos: const ['devoluciones.leer', 'devoluciones.crear', 'devoluciones.actualizar'],
       ),
       _AccesoPanel(

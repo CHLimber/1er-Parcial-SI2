@@ -169,3 +169,12 @@
 .lista--esqueleto {
   min-height: 0;
 }
+
+/* Devolucion o intercambio de la compra (PENDIENTES 10): el backend decide si todavia se puede */
+.compra__devolver {
+  display: inline-block;
+  margin: 0 1.25rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--flame-dark);
+}

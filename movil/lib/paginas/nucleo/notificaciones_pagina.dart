@@ -150,6 +150,12 @@ class _NotificacionesPaginaState extends State<NotificacionesPagina> {
     if (n.tipo == 'STOCK') return null;
     if (n.tipo == 'PROMO') return '/tienda';
 
+    // devoluciones e intercambios: la clienta a sus solicitudes, el personal al panel
+    if (n.entidadTipo == 'DEVOLUCION') {
+      if (!auth.esStaff) return '/mis-devoluciones';
+      return auth.tienePermiso(['devoluciones.leer', 'devoluciones.actualizar']) ? '/panel/devoluciones' : null;
+    }
+
     if (n.entidadTipo == 'RESERVA' || n.tipo == 'RESERVA') {
       if (!auth.esStaff) return '/mis-reservas';
       return auth.tienePermiso([permisoAtenderReservas]) ? '/atender-reservas' : null;
