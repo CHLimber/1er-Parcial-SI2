@@ -33,6 +33,9 @@ class ReservaItemOut(BaseModel):
     color: str
     cantidad: int
     estado_item: str
+    # precio de lista unitario sin IVA (el que se cobra en el vestidor); lo usa la pantalla del
+    # personal para mostrar el total antes de cobrar
+    precio: float | None = None
 
 
 class ReservaOut(BaseModel):
@@ -100,6 +103,31 @@ class ResolverReservaIn(BaseModel):
     decisiones: list[DecisionItemIn] = Field(min_length=1, max_length=20)
     metodo_pago: Literal["EFECTIVO", "TARJETA", "QR"] | None = None
     monto_recibido: float | None = Field(default=None, ge=0)
+
+
+class CobroStripeIn(BaseModel):
+    """Cobro con tarjeta (Stripe) en el vestidor: las mismas decisiones que /resolver, pero la
+    venta queda PENDIENTE hasta que Stripe confirma el pago (webhook o verificacion)."""
+
+    decisiones: list[DecisionItemIn] = Field(min_length=1, max_length=20)
+    # WEB monta el Checkout embebido (Stripe.js); MOVIL abre el PaymentSheet nativo
+    canal: Literal["WEB", "MOVIL"] = "WEB"
+
+
+class CobroStripeOut(BaseModel):
+    """Estado del cobro con tarjeta de una reserva atendida en el vestidor.
+    SIN_COBRO: no hay ninguno. PENDIENTE: esperando que la clienta pague (con client_secret para
+    mostrar el formulario). PAGADA/ENTREGADA: cobrado, la reserva quedo convertida. ANULADA: se
+    cancelo o Stripe lo rechazo."""
+
+    estado: str
+    venta_id: UUID | None = None
+    venta_numero: str | None = None
+    total: float | None = None
+    client_secret: str | None = None
+    canal: str | None = None
+    comprobante_numero: str | None = None
+    mensaje: str | None = None
 
 
 class RechazarReservaIn(BaseModel):

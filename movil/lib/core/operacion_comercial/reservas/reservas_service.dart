@@ -106,6 +106,30 @@ class ReservasService {
     return ResolverReservaOut.desdeJson(respuesta as Map<String, dynamic>);
   }
 
+  /// Cobro con tarjeta en el vestidor: arma la venta pendiente y devuelve el client_secret del
+  /// PaymentIntent para el PaymentSheet nativo.
+  Future<CobroStripeOut> iniciarCobroStripe(
+    String reservaId, {
+    required List<Map<String, dynamic>> decisiones,
+  }) async {
+    final respuesta = await api.post('/reservas/$reservaId/cobro-stripe', cuerpo: {
+      'decisiones': decisiones,
+      'canal': 'MOVIL',
+    });
+    return CobroStripeOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// Si Stripe ya cobro, el backend lo aprueba en el momento (no espera al webhook).
+  Future<CobroStripeOut> estadoCobroStripe(String reservaId) async {
+    final respuesta = await api.get('/reservas/$reservaId/cobro-stripe');
+    return CobroStripeOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  Future<CobroStripeOut> cancelarCobroStripe(String reservaId) async {
+    final respuesta = await api.post('/reservas/$reservaId/cobro-stripe/cancelar');
+    return CobroStripeOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
   Future<ReservaStaffOut> marcarNoPresentado(String reservaId) async {
     final respuesta = await api.post('/reservas/$reservaId/no-presentado');
     return ReservaStaffOut.desdeJson(respuesta as Map<String, dynamic>);

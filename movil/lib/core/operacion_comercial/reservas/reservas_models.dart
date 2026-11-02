@@ -11,6 +11,7 @@ class ReservaItemOut {
     required this.color,
     required this.cantidad,
     required this.estadoItem,
+    this.precio,
   });
 
   final String id;
@@ -22,6 +23,9 @@ class ReservaItemOut {
   final int cantidad;
   final String estadoItem;
 
+  /// precio de lista unitario sin IVA (lo que se cobra en el vestidor)
+  final double? precio;
+
   factory ReservaItemOut.desdeJson(Map<String, dynamic> j) => ReservaItemOut(
         id: j['id'] as String,
         varianteId: j['variante_id'] as String,
@@ -31,6 +35,7 @@ class ReservaItemOut {
         color: j['color'] as String,
         cantidad: aEntero(j['cantidad']),
         estadoItem: j['estado_item'] as String,
+        precio: j['precio'] == null ? null : aDouble(j['precio']),
       );
 }
 
@@ -274,5 +279,33 @@ class ItemCarritoReserva {
         precio: aDouble(j['precio']),
         imagenUrl: j['imagenUrl'] as String?,
         cantidad: aEntero(j['cantidad']),
+      );
+}
+
+/// Estado del cobro con tarjeta (Stripe) de una reserva en el vestidor (PENDIENTES 11):
+/// SIN_COBRO, PENDIENTE (con clientSecret para el PaymentSheet), PAGADA/ENTREGADA o ANULADA.
+class CobroStripeOut {
+  CobroStripeOut({
+    required this.estado,
+    this.ventaNumero,
+    this.total,
+    this.clientSecret,
+    this.comprobanteNumero,
+  });
+
+  final String estado;
+  final String? ventaNumero;
+  final double? total;
+  final String? clientSecret;
+  final String? comprobanteNumero;
+
+  bool get cobrado => estado == 'PAGADA' || estado == 'ENTREGADA';
+
+  factory CobroStripeOut.desdeJson(Map<String, dynamic> j) => CobroStripeOut(
+        estado: j['estado'] as String,
+        ventaNumero: j['venta_numero'] as String?,
+        total: j['total'] == null ? null : aDouble(j['total']),
+        clientSecret: j['client_secret'] as String?,
+        comprobanteNumero: j['comprobante_numero'] as String?,
       );
 }

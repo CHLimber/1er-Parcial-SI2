@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 
 import '../../compartido/widgets.dart';
 import '../../core/config.dart';
 import '../../core/errores.dart';
 import '../../core/operacion_comercial/reservas/reservas_models.dart';
 import '../../core/operacion_comercial/reservas/reservas_service.dart';
+import '../../core/operacion_comercial/ventas/ventas_service.dart' show asegurarStripeInicializado;
 import '../../core/tema.dart';
 import 'mis_reservas_pagina.dart' show fechaLegible;
 import '../nucleo/notificaciones_pagina.dart' show BotonNotificaciones;
@@ -211,6 +213,102 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
     );
   }
 
+  double _totalConIva(List<ReservaItemOut> probadas, Map<String, bool> comprados) {
+    final subtotal = probadas
+        .where((i) => comprados[i.varianteId] ?? false)
+        .fold<double>(0, (s, i) => s + (i.precio ?? 0) * i.cantidad);
+    return (subtotal * 1.13 * 100).roundToDouble() / 100;
+  }
+
+  /// Cobro con tarjeta en el vestidor (PENDIENTES 11): arma la venta pendiente, abre el
+  /// PaymentSheet de Stripe para que la clienta pague en este telefono y, cuando Stripe confirma,
+  /// la venta y la reserva se cierran solas (el backend verifica el pago si el webhook no llega).
+  Future<void> _cobrarConStripe(ReservaStaffOut reserva, List<Map<String, dynamic>> decisiones) async {
+    try {
+      final cobro = await reservasService.iniciarCobroStripe(reserva.id, decisiones: decisiones);
+      final secreto = cobro.clientSecret;
+      if (secreto == null) throw Exception('Stripe no devolvio el formulario de pago');
+      await asegurarStripeInicializado();
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: secreto,
+          merchantDisplayName: 'FashionStore',
+          appearance: PaymentSheetAppearance(
+            colors: PaymentSheetAppearanceColors(primary: Paleta.flame),
+          ),
+        ),
+      );
+      await Stripe.instance.presentPaymentSheet();
+    } on StripeException catch (error) {
+      // la clienta cerro el formulario o la tarjeta fue rechazada: se cierra el intento para
+      // poder cobrar de otra forma
+      await _cancelarCobroSilencioso(reserva.id);
+      if (!mounted) return;
+      final cancelado = error.error.code == FailureCode.Canceled;
+      mostrarAviso(
+        context,
+        cancelado
+            ? 'Cobro con tarjeta cancelado. Podes cobrar con otro metodo.'
+            : (error.error.localizedMessage ?? 'Stripe rechazo el pago.'),
+        esError: !cancelado,
+      );
+      return;
+    } catch (error) {
+      if (mounted) mostrarAviso(context, interpretarError(error), esError: true);
+      return;
+    }
+
+    // pagado en el PaymentSheet: se espera la confirmacion (webhook o verificacion)
+    CobroStripeOut? cobro;
+    for (var intento = 0; intento < 10; intento++) {
+      try {
+        cobro = await reservasService.estadoCobroStripe(reserva.id);
+        if (cobro.cobrado || cobro.estado == 'ANULADA') break;
+      } catch (_) {
+        // reintenta
+      }
+      await Future<void>.delayed(const Duration(seconds: 2));
+    }
+    await _cargar();
+    if (!mounted) return;
+    if (cobro != null && cobro.cobrado) {
+      await showDialog<void>(
+        context: context,
+        builder: (contexto) => AlertDialog(
+          backgroundColor: Paleta.blanco,
+          title: Text('Reserva ${reserva.codigo}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const FilaDato('Pago', 'Tarjeta (Stripe)'),
+              if (cobro!.ventaNumero != null) FilaDato('Venta', cobro.ventaNumero!),
+              if (cobro.comprobanteNumero != null) FilaDato('Comprobante', cobro.comprobanteNumero!),
+              if (cobro.total != null) FilaDato('Cobrado', formatearPrecio(cobro.total!)),
+            ],
+          ),
+          actions: [
+            ElevatedButton(onPressed: () => Navigator.pop(contexto), child: const Text('Listo')),
+          ],
+        ),
+      );
+    } else {
+      mostrarAviso(
+        context,
+        'Stripe todavia no confirmo el pago. Volve a abrir la reserva en unos segundos.',
+        esError: true,
+      );
+    }
+  }
+
+  Future<void> _cancelarCobroSilencioso(String reservaId) async {
+    try {
+      await reservasService.cancelarCobroStripe(reservaId);
+    } catch (_) {
+      // si ya no habia cobro pendiente no hay nada que cerrar
+    }
+  }
+
   /// Pasos 5-7: decision final. Lo comprado se factura como venta POS (CU07).
   Future<void> _resolver(ReservaStaffOut reserva) async {
     final probadas = reserva.items.where((i) => i.estadoItem == 'PREPARADO').toList();
@@ -228,6 +326,7 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
       builder: (contexto) => StatefulBuilder(
         builder: (contexto, actualizar) {
           final hayCompras = comprados.values.any((v) => v);
+          final total = _totalConIva(probadas, comprados);
           return AlertDialog(
             backgroundColor: Paleta.blanco,
             title: const Text('Cerrar reserva'),
@@ -262,18 +361,52 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
                   ),
                   if (hayCompras) ...[
                     const SizedBox(height: 10),
+                    Text(
+                      'Total a cobrar (IVA incluido): ${formatearPrecio(total)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 10),
                     const EtiquetaDato('Metodo de pago'),
                     const SizedBox(height: 8),
-                    SegmentedButton<String>(
-                      segments: const [
-                        ButtonSegment(value: 'EFECTIVO', label: Text('Efectivo')),
-                        ButtonSegment(value: 'TARJETA', label: Text('Tarjeta')),
-                        ButtonSegment(value: 'QR', label: Text('QR')),
+                    // cuatro metodos: en dos filas para que entren en un telefono angosto
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        for (final m in const [
+                          ('EFECTIVO', 'Efectivo'),
+                          ('TARJETA', 'Tarjeta POS'),
+                          ('QR', 'QR'),
+                          ('STRIPE', 'Stripe'),
+                        ])
+                          ChoiceChip(
+                            label: Text(m.$2),
+                            selected: metodoPago == m.$1,
+                            selectedColor: Paleta.flame.withValues(alpha: 0.18),
+                            onSelected: (_) => actualizar(() => metodoPago = m.$1),
+                          ),
                       ],
-                      selected: {metodoPago},
-                      onSelectionChanged: (valores) =>
-                          actualizar(() => metodoPago = valores.first),
                     ),
+                    if (metodoPago == 'QR') ...[
+                      const SizedBox(height: 12),
+                      Center(
+                        child: Image.asset('assets/images/pago-qr.jpeg', width: 220, fit: BoxFit.contain),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Mostrale el QR a la clienta para que pague ${formatearPrecio(total)} desde su banco. '
+                        'Confirma recien cuando veas el pago acreditado.',
+                        style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave, height: 1.35),
+                      ),
+                    ],
+                    if (metodoPago == 'STRIPE') ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Se abre el formulario de tarjeta de Stripe en este telefono para que la clienta '
+                        'pague. La venta se registra sola cuando Stripe confirma.',
+                        style: TextStyle(fontSize: 12.5, color: Paleta.inkSuave, height: 1.35),
+                      ),
+                    ],
                     if (metodoPago == 'EFECTIVO') ...[
                       const SizedBox(height: 12),
                       TextField(
@@ -297,7 +430,13 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(contexto, true),
-                child: Text(hayCompras ? 'Cobrar y cerrar' : 'Cerrar sin compra'),
+                child: Text(!hayCompras
+                    ? 'Cerrar sin compra'
+                    : metodoPago == 'QR'
+                        ? 'Pago QR recibido'
+                        : metodoPago == 'STRIPE'
+                            ? 'Cobrar con Stripe'
+                            : 'Cobrar y cerrar'),
               ),
             ],
           );
@@ -316,6 +455,11 @@ class _AtenderReservasPaginaState extends State<AtenderReservasPagina> {
               'comprado': comprados[item.varianteId] ?? false,
             })
         .toList();
+
+    if (hayCompras && metodoPago == 'STRIPE') {
+      await _cobrarConStripe(reserva, decisiones);
+      return;
+    }
 
     try {
       final resultado = await reservasService.resolver(

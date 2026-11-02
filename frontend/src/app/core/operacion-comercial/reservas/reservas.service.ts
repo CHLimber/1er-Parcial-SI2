@@ -5,6 +5,8 @@ import { Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import {
   CancelarReservaIn,
+  CobroStripeOut,
+  DecisionItemIn,
   MarcarPresenteIn,
   PrepararReservaIn,
   RechazarReservaIn,
@@ -64,6 +66,23 @@ export class ReservasService {
 
   resolverReserva(reservaId: string, datos: ResolverReservaIn): Observable<ResolverReservaOut> {
     return this.http.post<ResolverReservaOut>(`${this.base}/${reservaId}/resolver`, datos);
+  }
+
+  /** Cobro con tarjeta en el vestidor: arma la venta pendiente y devuelve el client_secret. */
+  iniciarCobroStripe(reservaId: string, decisiones: DecisionItemIn[]): Observable<CobroStripeOut> {
+    return this.http.post<CobroStripeOut>(`${this.base}/${reservaId}/cobro-stripe`, {
+      decisiones,
+      canal: 'WEB',
+    });
+  }
+
+  /** Estado del cobro; si Stripe ya cobro, el backend lo aprueba en el momento. */
+  estadoCobroStripe(reservaId: string): Observable<CobroStripeOut> {
+    return this.http.get<CobroStripeOut>(`${this.base}/${reservaId}/cobro-stripe`);
+  }
+
+  cancelarCobroStripe(reservaId: string): Observable<CobroStripeOut> {
+    return this.http.post<CobroStripeOut>(`${this.base}/${reservaId}/cobro-stripe/cancelar`, {});
   }
 
   marcarNoPresentado(reservaId: string): Observable<ReservaStaffOut> {

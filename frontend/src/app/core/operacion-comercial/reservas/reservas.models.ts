@@ -26,6 +26,8 @@ export interface ReservaItemOut {
   color: string;
   cantidad: number;
   estado_item: string;
+  /** precio de lista unitario sin IVA (lo que se cobra en el vestidor) */
+  precio?: number | null;
 }
 
 export interface ReservaOut {
@@ -89,6 +91,21 @@ export interface DecisionItemIn {
 }
 
 export type MetodoPagoReserva = 'EFECTIVO' | 'TARJETA' | 'QR';
+
+/** Cobro en el vestidor: los de /resolver mas STRIPE (formulario de tarjeta en pantalla). */
+export type MetodoCobroVestidor = MetodoPagoReserva | 'STRIPE';
+
+/** Estado del cobro con tarjeta (Stripe) de una reserva en el vestidor. */
+export interface CobroStripeOut {
+  estado: 'SIN_COBRO' | 'PENDIENTE' | 'PAGADA' | 'ENTREGADA' | 'ANULADA';
+  venta_id: string | null;
+  venta_numero: string | null;
+  total: number | null;
+  client_secret: string | null;
+  canal: 'WEB' | 'MOVIL' | null;
+  comprobante_numero: string | null;
+  mensaje: string | null;
+}
 
 export interface ResolverReservaIn {
   decisiones: DecisionItemIn[];

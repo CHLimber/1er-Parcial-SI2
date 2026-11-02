@@ -179,17 +179,19 @@
                   }
 
                   @if (hayCompras) {
+                    <p class="cobro__total">Total a cobrar (IVA incluido): <strong>{{ formatearPrecio(totalCompra) }}</strong></p>
                     <div class="campo">
                       <span class="campo__etiqueta">Forma de pago</span>
                       <div class="metodos">
-                        @for (metodo of metodosPago; track metodo) {
+                        @for (metodo of metodosPago; track metodo.valor) {
                           <button
                             type="button"
                             class="metodo"
-                            [class.metodo--activo]="metodoPago === metodo"
-                            (click)="elegirMetodoPago(metodo)"
+                            [class.metodo--activo]="metodoPago === metodo.valor"
+                            [disabled]="cargandoAccion() || (!!cobroStripe() && metodo.valor === 'STRIPE')"
+                            (click)="elegirMetodoPago(metodo.valor)"
                           >
-                            {{ metodo }}
+                            {{ metodo.etiqueta }}
                           </button>
                         }
                       </div>
@@ -207,12 +209,53 @@
                         />
                       </div>
                     }
+                    @if (metodoPago === 'QR') {
+                      <!-- la clienta escanea desde su banco; se confirma cuando el pago aparece -->
+                      <div class="cobro-qr">
+                        <img class="cobro-qr__imagen" src="/pago-qr.jpeg" alt="Código QR para pagar" width="817" height="896" />
+                        <p class="estado">
+                          Mostrale el QR a la clienta para que pague <strong>{{ formatearPrecio(totalCompra) }}</strong> desde la app
+                          de su banco. Confirmá recién cuando veas el pago acreditado.
+                        </p>
+                      </div>
+                    }
+                    @if (metodoPago === 'STRIPE') {
+                      <div class="cobro-stripe">
+                        @if (!cobroStripe()) {
+                          <p class="estado">
+                            La clienta paga con su tarjeta en el formulario de Stripe, acá mismo. La venta se registra sola
+                            cuando Stripe confirma el pago.
+                          </p>
+                        } @else {
+                          <p class="estado">Venta {{ cobroStripe()!.venta_numero }} · esperando el pago con tarjeta.</p>
+                        }
+                        @if (montandoStripe()) {
+                          <p class="estado">Cargando el formulario de Stripe…</p>
+                        }
+                        <div #stripeContenedor class="cobro-stripe__formulario"></div>
+                      </div>
+                    }
                   }
 
                   <div class="acciones">
-                    <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="confirmarResolucion()">
-                      {{ cargandoAccion() ? 'Guardando…' : 'Registrar decisión' }}
-                    </button>
+                    @if (hayCompras && metodoPago === 'STRIPE') {
+                      @if (!cobroStripe()) {
+                        <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="cobrarConStripe()">
+                          {{ cargandoAccion() ? 'Preparando…' : 'Cobrar con Stripe' }}
+                        </button>
+                      } @else {
+                        <button type="button" class="boton" [disabled]="verificandoStripe()" (click)="verificarCobroStripe(true)">
+                          {{ verificandoStripe() ? 'Verificando…' : 'Ya pagó: actualizar' }}
+                        </button>
+                        <button type="button" class="boton boton--secundario" [disabled]="cargandoAccion()" (click)="cancelarCobroStripe()">
+                          Cancelar cobro con tarjeta
+                        </button>
+                      }
+                    } @else {
+                      <button type="button" class="boton" [disabled]="cargandoAccion()" (click)="confirmarResolucion()">
+                        {{ cargandoAccion() ? 'Guardando…' : hayCompras && metodoPago === 'QR' ? 'Confirmar pago QR recibido' : 'Registrar decisión' }}
+                      </button>
+                    }
                   </div>
                 </div>
               }

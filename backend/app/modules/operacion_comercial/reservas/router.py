@@ -1,8 +1,10 @@
+import asyncio
 from datetime import date
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import asyncpg
+import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.db import get_connection
@@ -10,10 +12,17 @@ from app.core.deps import get_current_usuario, get_encargado_actual
 from app.core.mutex import mutex_variante
 from app.core.notificaciones.servicio import avisar_personal_de_sucursal
 from app.modules.operacion_comercial.caja.router import obtener_sesion_abierta
-from app.modules.operacion_comercial.pagos.servicio import alertar_stock_bajo
+from app.modules.operacion_comercial.pagos.router import _procesar_evento
+from app.modules.operacion_comercial.pagos.servicio import (
+    alertar_stock_bajo,
+    cancelar_intento_stripe,
+    confirmar_rechazado,
+)
 from app.modules.operacion_comercial.reservas.schemas import (
     CancelarReservaIn,
     ClienteBreveOut,
+    CobroStripeIn,
+    CobroStripeOut,
     ItemRechazadoOut,
     MarcarPresenteIn,
     PrepararReservaIn,
@@ -25,7 +34,11 @@ from app.modules.operacion_comercial.reservas.schemas import (
     ResolverReservaIn,
     ResolverReservaOut,
 )
-from app.modules.operacion_comercial.ventas.router import IVA_TASA
+from app.modules.operacion_comercial.ventas.router import (
+    IVA_TASA,
+    _crear_sesion_stripe,
+    _pago_pendiente_stripe,
+)
 
 router = APIRouter(prefix="/reservas", tags=["reservas"])
 
@@ -53,7 +66,8 @@ async def _cargar_items_por_reserva(
     detalles = await conn.fetch(
         """
         SELECT rd.id, rd.reserva_id, rd.variante_id, rd.cantidad, rd.estado_item,
-               pv.sku, p.nombre AS producto, t.codigo AS talla, c.nombre AS color
+               pv.sku, p.nombre AS producto, t.codigo AS talla, c.nombre AS color,
+               COALESCE(pv.precio_oferta, pv.precio, p.precio_base) AS precio
         FROM reserva_detalle rd
         JOIN producto_variante pv ON pv.id = rd.variante_id
         JOIN producto p ON p.id = pv.producto_id
@@ -75,6 +89,7 @@ async def _cargar_items_por_reserva(
                 color=detalle["color"],
                 cantidad=detalle["cantidad"],
                 estado_item=detalle["estado_item"],
+                precio=float(detalle["precio"]),
             )
         )
     return items_por_reserva
@@ -1024,6 +1039,250 @@ async def resolver_reserva(
         comprobante_numero=comprobante_numero,
         total_cobrado=float(total_cobrado) if total_cobrado is not None else None,
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# Cobro con tarjeta (Stripe) en el vestidor (PENDIENTES 11). EFECTIVO, TARJETA de POS y QR se
+# cierran en el acto con /resolver (el QR se muestra en pantalla y el personal confirma cuando
+# llega el pago). Con Stripe la clienta paga en el momento con su tarjeta en el formulario de
+# Stripe (web: Checkout embebido; movil: PaymentSheet) y la venta se cierra SOLA cuando Stripe
+# confirma: queda PENDIENTE con un carrito propio del vestidor (sin dueno, atado a la reserva) y
+# la aprueba pagos/servicio.py::confirmar_aprobado como cualquier pago online -- el webhook, o la
+# verificacion de GET /cobro-stripe si el webhook no llega (desarrollo local sin `stripe listen`).
+# Al aprobarse, las prendas que la clienta no compro se liberan y la reserva queda CONVERTIDA.
+# ---------------------------------------------------------------------------------------------
+
+_SQL_COBRO_VESTIDOR = """
+    SELECT v.id AS venta_id, v.numero, v.total, v.estado::text AS venta_estado, v.carrito_id,
+           v.promocion_id, p.id AS pago_id, p.estado::text AS pago_estado, p.id_transaccion,
+           c.numero AS comprobante_numero
+    FROM venta v
+    JOIN pago p ON p.venta_id = v.id AND p.pasarela = 'STRIPE'
+    LEFT JOIN comprobante c ON c.venta_id = v.id
+    WHERE v.reserva_id = $1 AND v.canal = 'POS'
+    ORDER BY v.fecha DESC, p.creado_en DESC
+    LIMIT 1
+"""
+
+
+def _canal_de(id_transaccion: str | None) -> str:
+    return "MOVIL" if (id_transaccion or "").startswith("pi_") else "WEB"
+
+
+async def _stripe_ya_cobro(id_transaccion: str) -> bool:
+    """Pregunta a Stripe si el intento ya se pago (por si el webhook no llego)."""
+    try:
+        if id_transaccion.startswith("pi_"):
+            intento = await asyncio.to_thread(stripe.PaymentIntent.retrieve, id_transaccion)
+            return intento.status == "succeeded"
+        sesion = await asyncio.to_thread(stripe.checkout.Session.retrieve, id_transaccion)
+        return sesion.payment_status == "paid"
+    except stripe.error.StripeError:
+        return False
+
+
+def _cobro_out(fila, client_secret: str | None = None, mensaje: str | None = None) -> CobroStripeOut:
+    if fila is None:
+        return CobroStripeOut(estado="SIN_COBRO", mensaje=mensaje)
+    return CobroStripeOut(
+        estado=fila["venta_estado"],
+        venta_id=fila["venta_id"],
+        venta_numero=fila["numero"],
+        total=float(fila["total"]),
+        client_secret=client_secret,
+        canal=_canal_de(fila["id_transaccion"]),
+        comprobante_numero=fila["comprobante_numero"],
+        mensaje=mensaje,
+    )
+
+
+async def _anular_cobro_vestidor(conn: asyncpg.Connection, fila, texto: str) -> None:
+    """Cierra un cobro con tarjeta pendiente: lo cierra en Stripe y anula la venta."""
+    if fila["id_transaccion"]:
+        await cancelar_intento_stripe(fila["id_transaccion"])
+    await confirmar_rechazado(
+        conn,
+        fila["pago_id"],
+        {"id": fila["venta_id"], "promocion_id": fila["promocion_id"]},
+        mensaje_cliente=texto,
+    )
+    await conn.execute("UPDATE carrito SET estado = 'ABANDONADO' WHERE id = $1", fila["carrito_id"])
+
+
+@router.post("/{reserva_id}/cobro-stripe", response_model=CobroStripeOut)
+async def iniciar_cobro_stripe(
+    reserva_id: UUID,
+    body: CobroStripeIn,
+    encargado: dict = Depends(get_encargado_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> CobroStripeOut:
+    """Arma el cobro con tarjeta de lo que la clienta compra en el vestidor y devuelve el
+    client_secret para mostrar el formulario de Stripe ahi mismo. Si ya habia un cobro pendiente
+    por lo mismo y para el mismo canal, lo retoma; si cambio lo elegido, lo cierra y arma otro."""
+    async with conn.transaction():
+        reserva = await _obtener_reserva_staff(
+            conn, reserva_id, encargado["sucursal_id"], para_actualizar=True
+        )
+        if reserva["estado"] != "CLIENTE_PRESENTE":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La reserva no esta en estado CLIENTE_PRESENTE",
+            )
+
+        candidatos = await conn.fetch(
+            """
+            SELECT rd.variante_id, rd.cantidad,
+                   COALESCE(pv.precio_oferta, pv.precio, p.precio_base) AS precio
+            FROM reserva_detalle rd
+            JOIN producto_variante pv ON pv.id = rd.variante_id
+            JOIN producto p ON p.id = pv.producto_id
+            WHERE rd.reserva_id = $1 AND rd.estado_item = 'PREPARADO'
+            """,
+            reserva_id,
+        )
+        info = {fila["variante_id"]: fila for fila in candidatos}
+        if {d.variante_id for d in body.decisiones} != set(info.keys()):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Las decisiones deben cubrir exactamente las prendas que el cliente se probo",
+            )
+        comprados = [d for d in body.decisiones if d.comprado]
+        if not comprados:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No hay nada que cobrar: si no compra ninguna prenda, cerra la reserva sin cobro",
+            )
+        subtotal = sum(
+            (Decimal(str(info[d.variante_id]["precio"])) * info[d.variante_id]["cantidad"] for d in comprados),
+            Decimal("0"),
+        )
+        iva = (subtotal * IVA_TASA).quantize(Decimal("0.01"))
+        total = (subtotal + iva).quantize(Decimal("0.01"))
+
+        # un cobro anterior de este vestidor: se retoma si es lo mismo, si no se cierra
+        anterior = await conn.fetchrow(_SQL_COBRO_VESTIDOR, reserva_id)
+        if anterior is not None and anterior["pago_estado"] == "PENDIENTE":
+            if anterior["total"] == total and _canal_de(anterior["id_transaccion"]) == body.canal:
+                _, client_secret = await _pago_pendiente_stripe(anterior["id_transaccion"], canal=body.canal)
+                if client_secret:
+                    return _cobro_out(anterior, client_secret)
+            await _anular_cobro_vestidor(
+                conn, anterior, "Se reemplazo el cobro con tarjeta del pedido {numero} en la sucursal."
+            )
+        # un pago online de la clienta por estas prendas (carrito armado desde la reserva)
+        await _exigir_sin_pago_en_curso(conn, reserva_id)
+
+        carrito_id = await conn.fetchval(
+            """
+            INSERT INTO carrito (session_anonima, reserva_id)
+            VALUES ($1, $2)
+            RETURNING id
+            """,
+            f"vestidor:{reserva_id}:{uuid4().hex[:8]}",  # sin duenio: no choca con el carrito de la clienta
+            reserva_id,
+        )
+        await conn.executemany(
+            """
+            INSERT INTO carrito_item (carrito_id, variante_id, cantidad, precio_unitario)
+            VALUES ($1, $2, $3, $4)
+            """,
+            [
+                (carrito_id, d.variante_id, info[d.variante_id]["cantidad"], info[d.variante_id]["precio"])
+                for d in comprados
+            ],
+        )
+        numero = f"V-{uuid4().hex[:10].upper()}"
+        venta_id = await conn.fetchval(
+            """
+            INSERT INTO venta (sucursal_id, usuario_id, canal, entrega, reserva_id, carrito_id,
+                               numero, subtotal, descuento, iva, total, registrada_por_id)
+            VALUES ($1, $2, 'POS', 'RETIRO_SUCURSAL', $3, $4, $5, $6, 0, $7, $8, $9)
+            RETURNING id
+            """,
+            reserva["sucursal_id"],
+            reserva["usuario_id"],
+            reserva_id,
+            carrito_id,
+            numero,
+            subtotal,
+            iva,
+            total,
+            encargado["usuario_id"],
+        )
+        id_transaccion, _, client_secret = await _crear_sesion_stripe(
+            venta_id, numero, total, canal=body.canal
+        )
+        await conn.execute(
+            """
+            INSERT INTO pago (venta_id, metodo, pasarela, monto, id_transaccion)
+            VALUES ($1, 'PASARELA', 'STRIPE', $2, $3)
+            """,
+            venta_id,
+            total,
+            id_transaccion,
+        )
+
+    return CobroStripeOut(
+        estado="PENDIENTE",
+        venta_id=venta_id,
+        venta_numero=numero,
+        total=float(total),
+        client_secret=client_secret,
+        canal=body.canal,
+    )
+
+
+@router.get("/{reserva_id}/cobro-stripe", response_model=CobroStripeOut)
+async def estado_cobro_stripe(
+    reserva_id: UUID,
+    encargado: dict = Depends(get_encargado_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> CobroStripeOut:
+    """Estado del cobro con tarjeta. Si sigue PENDIENTE le pregunta a Stripe: si ya se pago lo
+    aprueba aca mismo (mismo camino que el webhook, idempotente), asi la pantalla no depende de que
+    el webhook llegue. Mientras siga pendiente devuelve el client_secret para retomar el formulario."""
+    await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"])
+    fila = await conn.fetchrow(_SQL_COBRO_VESTIDOR, reserva_id)
+    if fila is None or fila["pago_estado"] != "PENDIENTE":
+        return _cobro_out(fila)
+    if fila["id_transaccion"] and await _stripe_ya_cobro(fila["id_transaccion"]):
+        await _procesar_evento(
+            conn,
+            pasarela="STRIPE",
+            id_transaccion=fila["id_transaccion"],
+            evento_id=f"verificacion:{fila['id_transaccion']}",
+            aprobado=True,
+        )
+        return _cobro_out(await conn.fetchrow(_SQL_COBRO_VESTIDOR, reserva_id))
+    _, client_secret = await _pago_pendiente_stripe(
+        fila["id_transaccion"], canal=_canal_de(fila["id_transaccion"])
+    )
+    return _cobro_out(fila, client_secret)
+
+
+@router.post("/{reserva_id}/cobro-stripe/cancelar", response_model=CobroStripeOut)
+async def cancelar_cobro_stripe(
+    reserva_id: UUID,
+    encargado: dict = Depends(get_encargado_actual),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> CobroStripeOut:
+    """La clienta prefiere pagar de otra forma (o se arrepintio): se cierra el intento en Stripe y
+    la venta pendiente se anula. La reserva sigue en el vestidor para resolverla con otro metodo."""
+    async with conn.transaction():
+        await _obtener_reserva_staff(conn, reserva_id, encargado["sucursal_id"], para_actualizar=True)
+        fila = await conn.fetchrow(_SQL_COBRO_VESTIDOR, reserva_id)
+        if fila is None or fila["pago_estado"] != "PENDIENTE":
+            return _cobro_out(fila, mensaje="No habia un cobro con tarjeta pendiente")
+        if fila["id_transaccion"] and await _stripe_ya_cobro(fila["id_transaccion"]):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stripe ya cobro este pago: no se puede cancelar, actualiza el estado",
+            )
+        await conn.execute("SELECT 1 FROM pago WHERE id = $1 FOR UPDATE", fila["pago_id"])
+        await _anular_cobro_vestidor(
+            conn, fila, "Se cancelo el cobro con tarjeta del pedido {numero} en la sucursal."
+        )
+    return _cobro_out(await conn.fetchrow(_SQL_COBRO_VESTIDOR, reserva_id), mensaje="Cobro cancelado")
 
 
 @router.post("/{reserva_id}/no-presentado", response_model=ReservaStaffOut)

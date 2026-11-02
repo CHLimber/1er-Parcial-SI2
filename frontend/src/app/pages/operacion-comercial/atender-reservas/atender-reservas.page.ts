@@ -1,16 +1,21 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Stripe, StripeEmbeddedCheckout, loadStripe } from '@stripe/stripe-js';
+import { firstValueFrom } from 'rxjs';
 
 import { AuthService } from '../../../core/acceso-y-organizacion/auth/auth.service';
 import {
+  CobroStripeOut,
+  MetodoCobroVestidor,
   MetodoPagoReserva,
   ReservaItemOut,
   ReservaStaffOut,
   ResolverReservaOut,
 } from '../../../core/operacion-comercial/reservas/reservas.models';
 import { ReservasService } from '../../../core/operacion-comercial/reservas/reservas.service';
+import { PagosService } from '../../../core/operacion-comercial/ventas/ventas.service';
 import { PanelShell } from '../../../shared/panel/panel-shell';
 
 interface PreparacionItem {
@@ -44,8 +49,9 @@ const FILTROS = [
   templateUrl: './atender-reservas.page.html',
   styleUrls: ['./atender-reservas.page.css', '../../../shared/responsive.css'],
 })
-export class AtenderReservasPage implements OnInit {
+export class AtenderReservasPage implements OnInit, OnDestroy {
   private readonly reservasService = inject(ReservasService);
+  private readonly pagosService = inject(PagosService);
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
 
@@ -65,12 +71,41 @@ export class AtenderReservasPage implements OnInit {
   protected motivoRechazo = '';
   protected vestidorAsignado = '';
   protected itemsResolver: DecisionItem[] = [];
-  protected readonly metodosPago: MetodoPagoReserva[] = ['EFECTIVO', 'TARJETA', 'QR'];
-  protected metodoPago: MetodoPagoReserva = 'EFECTIVO';
+  protected readonly metodosPago: { valor: MetodoCobroVestidor; etiqueta: string }[] = [
+    { valor: 'EFECTIVO', etiqueta: 'Efectivo' },
+    { valor: 'TARJETA', etiqueta: 'Tarjeta (POS)' },
+    { valor: 'QR', etiqueta: 'QR' },
+    { valor: 'STRIPE', etiqueta: 'Stripe' },
+  ];
+  protected metodoPago: MetodoCobroVestidor = 'EFECTIVO';
   protected montoRecibido: number | null = null;
+
+  // Cobro con Stripe en el vestidor (PENDIENTES 11): el formulario de tarjeta de Stripe se monta
+  // aca mismo y la venta se cierra sola cuando Stripe confirma (webhook o verificacion del backend).
+  @ViewChild('stripeContenedor') private stripeContenedorRef?: ElementRef<HTMLDivElement>;
+  private stripePromise: Promise<Stripe | null> | null = null;
+  private stripeCheckout: StripeEmbeddedCheckout | null = null;
+  protected readonly cobroStripe = signal<CobroStripeOut | null>(null);
+  protected readonly montandoStripe = signal(false);
+  protected readonly verificandoStripe = signal(false);
 
   ngOnInit(): void {
     this.cargarCola();
+    this.stripePromise = firstValueFrom(this.pagosService.obtenerConfig())
+      .then((config) => (config.stripe_publishable_key ? loadStripe(config.stripe_publishable_key) : null))
+      .catch(() => null);
+  }
+
+  ngOnDestroy(): void {
+    this.desmontarStripe();
+  }
+
+  /** Total con IVA de lo que la clienta compra (precio de lista + 13%), para QR y Stripe. */
+  protected get totalCompra(): number {
+    const subtotal = this.itemsResolver
+      .filter((item) => item.comprado)
+      .reduce((suma, item) => suma + (item.detalle.precio ?? 0) * item.detalle.cantidad, 0);
+    return Math.round(subtotal * 1.13 * 100) / 100;
   }
 
   protected cambiarFiltro(valor: string): void {
@@ -107,6 +142,137 @@ export class AtenderReservasPage implements OnInit {
     this.itemsResolver = reserva.items
       .filter((item) => item.estado_item === 'PREPARADO')
       .map((item) => ({ variante_id: item.variante_id, detalle: item, comprado: true }));
+
+    this.desmontarStripe();
+    this.cobroStripe.set(null);
+    if (reserva.estado === 'CLIENTE_PRESENTE') this.retomarCobroStripe(reserva.id);
+  }
+
+  /** Si quedo un cobro con tarjeta a medias (se recargo la pagina), lo vuelve a mostrar. */
+  private retomarCobroStripe(reservaId: string): void {
+    this.reservasService.estadoCobroStripe(reservaId).subscribe({
+      next: (cobro) => {
+        if (this.seleccionada()?.id !== reservaId) return;
+        if (cobro.estado === 'PENDIENTE' && cobro.client_secret && cobro.canal === 'WEB') {
+          this.metodoPago = 'STRIPE';
+          this.cobroStripe.set(cobro);
+          setTimeout(() => this.montarStripe(cobro.client_secret!));
+        }
+      },
+    });
+  }
+
+  /** Arma la venta pendiente y monta el formulario de Stripe para que la clienta pague ahi. */
+  protected cobrarConStripe(): void {
+    const reserva = this.seleccionada();
+    if (!reserva) return;
+    this.cargandoAccion.set(true);
+    this.errorAccion.set(null);
+    this.reservasService
+      .iniciarCobroStripe(
+        reserva.id,
+        this.itemsResolver.map((item) => ({ variante_id: item.variante_id, comprado: item.comprado })),
+      )
+      .subscribe({
+        next: (cobro) => {
+          this.cargandoAccion.set(false);
+          this.cobroStripe.set(cobro);
+          if (cobro.client_secret) setTimeout(() => this.montarStripe(cobro.client_secret!));
+        },
+        error: (error: HttpErrorResponse) => {
+          this.cargandoAccion.set(false);
+          this.errorAccion.set(this.interpretarError(error));
+        },
+      });
+  }
+
+  private async montarStripe(clientSecret: string): Promise<void> {
+    this.desmontarStripe();
+    this.montandoStripe.set(true);
+    const stripe = await this.stripePromise;
+    const contenedor = this.stripeContenedorRef?.nativeElement;
+    if (!stripe || !contenedor) {
+      this.montandoStripe.set(false);
+      this.errorAccion.set('No se pudo cargar el formulario de Stripe (revisá STRIPE_PUBLISHABLE_KEY).');
+      return;
+    }
+    try {
+      const checkout = await stripe.createEmbeddedCheckoutPage({
+        clientSecret,
+        onComplete: () => this.verificarCobroStripe(true),
+      });
+      this.stripeCheckout = checkout;
+      checkout.mount(contenedor);
+    } catch {
+      this.errorAccion.set('No se pudo iniciar el pago con Stripe. Intentá de nuevo.');
+    } finally {
+      this.montandoStripe.set(false);
+    }
+  }
+
+  private desmontarStripe(): void {
+    this.stripeCheckout?.destroy();
+    this.stripeCheckout = null;
+  }
+
+  /** Consulta el cobro; con `insistir` reintenta unos segundos mientras Stripe lo confirma. */
+  protected verificarCobroStripe(insistir = false, intento = 0): void {
+    const reserva = this.seleccionada();
+    if (!reserva) return;
+    this.verificandoStripe.set(true);
+    this.reservasService.estadoCobroStripe(reserva.id).subscribe({
+      next: (cobro) => {
+        if (cobro.estado === 'PAGADA' || cobro.estado === 'ENTREGADA') {
+          this.verificandoStripe.set(false);
+          this.desmontarStripe();
+          this.cobroStripe.set(null);
+          const convertida = { ...reserva, estado: 'CONVERTIDA' };
+          this.refrescarSeleccionada(convertida);
+          this.resultadoResolver.set({
+            reserva: convertida,
+            venta_id: cobro.venta_id,
+            venta_numero: cobro.venta_numero,
+            comprobante_numero: cobro.comprobante_numero,
+            total_cobrado: cobro.total,
+          });
+          return;
+        }
+        if (cobro.estado === 'PENDIENTE' && insistir && intento < 10) {
+          setTimeout(() => this.verificarCobroStripe(true, intento + 1), 2000);
+          return;
+        }
+        this.verificandoStripe.set(false);
+        if (cobro.estado === 'ANULADA') {
+          this.desmontarStripe();
+          this.cobroStripe.set(null);
+          this.errorAccion.set('Stripe no aprobó el pago. Elegí otra forma de pago o volvé a intentar.');
+        } else if (cobro.estado === 'PENDIENTE') {
+          this.errorAccion.set('Stripe todavía no confirmó el pago. Esperá unos segundos y actualizá.');
+        }
+      },
+      error: (error: HttpErrorResponse) => {
+        this.verificandoStripe.set(false);
+        this.errorAccion.set(this.interpretarError(error));
+      },
+    });
+  }
+
+  /** La clienta prefiere otra forma de pago: se cierra el intento en Stripe. */
+  protected cancelarCobroStripe(): void {
+    const reserva = this.seleccionada();
+    if (!reserva) return;
+    this.cargandoAccion.set(true);
+    this.reservasService.cancelarCobroStripe(reserva.id).subscribe({
+      next: () => {
+        this.cargandoAccion.set(false);
+        this.desmontarStripe();
+        this.cobroStripe.set(null);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.cargandoAccion.set(false);
+        this.errorAccion.set(this.interpretarError(error));
+      },
+    });
   }
 
   private refrescarSeleccionada(reserva: ReservaStaffOut): void {
@@ -238,7 +404,7 @@ export class AtenderReservasPage implements OnInit {
           variante_id: item.variante_id,
           comprado: item.comprado,
         })),
-        metodo_pago: this.hayCompras ? this.metodoPago : null,
+        metodo_pago: this.hayCompras ? (this.metodoPago as MetodoPagoReserva) : null,
         monto_recibido: this.hayCompras ? this.montoRecibido : null,
       })
       .subscribe({
@@ -273,7 +439,11 @@ export class AtenderReservasPage implements OnInit {
     });
   }
 
-  protected elegirMetodoPago(metodo: MetodoPagoReserva): void {
+  protected elegirMetodoPago(metodo: MetodoCobroVestidor): void {
+    // salir de Stripe con un cobro abierto lo cierra, si no /resolver responde "pago en curso"
+    if (this.metodoPago === 'STRIPE' && metodo !== 'STRIPE' && this.cobroStripe()) {
+      this.cancelarCobroStripe();
+    }
     this.metodoPago = metodo;
     if (metodo !== 'EFECTIVO') this.montoRecibido = null;
   }

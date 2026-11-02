@@ -104,6 +104,16 @@ async def confirmar_aprobado(conn: asyncpg.Connection, pago_id: UUID, venta: dic
         if pendientes == 0:
             await conn.execute("UPDATE reserva SET estado = 'CONVERTIDA' WHERE id = $1", venta["reserva_id"])
 
+    venta_estado = "PAGADA"
+    vestidor = await conn.fetchrow(
+        "SELECT canal::text AS canal, registrada_por_id FROM venta WHERE id = $1", venta["id"]
+    )
+    if venta["reserva_id"] is not None and vestidor is not None and vestidor["canal"] == "POS":
+        # cobro con tarjeta en el vestidor (reservas/router.py, /cobro-stripe): la clienta esta en
+        # la tienda y se lleva lo que compro; lo que se probo y no compro se libera ahora
+        await _cerrar_reserva_del_vestidor(conn, venta, vestidor["registrada_por_id"])
+        venta_estado = "ENTREGADA"
+
     numero_comprobante = f"C-{uuid4().hex[:10].upper()}"
     await conn.execute(
         "INSERT INTO comprobante (venta_id, numero) VALUES ($1, $2)", venta["id"], numero_comprobante
@@ -140,7 +150,48 @@ async def confirmar_aprobado(conn: asyncpg.Connection, pago_id: UUID, venta: dic
 
     await alertar_stock_bajo(conn, venta["sucursal_id"], venta["id"])
 
-    return {"venta_estado": "PAGADA", "pago_estado": "APROBADO", "mensaje": "Pago confirmado"}
+    return {"venta_estado": venta_estado, "pago_estado": "APROBADO", "mensaje": "Pago confirmado"}
+
+
+async def _cerrar_reserva_del_vestidor(
+    conn: asyncpg.Connection, venta: dict, atendida_por: UUID | None
+) -> None:
+    """Mismo cierre que /reservas/{id}/resolver, pero recien con el pago con tarjeta aprobado: las
+    prendas probadas y no compradas liberan su compromiso, la reserva queda CONVERTIDA y la venta
+    ENTREGADA (la clienta se la lleva en el momento)."""
+    reserva_id = venta["reserva_id"]
+    sobrantes = await conn.fetch(
+        """
+        SELECT variante_id, cantidad FROM reserva_detalle
+        WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')
+        """,
+        reserva_id,
+    )
+    for fila in sobrantes:
+        await conn.execute(
+            "SELECT fn_mover_inventario($1, $2, 'LIBERACION', $3, $4, 'RESERVA', $5, $6)",
+            venta["sucursal_id"],
+            fila["variante_id"],
+            fila["cantidad"],
+            "Prenda probada y no comprada",
+            reserva_id,
+            atendida_por,
+        )
+    await conn.execute(
+        "UPDATE reserva_detalle SET estado_item = 'DESCARTADO' "
+        "WHERE reserva_id = $1 AND estado_item IN ('RESERVADO', 'PREPARADO')",
+        reserva_id,
+    )
+    await conn.execute(
+        """
+        UPDATE reserva SET estado = 'CONVERTIDA',
+               atendida_por_id = COALESCE(atendida_por_id, $2), atendida_en = COALESCE(atendida_en, now())
+        WHERE id = $1
+        """,
+        reserva_id,
+        atendida_por,
+    )
+    await conn.execute("UPDATE venta SET estado = 'ENTREGADA' WHERE id = $1", venta["id"])
 
 
 async def _reserva_respalda_items(

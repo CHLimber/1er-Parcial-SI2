@@ -513,3 +513,45 @@
     grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   }
 }
+
+/* Cobro en el vestidor (PENDIENTES 11): total, QR en pantalla y formulario de Stripe embebido */
+.cobro__total {
+  margin: 0.5rem 0;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.cobro-qr {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.cobro-qr__imagen {
+  width: min(16rem, 100%);
+  height: auto;
+}
+
+.cobro-stripe {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.cobro-stripe__formulario:empty {
+  display: none;
+}
+
+.cobro-stripe__formulario {
+  min-height: 2rem;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.metodo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
