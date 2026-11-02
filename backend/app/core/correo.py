@@ -29,12 +29,14 @@ def correo_configurado() -> bool:
     return bool(settings.resend_api_key or settings.smtp_host)
 
 
-def _enviar_smtp(destino: str, asunto: str, texto: str) -> None:
+def _enviar_smtp(destino: str, asunto: str, texto: str, html: str | None) -> None:
     mensaje = EmailMessage()
     mensaje["From"] = settings.smtp_from or settings.smtp_user
     mensaje["To"] = destino
     mensaje["Subject"] = asunto
     mensaje.set_content(texto)
+    if html:
+        mensaje.add_alternative(html, subtype="html")
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as servidor:
         if settings.smtp_starttls:
             servidor.starttls()
@@ -43,12 +45,15 @@ def _enviar_smtp(destino: str, asunto: str, texto: str) -> None:
         servidor.send_message(mensaje)
 
 
-async def _enviar_resend(destino: str, asunto: str, texto: str) -> None:
+async def _enviar_resend(destino: str, asunto: str, texto: str, html: str | None) -> None:
+    cuerpo = {"from": settings.resend_from, "to": [destino], "subject": asunto, "text": texto}
+    if html:
+        cuerpo["html"] = html
     async with httpx.AsyncClient(timeout=15) as cliente:
         respuesta = await cliente.post(
             RESEND_URL,
             headers={"Authorization": f"Bearer {settings.resend_api_key}"},
-            json={"from": settings.resend_from, "to": [destino], "subject": asunto, "text": texto},
+            json=cuerpo,
         )
     if respuesta.status_code >= 400:
         # Resend explica el motivo en el cuerpo (p. ej. dominio sin verificar: solo deja enviar
@@ -56,16 +61,17 @@ async def _enviar_resend(destino: str, asunto: str, texto: str) -> None:
         raise RuntimeError(f"Resend respondio {respuesta.status_code}: {respuesta.text[:300]}")
 
 
-async def enviar_correo(destino: str, asunto: str, texto: str) -> bool:
-    """True si el correo salio. Un fallo del proveedor se registra y devuelve False: el
-    usuario no tiene por que enterarse de por que no llego."""
+async def enviar_correo(destino: str, asunto: str, texto: str, html: str | None = None) -> bool:
+    """True si el correo salio. `texto` es el cuerpo plano (y el respaldo de `html`). Un fallo
+    del proveedor se registra y devuelve False: el usuario no tiene por que enterarse de por
+    que no llego."""
     if not correo_configurado():
         return False
     try:
         if settings.resend_api_key:
-            await _enviar_resend(destino, asunto, texto)
+            await _enviar_resend(destino, asunto, texto, html)
         else:
-            await asyncio.to_thread(_enviar_smtp, destino, asunto, texto)
+            await asyncio.to_thread(_enviar_smtp, destino, asunto, texto, html)
     except (OSError, smtplib.SMTPException, httpx.HTTPError, RuntimeError):
         log.exception("No se pudo enviar el correo a %s", destino)
         return False

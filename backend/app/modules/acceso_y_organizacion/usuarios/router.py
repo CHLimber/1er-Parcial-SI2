@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.core.auditoria import registrar_auditoria
 from app.core.config import settings
 from app.core.correo import enviar_correo
+from app.core.correo_plantillas import correo_recuperacion
 from app.core.db import get_connection
 from app.core.deps import exigir_empresa_operativa, get_current_usuario, obtener_permisos
 from app.core.plan import funciones_habilitadas, plan_de_empresa
@@ -308,17 +309,10 @@ async def recuperar_password(
 
     token = crear_token_recuperacion(str(fila["id"]), fila["password_hash"])
     enlace = f"{settings.frontend_url.rstrip('/')}/restablecer-password?token={token}"
-    enviado = await enviar_correo(
-        fila["email"],
-        "Recupera tu contrasena de FashionStore",
-        (
-            f"Hola {fila['nombre']},\n\n"
-            "Recibimos un pedido para elegir una contrasena nueva en tu cuenta de FashionStore.\n"
-            f"Entra a este enlace (vence en {settings.recuperacion_minutos} minutos y sirve una sola vez):\n\n"
-            f"{enlace}\n\n"
-            "Si no fuiste vos, ignora este correo: tu contrasena actual sigue funcionando."
-        ),
+    asunto, texto, html = correo_recuperacion(
+        fila["nombre"], enlace, settings.recuperacion_minutos
     )
+    enviado = await enviar_correo(fila["email"], asunto, texto, html)
     if not enviado:
         # sin SMTP (o si fallo) el enlace queda en el log del backend para quien opera el sistema
         log.warning("Recuperacion de contrasena para %s (correo no enviado): %s", fila["email"], enlace)
