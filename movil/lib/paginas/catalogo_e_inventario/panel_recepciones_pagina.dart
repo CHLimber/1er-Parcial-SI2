@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../compartido/widgets.dart';
@@ -294,6 +295,9 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
   bool _trabajando = false;
   String? _error;
 
+  /// Resultado de la ultima confirmacion: se muestra como recuadro "entro al stock".
+  String? _aviso;
+
   @override
   void initState() {
     super.initState();
@@ -394,18 +398,21 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
     final confirmado = await confirmar(
       context,
       titulo: 'Confirmar recepcion',
-      mensaje: 'Entran ${recepcion.unidades} unidad(es) al inventario de '
-          '${recepcion.sucursal}. Una recepcion confirmada no se edita ni se anula '
-          'despues: el kardex es append-only y se corrige con un ajuste.',
+      mensaje: '${recepcion.unidades} unidad(es) de ${recepcion.detalle.length} prenda(s) entrarán al '
+          'stock de ${recepcion.sucursal}.\n\nUna recepción confirmada no se puede editar ni anular '
+          '(se corrige con un ajuste). ¿Confirmar?',
       textoConfirmar: 'Confirmar',
     );
     if (!confirmado) return;
 
     setState(() => _trabajando = true);
     try {
-      await recepcionesService.confirmar(recepcion.id);
+      final confirmada = await recepcionesService.confirmar(recepcion.id);
       if (!mounted) return;
-      mostrarAviso(context, 'Recepcion confirmada: el stock ya entro');
+      setState(() {
+        _aviso = 'Recepción ${confirmada.numero} confirmada: ${confirmada.unidades} unidad(es) entraron '
+            'al stock de ${confirmada.sucursal}. Abajo ves cómo quedó cada prenda.';
+      });
       await _cargar();
     } catch (error) {
       if (!mounted) return;
@@ -498,6 +505,17 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
                       ],
                     ),
                   ),
+                  if (esBorrador) ...[
+                    const SizedBox(height: 16),
+                    _PasosRecepcion(tieneLineas: recepcion.detalle.isNotEmpty, sucursal: recepcion.sucursal),
+                  ],
+                  if (_aviso != null) ...[
+                    const SizedBox(height: 16),
+                    _RecuadroConfirmada(
+                      mensaje: _aviso!,
+                      alVerInventario: () => context.push('/panel/inventario'),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const EtiquetaDato('Detalle'),
                   const SizedBox(height: 8),
@@ -533,9 +551,17 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
                                 ],
                               ),
                               const SizedBox(height: 4),
-                              Text(
-                                '${linea.sku} · ${linea.talla} · ${linea.color}',
-                                style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                              Row(
+                                children: [
+                                  _PuntoColor(linea.codigoHex),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Talla ${linea.talla} · ${linea.color} · ${linea.sku}',
+                                      style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 4),
                               Text(
@@ -543,6 +569,14 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
                                 '${formatearPrecio(linea.costoUnitario)}',
                                 style: const TextStyle(fontSize: 12.5),
                               ),
+                              if (esBorrador) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Stock hoy ${linea.stockActual} → quedará '
+                                  '${linea.stockActual + linea.cantidad} (+${linea.cantidad})',
+                                  style: fuenteMono(fontSize: 12, color: Paleta.verde),
+                                ),
+                              ],
                               if (esBorrador && puedeRegistrar) ...[
                                 const SizedBox(height: 6),
                                 Row(
@@ -572,7 +606,12 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
                     ),
                   if (_movimientos.isNotEmpty) ...[
                     const SizedBox(height: 20),
-                    const EtiquetaDato('Asientos del kardex'),
+                    EtiquetaDato('Así quedó el stock de ${recepcion.sucursal}'),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Cada fila es un asiento del kardex: cuánto había, cuánto entró y cuánto hay ahora.',
+                      style: TextStyle(color: Paleta.inkSuave, fontSize: 12.5),
+                    ),
                     const SizedBox(height: 8),
                     ..._movimientos.map(
                       (movimiento) => Padding(
@@ -587,10 +626,23 @@ class _DetalleRecepcionPaginaState extends State<DetalleRecepcionPagina> {
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
                               const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  _PuntoColor(movimiento.codigoHex),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Talla ${movimiento.talla} · ${movimiento.color} · ${movimiento.sku}',
+                                      style: const TextStyle(fontSize: 12, color: Paleta.inkSuave),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
                               Text(
-                                '${movimiento.sku} · +${movimiento.cantidad} · '
-                                'saldo ${movimiento.saldoAnterior} -> ${movimiento.saldoNuevo}',
-                                style: fuenteMono(fontSize: 12, fontWeight: FontWeight.w500, color: Paleta.inkSuave),
+                                'Había ${movimiento.saldoAnterior} · entró +${movimiento.cantidad} · '
+                                'hay ahora ${movimiento.saldoNuevo}',
+                                style: fuenteMono(fontSize: 12, fontWeight: FontWeight.w600, color: Paleta.ink),
                               ),
                               if (movimiento.fecha != null)
                                 Text(
@@ -667,6 +719,7 @@ class _HojaLineaState extends State<_HojaLinea> {
   @override
   void initState() {
     super.initState();
+    _cantidad.addListener(() => setState(() {}));
     final linea = widget.linea;
     if (linea != null) {
       _varianteIdInicial = linea.varianteId;
@@ -789,13 +842,18 @@ class _HojaLineaState extends State<_HojaLinea> {
                                   variante.producto,
                                   style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
-                                Text(
-                                  '${variante.sku} · ${variante.talla} · ${variante.color} · '
-                                  'stock ${variante.stockSucursal}',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    color: Paleta.inkSuave,
-                                  ),
+                                Row(
+                                  children: [
+                                    _PuntoColor(variante.codigoHex),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        '${variante.sku} · Talla ${variante.talla} · ${variante.color} · '
+                                        'hoy en la sucursal: ${variante.stockSucursal}',
+                                        style: const TextStyle(fontSize: 11.5, color: Paleta.inkSuave),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -803,6 +861,16 @@ class _HojaLineaState extends State<_HojaLinea> {
                         ],
                       ),
                     ),
+                  ),
+                ),
+              if (_elegida case final elegida?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Recibiendo ${elegida.producto}, talla ${elegida.talla}, ${elegida.color}. '
+                    'En la sucursal hay hoy ${elegida.stockSucursal}; quedarán '
+                    '${elegida.stockSucursal + (int.tryParse(_cantidad.text.trim()) ?? 0)}.',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5),
                   ),
                 ),
               const SizedBox(height: 6),
@@ -832,6 +900,119 @@ class _HojaLineaState extends State<_HojaLinea> {
               ElevatedButton(onPressed: _guardar, child: const Text('GUARDAR LINEA')),
             ],
           ),
+        ),
+      );
+}
+
+
+/// Muestra de color de una variante (el `codigo_hex` que manda la API).
+class _PuntoColor extends StatelessWidget {
+  const _PuntoColor(this.hex);
+
+  final String hex;
+
+  @override
+  Widget build(BuildContext context) {
+    final valor = int.tryParse('FF${hex.replaceAll('#', '')}', radix: 16);
+    return Container(
+      width: 10,
+      height: 10,
+      decoration: BoxDecoration(
+        color: valor == null ? Paleta.paperLinea : Color(valor),
+        shape: BoxShape.circle,
+        border: Border.all(color: Paleta.paperLinea),
+      ),
+    );
+  }
+}
+
+/// Como funciona una recepcion en tres pasos: el stock recien sube al confirmar.
+class _PasosRecepcion extends StatelessWidget {
+  const _PasosRecepcion({required this.tieneLineas, required this.sucursal});
+
+  final bool tieneLineas;
+  final String sucursal;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget paso(int n, String titulo, String detalle, {required bool hecho, bool activo = false}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 11,
+                backgroundColor: hecho ? Paleta.verde : (activo ? Paleta.flame : Paleta.paperLinea),
+                child: hecho
+                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    : Text('$n', style: TextStyle(fontSize: 11, color: activo ? Colors.white : Paleta.inkSuave)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: titulo, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    TextSpan(text: ' $detalle'),
+                  ]),
+                  style: const TextStyle(fontSize: 12.5, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        );
+
+    return TarjetaPanel(
+      hijo: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const EtiquetaDato('Cómo funciona una recepción'),
+          const SizedBox(height: 4),
+          paso(1, 'Cargá lo que llegó', 'buscando cada prenda por SKU o nombre, con su talla y color.',
+              hecho: tieneLineas, activo: !tieneLineas),
+          paso(2, 'Revisá el impacto:', 'cada línea muestra cuánto hay hoy y cuánto va a quedar.',
+              hecho: false, activo: tieneLineas),
+          paso(3, 'Confirmá:', 'recién ahí sube el stock de $sucursal. Mientras es borrador no cambia nada.',
+              hecho: false),
+        ],
+      ),
+    );
+  }
+}
+
+/// Recuadro verde que aparece despues de confirmar, con el enlace a Inventario.
+class _RecuadroConfirmada extends StatelessWidget {
+  const _RecuadroConfirmada({required this.mensaje, required this.alVerInventario});
+
+  final String mensaje;
+  final VoidCallback alVerInventario;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Paleta.verde.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Paleta.verde),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.check_circle, color: Paleta.verde),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(mensaje, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.35)),
+                  TextButton(
+                    onPressed: alVerInventario,
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                    child: const Text('Ver el stock y el kardex en Inventario →'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       );
 }

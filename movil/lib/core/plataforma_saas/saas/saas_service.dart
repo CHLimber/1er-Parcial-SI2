@@ -96,10 +96,31 @@ class SuscripcionOut {
 }
 
 class TiendaOut {
-  const TiendaOut(this.slug, this.nombre);
+  const TiendaOut(this.slug, this.nombre, {this.sucursales = 0, this.ciudades = const [], this.prendas = 0});
 
   final String slug;
   final String nombre;
+  final int sucursales;
+
+  /// Ciudades con sucursal activa, como las guarda la base (SANTA_CRUZ, LA_PAZ...).
+  final List<String> ciudades;
+  final int prendas;
+
+  /// SANTA_CRUZ -> Santa Cruz (espejo de `ciudadLegible` de `shared/tiendas.ts`).
+  static String ciudadLegible(String ciudad) => ciudad
+      .toLowerCase()
+      .split('_')
+      .map((p) => p.isEmpty ? p : p[0].toUpperCase() + p.substring(1))
+      .join(' ');
+
+  /// "3 sucursales · Santa Cruz, La Paz" para la tarjeta de una tienda.
+  String get resumenUbicacion {
+    final n = '$sucursales ${sucursales == 1 ? 'sucursal' : 'sucursales'}';
+    if (ciudades.isEmpty) return n;
+    return '$n · ${ciudades.map(ciudadLegible).join(', ')}';
+  }
+
+  String get resumenPrendas => '$prendas ${prendas == 1 ? 'prenda' : 'prendas'}';
 }
 
 class SaasService {
@@ -112,7 +133,13 @@ class SaasService {
 
   /// Publico: las tiendas activas de la plataforma, para el selector de la clienta.
   Future<List<TiendaOut>> tiendas() async => comoLista(await api.get('/saas/tiendas'))
-      .map((t) => TiendaOut(t['slug'] as String, t['nombre'] as String))
+      .map((t) => TiendaOut(
+            t['slug'] as String,
+            t['nombre'] as String,
+            sucursales: aEntero(t['sucursales']),
+            ciudades: [for (final c in (t['ciudades'] as List? ?? const [])) c as String],
+            prendas: aEntero(t['prendas']),
+          ))
       .toList();
 
   /// Devuelve la URL del Checkout hospedado de Stripe; al volver, el webhook aplica el pago.

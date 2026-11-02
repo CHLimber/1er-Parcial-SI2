@@ -9,9 +9,11 @@ class DetalleOut {
     required this.producto,
     required this.talla,
     required this.color,
+    required this.codigoHex,
     required this.cantidad,
     required this.costoUnitario,
     required this.subtotal,
+    required this.stockActual,
   });
 
   final String id;
@@ -20,9 +22,13 @@ class DetalleOut {
   final String producto;
   final String talla;
   final String color;
+  final String codigoHex;
   final int cantidad;
   final double costoUnitario;
   final double subtotal;
+
+  /// Stock fisico en la sucursal que recibe, antes de confirmar.
+  final int stockActual;
 
   factory DetalleOut.desdeJson(Map<String, dynamic> j) => DetalleOut(
         id: j['id'] as String,
@@ -31,9 +37,11 @@ class DetalleOut {
         producto: j['producto'] as String,
         talla: j['talla'] as String,
         color: j['color'] as String,
+        codigoHex: j['codigo_hex'] as String? ?? '',
         cantidad: aEntero(j['cantidad']),
         costoUnitario: aDouble(j['costo_unitario']),
         subtotal: aDouble(j['subtotal']),
+        stockActual: aEntero(j['stock_actual']),
       );
 }
 
@@ -177,6 +185,9 @@ class MovimientoOut {
     required this.varianteId,
     required this.sku,
     required this.producto,
+    required this.talla,
+    required this.color,
+    required this.codigoHex,
     required this.cantidad,
     required this.saldoAnterior,
     required this.saldoNuevo,
@@ -186,6 +197,9 @@ class MovimientoOut {
   final String varianteId;
   final String sku;
   final String producto;
+  final String talla;
+  final String color;
+  final String codigoHex;
   final int cantidad;
   final int saldoAnterior;
   final int saldoNuevo;
@@ -195,6 +209,9 @@ class MovimientoOut {
         varianteId: j['variante_id'] as String,
         sku: j['sku'] as String,
         producto: j['producto'] as String,
+        talla: j['talla'] as String? ?? '',
+        color: j['color'] as String? ?? '',
+        codigoHex: j['codigo_hex'] as String? ?? '',
         cantidad: aEntero(j['cantidad']),
         saldoAnterior: aEntero(j['saldo_anterior']),
         saldoNuevo: aEntero(j['saldo_nuevo']),

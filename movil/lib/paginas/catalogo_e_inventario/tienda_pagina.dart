@@ -92,18 +92,47 @@ class _TiendaPaginaState extends State<TiendaPagina> {
     final actual = _tiendas.where((t) => t.slug == tiendaActual.value).firstOrNull;
     final nombre = actual?.nombre ?? 'FashionStore';
     if (_tiendas.length < 2) return Text(nombre);
-    return PopupMenuButton<String>(
-      tooltip: 'Cambiar de tienda',
-      onSelected: _cambiarTienda,
-      itemBuilder: (_) => [
-        for (final t in _tiendas)
-          CheckedPopupMenuItem(value: t.slug, checked: t.slug == tiendaActual.value, child: Text(t.nombre)),
-      ],
+    return InkWell(
+      onTap: _abrirSelectorTienda,
+      borderRadius: BorderRadius.circular(8),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [Flexible(child: Text(nombre, overflow: TextOverflow.ellipsis)), const Icon(Icons.arrow_drop_down)],
+        children: [
+          Flexible(child: Text(nombre, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 4),
+          Text('Cambiar ▾', style: fuenteMono(fontSize: 10, color: Paleta.gold)),
+        ],
       ),
     );
+  }
+
+  /// CU07: lista de tarjetas con las sucursales, ciudades y prendas de cada tienda, y marca la
+  /// actual (espejo del selector de `tienda.page.html`).
+  Future<void> _abrirSelectorTienda() async {
+    final elegida = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      backgroundColor: Paleta.paper,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            children: [
+              Text('Tiendas disponibles', style: fuenteDisplay(fontSize: 20)),
+              const SizedBox(height: 4),
+              const Text('Cada tienda tiene su propio catálogo, stock y precios.',
+                  style: TextStyle(color: Paleta.inkSuave, fontSize: 13)),
+              const SizedBox(height: 12),
+              for (final t in _tiendas) _TarjetaTienda(tienda: t, actual: t.slug == tiendaActual.value),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (elegida != null) await _cambiarTienda(elegida);
   }
 
   Future<void> _cargarRecomendaciones() async {
@@ -645,3 +674,62 @@ Color _desdeHex(String hex) {
 }
 
 Color colorDesdeHex(String hex) => _desdeHex(hex);
+
+/// Una tienda del selector: inicial, nombre, "3 sucursales · Santa Cruz, La Paz · 6 prendas" y
+/// la marca "Estás acá" en la que se esta mirando.
+class _TarjetaTienda extends StatelessWidget {
+  const _TarjetaTienda({required this.tienda, required this.actual});
+
+  final TiendaOut tienda;
+  final bool actual;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: actual ? Paleta.flame.withValues(alpha: 0.07) : Paleta.blanco,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: actual ? Paleta.flame : Paleta.paperLinea, width: actual ? 1.5 : 1),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => Navigator.of(context).pop(tienda.slug),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Paleta.ink,
+                  child: Text(tienda.nombre.isEmpty ? '?' : tienda.nombre[0].toUpperCase(),
+                      style: fuenteDisplay(fontSize: 20, color: Paleta.paper)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(tienda.nombre,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                      const SizedBox(height: 2),
+                      Text('${tienda.resumenUbicacion} · ${tienda.resumenPrendas}',
+                          style: const TextStyle(color: Paleta.inkSuave, fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+                if (actual)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text('ESTÁS ACÁ', style: fuenteMono(fontSize: 10, color: Paleta.flame)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -16,6 +16,7 @@ class VarianteBuscadaOut {
     required this.cantidadFisica,
     required this.cantidadReservada,
     required this.disponible,
+    this.stockMinimo = 0,
   });
 
   final String id;
@@ -30,6 +31,9 @@ class VarianteBuscadaOut {
   final int cantidadReservada;
   final int disponible;
 
+  /// Umbral de reposicion de la prenda en la sucursal (0 = sin umbral).
+  final int stockMinimo;
+
   factory VarianteBuscadaOut.desdeJson(Map<String, dynamic> j) => VarianteBuscadaOut(
         id: j['id'] as String,
         sku: j['sku'] as String,
@@ -42,8 +46,43 @@ class VarianteBuscadaOut {
         cantidadFisica: aEntero(j['cantidad_fisica']),
         cantidadReservada: aEntero(j['cantidad_reservada']),
         disponible: aEntero(j['disponible']),
+        stockMinimo: aEntero(j['stock_minimo']),
       );
 }
+
+/// Indicadores de una sucursal para la cabecera de la pantalla (GET /inventario/resumen).
+class ResumenInventarioOut {
+  ResumenInventarioOut({
+    required this.sucursal,
+    required this.variantes,
+    required this.unidadesFisicas,
+    required this.unidadesReservadas,
+    required this.unidadesDisponibles,
+    required this.agotadas,
+    required this.stockBajo,
+  });
+
+  final String sucursal;
+  final int variantes;
+  final int unidadesFisicas;
+  final int unidadesReservadas;
+  final int unidadesDisponibles;
+  final int agotadas;
+  final int stockBajo;
+
+  factory ResumenInventarioOut.desdeJson(Map<String, dynamic> j) => ResumenInventarioOut(
+        sucursal: j['sucursal'] as String,
+        variantes: aEntero(j['variantes']),
+        unidadesFisicas: aEntero(j['unidades_fisicas']),
+        unidadesReservadas: aEntero(j['unidades_reservadas']),
+        unidadesDisponibles: aEntero(j['unidades_disponibles']),
+        agotadas: aEntero(j['agotadas']),
+        stockBajo: aEntero(j['stock_bajo']),
+      );
+}
+
+/// Filtro rapido del listado: las que piden reposicion o las que no tienen nada disponible.
+enum AlertaInventario { bajo, agotadas }
 
 /// saldo_anterior/saldo_nuevo son el DISPONIBLE (fisico - reservado) para todos los tipos
 /// salvo AJUSTE, donde son cantidad_fisica cruda (fn_mover_inventario, db/02_logica.sql).
@@ -120,13 +159,22 @@ class AjusteOut {
 /// El backend es el unico que escribe cantidad_fisica, siempre via fn_mover_inventario
 /// (db/02_logica.sql) -- este servicio nunca calcula stock, solo lo pide y lo muestra.
 class InventarioService {
-  Future<List<VarianteBuscadaOut>> buscarVariantes(String q, {String? sucursalId}) async {
+  /// Sin texto lista las prendas con menos disponible primero; `alerta` filtra las que piden reposicion.
+  Future<List<VarianteBuscadaOut>> buscarVariantes(
+    String q, {
+    String? sucursalId,
+    AlertaInventario? alerta,
+  }) async {
     final respuesta = await api.get('/inventario/variantes', query: {
       'q': q,
       'sucursal_id': sucursalId,
+      'alerta': alerta?.name,
     });
     return comoLista(respuesta).map(VarianteBuscadaOut.desdeJson).toList();
   }
+
+  Future<ResumenInventarioOut> resumen({String? sucursalId}) async => ResumenInventarioOut.desdeJson(
+      await api.get('/inventario/resumen', query: {'sucursal_id': sucursalId}) as Map<String, dynamic>);
 
   Future<List<MovimientoKardexOut>> kardex(
     String varianteId, {
