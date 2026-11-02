@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_starttls: bool = True
+    # Resend (API HTTPS): tiene prioridad sobre SMTP y es lo que funciona en Railway. Sin dominio
+    # verificado en Resend el remitente tiene que ser onboarding@resend.dev y solo deja enviar al
+    # correo con el que se creo la cuenta de Resend.
+    resend_api_key: str = ""
+    resend_from: str = "FashionStore <onboarding@resend.dev>"
     recuperacion_minutos: int = 30
     recuperacion_mostrar_enlace: bool = False
 

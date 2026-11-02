@@ -1,8 +1,14 @@
-"""Envio de correos por SMTP (hoy solo la recuperacion de cuenta).
+"""Envio de correos (hoy solo la recuperacion de cuenta).
 
-Sin SMTP_HOST no se envia nada: `enviar_correo` devuelve False y quien llama decide que hacer
-(la recuperacion deja el enlace en el log). Es smtplib de la libreria estandar, que bloquea, asi
-que se corre en un hilo para no frenar el event loop.
+Dos vias, en este orden:
+
+1. **Resend** (API HTTPS, puerto 443) si hay `RESEND_API_KEY`. Es la que sirve en Railway, que
+   bloquea el SMTP saliente (25/465/587) fuera del plan Pro.
+2. **SMTP** si hay `SMTP_HOST` (Gmail con contrasena de aplicacion, Brevo, etc.). Sirve en local.
+
+Sin ninguna de las dos no se envia nada: `enviar_correo` devuelve False y quien llama decide que
+hacer (la recuperacion deja el enlace en el log). smtplib bloquea, asi que se corre en un hilo
+para no frenar el event loop.
 """
 
 import asyncio
@@ -10,16 +16,20 @@ import logging
 import smtplib
 from email.message import EmailMessage
 
+import httpx
+
 from app.core.config import settings
 
 log = logging.getLogger(__name__)
 
+RESEND_URL = "https://api.resend.com/emails"
+
 
 def correo_configurado() -> bool:
-    return bool(settings.smtp_host)
+    return bool(settings.resend_api_key or settings.smtp_host)
 
 
-def _enviar(destino: str, asunto: str, texto: str) -> None:
+def _enviar_smtp(destino: str, asunto: str, texto: str) -> None:
     mensaje = EmailMessage()
     mensaje["From"] = settings.smtp_from or settings.smtp_user
     mensaje["To"] = destino
@@ -33,14 +43,30 @@ def _enviar(destino: str, asunto: str, texto: str) -> None:
         servidor.send_message(mensaje)
 
 
+async def _enviar_resend(destino: str, asunto: str, texto: str) -> None:
+    async with httpx.AsyncClient(timeout=15) as cliente:
+        respuesta = await cliente.post(
+            RESEND_URL,
+            headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+            json={"from": settings.resend_from, "to": [destino], "subject": asunto, "text": texto},
+        )
+    if respuesta.status_code >= 400:
+        # Resend explica el motivo en el cuerpo (p. ej. dominio sin verificar: solo deja enviar
+        # al correo de la propia cuenta); sin esto el log solo diria "fallo".
+        raise RuntimeError(f"Resend respondio {respuesta.status_code}: {respuesta.text[:300]}")
+
+
 async def enviar_correo(destino: str, asunto: str, texto: str) -> bool:
-    """True si el correo salio. Un fallo del servidor SMTP se registra y devuelve False: el
+    """True si el correo salio. Un fallo del proveedor se registra y devuelve False: el
     usuario no tiene por que enterarse de por que no llego."""
     if not correo_configurado():
         return False
     try:
-        await asyncio.to_thread(_enviar, destino, asunto, texto)
-    except (OSError, smtplib.SMTPException):
+        if settings.resend_api_key:
+            await _enviar_resend(destino, asunto, texto)
+        else:
+            await asyncio.to_thread(_enviar_smtp, destino, asunto, texto)
+    except (OSError, smtplib.SMTPException, httpx.HTTPError, RuntimeError):
         log.exception("No se pudo enviar el correo a %s", destino)
         return False
     return True

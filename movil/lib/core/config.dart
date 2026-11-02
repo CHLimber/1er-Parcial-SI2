@@ -21,7 +21,7 @@ import 'package:flutter/foundation.dart';
 class Config {
   /// Backend en Railway (servicio `backend`, dominio publico generado en Settings →
   /// Networking). Si se regenera el dominio, se cambia aca.
-  static const String apiUrlProduccion = 'https://backend-production-765b9.up.railway.app';
+  static const String apiUrlProduccion = 'https://backend-production-6e5f9.up.railway.app';
 
   static const String _apiUrlDefinida = String.fromEnvironment('API_URL');
 
