@@ -273,6 +273,17 @@
               <p class="estado vuelto">Vuelto: <strong>{{ vuelto() != null ? formatearPrecio(vuelto()!) : '—' }}</strong></p>
             }
 
+            @if (metodoPago === 'QR') {
+              <!-- la clienta escanea desde su banco; se cobra cuando el pago aparece acreditado -->
+              <div class="cobro-qr">
+                <img class="cobro-qr__imagen" src="/pago-qr.jpeg" alt="Código QR para pagar" width="817" height="896" />
+                <p class="estado">
+                  Mostrale el QR a la clienta para que pague <strong>{{ formatearPrecio(total()) }}</strong> desde la app
+                  de su banco. Cobrá recién cuando veas el pago acreditado.
+                </p>
+              </div>
+            }
+
             @if (errorCobro()) {
               <p class="formulario__error" role="alert">{{ errorCobro() }}</p>
             }

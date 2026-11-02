@@ -650,3 +650,19 @@
 .aviso-devoluciones:hover {
   border-left-color: var(--flame);
 }
+
+/* QR en pantalla al cobrar con QR en el mostrador */
+.cobro-qr {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem;
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.cobro-qr__imagen {
+  width: min(15rem, 100%);
+  height: auto;
+}

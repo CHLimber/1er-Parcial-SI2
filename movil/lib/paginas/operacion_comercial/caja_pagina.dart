@@ -1082,6 +1082,17 @@ class _CajaPaginaState extends State<CajaPagina> {
               ),
             ),
           ],
+          if (_metodoPago == 'QR') ...[
+            // la clienta escanea desde su banco; se cobra cuando el pago aparece acreditado
+            const SizedBox(height: 14),
+            Center(child: Image.asset('assets/images/pago-qr.jpeg', width: 230, fit: BoxFit.contain)),
+            const SizedBox(height: 6),
+            Text(
+              'Mostrale el QR a la clienta para que pague ${formatearPrecio(total)} desde su banco. '
+              'Cobra recien cuando veas el pago acreditado.',
+              style: const TextStyle(fontSize: 12.5, color: Paleta.inkSuave, height: 1.35),
+            ),
+          ],
           const SizedBox(height: 20),
           ElevatedButton(
             onPressed: _cobrando ? null : _cobrar,
