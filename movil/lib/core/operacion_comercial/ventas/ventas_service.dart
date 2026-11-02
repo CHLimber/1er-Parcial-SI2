@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_stripe/flutter_stripe.dart';
 
 import '../../api.dart';
@@ -28,6 +30,16 @@ class VentasService {
   Future<VentaOut> obtenerVenta(String ventaId) async {
     final respuesta = await api.get('/ventas/$ventaId');
     return VentaOut.desdeJson(respuesta as Map<String, dynamic>);
+  }
+
+  /// El comprobante en PDF (solo la duena de la compra).
+  Future<Uint8List> descargarComprobante(String ventaId) =>
+      api.getBytes('/ventas/$ventaId/comprobante.pdf');
+
+  /// Vuelve a mandar el comprobante al correo de la cuenta; devuelve el correo enmascarado.
+  Future<String> reenviarComprobante(String ventaId) async {
+    final respuesta = await api.post('/ventas/$ventaId/comprobante/reenviar');
+    return (respuesta as Map<String, dynamic>)['correo'] as String;
   }
 
   Future<List<VentaResumenOut>> listarMisCompras() async {

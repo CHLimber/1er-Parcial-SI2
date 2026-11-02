@@ -17,7 +17,9 @@ from dataclasses import dataclass
 # Tablas que no se respaldan en ninguna copia.
 #   backup:       es el registro de las propias copias (circular y sin valor).
 #   sesion_token: sesiones efimeras; restaurar una sesion vieja seria un hueco de seguridad.
-EXCLUIDAS_GENERAL = frozenset({"backup", "sesion_token"})
+#   dispositivo_push: tokens de Firebase de celulares; restaurar uno viejo manda avisos a un telefono
+#                     que ya no es de esa persona. La app los vuelve a registrar al abrir sesion.
+EXCLUIDAS_GENERAL = frozenset({"backup", "sesion_token", "dispositivo_push"})
 
 # Columnas que NO viajan en la copia de una empresa: ese archivo lo descarga su administrador y
 # el hash de contrasena de una clienta (que es de la plataforma, no de la empresa) o de otra
@@ -121,5 +123,6 @@ TABLAS_EMPRESA: tuple[TablaEmpresa, ...] = (
 EXCLUIDAS_EMPRESA = {
     "backup": "es el registro de las copias",
     "sesion_token": "sesiones efimeras",
+    "dispositivo_push": "tokens de celulares; la app los registra de nuevo al iniciar sesion",
     "configuracion": "parametros de toda la plataforma, no de una empresa",
 }

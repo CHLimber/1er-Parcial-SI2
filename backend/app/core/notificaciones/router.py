@@ -18,6 +18,7 @@ from app.core.db import get_connection
 from app.core.deps import get_current_usuario
 from app.core.notificaciones.schemas import (
     CantidadNoLeidasOut,
+    DispositivoIn,
     LeerTodasOut,
     NotificacionOut,
     NotificacionPaginadoOut,
@@ -99,6 +100,44 @@ async def listar_notificaciones(
         pagina=pagina,
         tamanio_pagina=tamanio_pagina,
         items=[_fila_a_esquema(fila) for fila in filas],
+    )
+
+
+@router.post("/dispositivos", status_code=status.HTTP_204_NO_CONTENT)
+async def registrar_dispositivo(
+    body: DispositivoIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    usuario: dict = Depends(get_current_usuario),
+) -> None:
+    """Registra el celular para recibir push. Idempotente: el token es unico, asi que si el mismo
+    telefono entra con otra cuenta el aviso pasa a la nueva (no le llegan push de la anterior)."""
+    await conn.execute(
+        """
+        INSERT INTO dispositivo_push (usuario_id, token, plataforma)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (token) DO UPDATE
+           SET usuario_id = EXCLUDED.usuario_id,
+               plataforma = EXCLUDED.plataforma,
+               actualizado_en = now()
+        """,
+        usuario["id"],
+        body.token,
+        body.plataforma.upper(),
+    )
+
+
+@router.post("/dispositivos/baja", status_code=status.HTTP_204_NO_CONTENT)
+async def dar_de_baja_dispositivo(
+    body: DispositivoIn,
+    conn: asyncpg.Connection = Depends(get_connection),
+    usuario: dict = Depends(get_current_usuario),
+) -> None:
+    """Al cerrar sesion: ese celular deja de recibir los avisos de esta cuenta. Solo borra el token
+    si es de quien lo pide."""
+    await conn.execute(
+        "DELETE FROM dispositivo_push WHERE token = $1 AND usuario_id = $2",
+        body.token,
+        usuario["id"],
     )
 
 

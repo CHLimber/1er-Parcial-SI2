@@ -1,4 +1,4 @@
-"""Envio de correos (hoy solo la recuperacion de cuenta).
+"""Envio de correos (recuperacion de cuenta y comprobante de compra).
 
 Dos vias, en este orden:
 
@@ -12,6 +12,7 @@ para no frenar el event loop.
 """
 
 import asyncio
+import base64
 import logging
 import smtplib
 from email.message import EmailMessage
@@ -29,7 +30,13 @@ def correo_configurado() -> bool:
     return bool(settings.resend_api_key or settings.smtp_host)
 
 
-def _enviar_smtp(destino: str, asunto: str, texto: str, html: str | None) -> None:
+# (nombre de archivo, contenido, tipo MIME)
+Adjunto = tuple[str, bytes, str]
+
+
+def _enviar_smtp(
+    destino: str, asunto: str, texto: str, html: str | None, adjuntos: list[Adjunto]
+) -> None:
     mensaje = EmailMessage()
     mensaje["From"] = settings.smtp_from or settings.smtp_user
     mensaje["To"] = destino
@@ -37,6 +44,11 @@ def _enviar_smtp(destino: str, asunto: str, texto: str, html: str | None) -> Non
     mensaje.set_content(texto)
     if html:
         mensaje.add_alternative(html, subtype="html")
+    for nombre, contenido, tipo in adjuntos:
+        principal, _, secundario = tipo.partition("/")
+        mensaje.add_attachment(
+            contenido, maintype=principal, subtype=secundario or "octet-stream", filename=nombre
+        )
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as servidor:
         if settings.smtp_starttls:
             servidor.starttls()
@@ -45,10 +57,17 @@ def _enviar_smtp(destino: str, asunto: str, texto: str, html: str | None) -> Non
         servidor.send_message(mensaje)
 
 
-async def _enviar_resend(destino: str, asunto: str, texto: str, html: str | None) -> None:
+async def _enviar_resend(
+    destino: str, asunto: str, texto: str, html: str | None, adjuntos: list[Adjunto]
+) -> None:
     cuerpo = {"from": settings.resend_from, "to": [destino], "subject": asunto, "text": texto}
     if html:
         cuerpo["html"] = html
+    if adjuntos:
+        cuerpo["attachments"] = [
+            {"filename": nombre, "content": base64.b64encode(contenido).decode("ascii")}
+            for nombre, contenido, _tipo in adjuntos
+        ]
     async with httpx.AsyncClient(timeout=15) as cliente:
         respuesta = await cliente.post(
             RESEND_URL,
@@ -61,17 +80,24 @@ async def _enviar_resend(destino: str, asunto: str, texto: str, html: str | None
         raise RuntimeError(f"Resend respondio {respuesta.status_code}: {respuesta.text[:300]}")
 
 
-async def enviar_correo(destino: str, asunto: str, texto: str, html: str | None = None) -> bool:
+async def enviar_correo(
+    destino: str,
+    asunto: str,
+    texto: str,
+    html: str | None = None,
+    adjuntos: list[Adjunto] | None = None,
+) -> bool:
     """True si el correo salio. `texto` es el cuerpo plano (y el respaldo de `html`). Un fallo
     del proveedor se registra y devuelve False: el usuario no tiene por que enterarse de por
     que no llego."""
     if not correo_configurado():
         return False
+    adjuntos = adjuntos or []
     try:
         if settings.resend_api_key:
-            await _enviar_resend(destino, asunto, texto, html)
+            await _enviar_resend(destino, asunto, texto, html, adjuntos)
         else:
-            await asyncio.to_thread(_enviar_smtp, destino, asunto, texto, html)
+            await asyncio.to_thread(_enviar_smtp, destino, asunto, texto, html, adjuntos)
     except (OSError, smtplib.SMTPException, httpx.HTTPError, RuntimeError):
         log.exception("No se pudo enviar el correo a %s", destino)
         return False

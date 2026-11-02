@@ -1,7 +1,9 @@
 import { DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
+import { interpretarError } from '../../../shared/errores';
 import { EnvioEventoOut, EnvioOut, EstadoEnvio } from '../../../core/operacion-comercial/envios/envios.models';
 import { EnviosService } from '../../../core/operacion-comercial/envios/envios.service';
 import { VentaOut } from '../../../core/operacion-comercial/ventas/ventas.models';
@@ -33,6 +35,11 @@ export class CompraPage implements OnInit, OnDestroy {
   protected readonly envio = signal<EnvioOut | null>(null);
   protected readonly cargando = signal(true);
   protected readonly noEncontrada = signal(false);
+
+  // comprobante: descarga del PDF y reenvio al correo
+  protected readonly descargando = signal(false);
+  protected readonly reenviando = signal(false);
+  protected readonly avisoComprobante = signal<{ texto: string; error: boolean } | null>(null);
 
   private readonly pasoSimulado = signal(0);
   private readonly eventosSimulados = signal<EnvioEventoOut[]>([]);
@@ -115,6 +122,45 @@ export class CompraPage implements OnInit, OnDestroy {
 
     avanzar(1, 'DESPACHADO', 'Retirado por el servicio de delivery (simulado)', SIMULACION_MS[0]);
     avanzar(2, 'ENTREGADO', 'Entrega confirmada por el servicio de delivery (simulado)', SIMULACION_MS[1]);
+  }
+
+  protected descargarComprobante(): void {
+    const venta = this.venta();
+    if (!venta || this.descargando()) return;
+    this.descargando.set(true);
+    this.avisoComprobante.set(null);
+    this.ventasService.descargarComprobante(venta.id).subscribe({
+      next: (pdf) => {
+        const url = URL.createObjectURL(pdf);
+        const enlace = document.createElement('a');
+        enlace.href = url;
+        enlace.download = `comprobante-${venta.comprobante?.numero ?? venta.numero}.pdf`;
+        enlace.click();
+        URL.revokeObjectURL(url);
+        this.descargando.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.avisoComprobante.set({ texto: interpretarError(error, 'No se pudo descargar el comprobante.'), error: true });
+        this.descargando.set(false);
+      },
+    });
+  }
+
+  protected reenviarComprobante(): void {
+    const venta = this.venta();
+    if (!venta || this.reenviando()) return;
+    this.reenviando.set(true);
+    this.avisoComprobante.set(null);
+    this.ventasService.reenviarComprobante(venta.id).subscribe({
+      next: (respuesta) => {
+        this.avisoComprobante.set({ texto: `Te lo enviamos a ${respuesta.correo}.`, error: false });
+        this.reenviando.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.avisoComprobante.set({ texto: interpretarError(error, 'No se pudo enviar el comprobante.'), error: true });
+        this.reenviando.set(false);
+      },
+    });
   }
 
   protected formatearPrecio(precio: number): string {

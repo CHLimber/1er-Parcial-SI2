@@ -7,6 +7,8 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     <!-- CU18: dictado por voz en el asistente (speech_to_text). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Push (FCM): desde Android 13 hay que pedir permiso para mostrar notificaciones. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="FashionStore"
@@ -37,6 +39,12 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <!-- Push (FCM): canal por defecto de las notificaciones; lo crea MainActivity con
+             importancia alta para que aparezcan como aviso emergente. Mismo id que
+             CANAL_ANDROID en backend/app/core/push.py. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="fashionstore_avisos" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

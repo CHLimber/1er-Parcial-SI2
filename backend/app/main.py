@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.core.avisos import job_avisos
 from app.core.config import settings, verificar_jwt_secret
 from app.core.db import connect_pool, disconnect_pool
 from app.core.jobs import job_expirar_reservas
@@ -57,8 +58,9 @@ async def lifespan(app: FastAPI):
         job_expirar_reservas(settings.expirar_reservas_intervalo_segundos)
     )
     tarea_backup = asyncio.create_task(job_backup_automatico())
+    tarea_avisos = asyncio.create_task(job_avisos(settings.avisos_intervalo_segundos))
     yield
-    for tarea in (tarea_expirar_reservas, tarea_backup):
+    for tarea in (tarea_expirar_reservas, tarea_backup, tarea_avisos):
         tarea.cancel()
         with suppress(asyncio.CancelledError):
             await tarea

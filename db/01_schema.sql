@@ -718,8 +718,13 @@ CREATE TABLE comprobante (
     nit_cliente  VARCHAR(30),
     razon_social VARCHAR(180),
     url_pdf      TEXT,
-    emitido_en   TIMESTAMPTZ      NOT NULL DEFAULT now()
+    emitido_en   TIMESTAMPTZ      NOT NULL DEFAULT now(),
+    -- correo con el PDF al comprador: lo manda el job de avisos (core/avisos.py) y el reenvio
+    -- manual; correo_enviado_en NULL = pendiente, correo_intentos topa los reintentos
+    correo_enviado_en TIMESTAMPTZ,
+    correo_intentos   SMALLINT        NOT NULL DEFAULT 0
 );
+CREATE INDEX ix_comprobante_correo_pendiente ON comprobante(emitido_en) WHERE correo_enviado_en IS NULL;
  
 -- ---------------------------------------------------------------------
 -- CU20 - ENTREGA A DOMICILIO (DELIVERY)
@@ -867,9 +872,24 @@ CREATE TABLE notificacion (
     entidad_tipo VARCHAR(40),
     entidad_id   UUID,
     leida        BOOLEAN           NOT NULL DEFAULT FALSE,
-    fecha        TIMESTAMPTZ       NOT NULL DEFAULT now()
+    fecha        TIMESTAMPTZ       NOT NULL DEFAULT now(),
+    -- push al celular: lo manda el job de avisos (core/avisos.py); NULL = todavia no se intento
+    push_enviado_en TIMESTAMPTZ
 );
 CREATE INDEX ix_notificacion_pendiente ON notificacion(usuario_id, fecha DESC) WHERE NOT leida;
+CREATE INDEX ix_notificacion_push_pendiente ON notificacion(fecha) WHERE push_enviado_en IS NULL;
+
+-- Celulares registrados para recibir push (Firebase Cloud Messaging). Un usuario puede tener
+-- varios; el token es unico porque un telefono que cambia de cuenta pasa a la nueva.
+CREATE TABLE dispositivo_push (
+    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_id     UUID         NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+    token          TEXT         NOT NULL UNIQUE,
+    plataforma     VARCHAR(20)  NOT NULL DEFAULT 'ANDROID',
+    creado_en      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    actualizado_en TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+CREATE INDEX ix_dispositivo_push_usuario ON dispositivo_push(usuario_id);
  
 CREATE TABLE auditoria (
     id             BIGSERIAL        PRIMARY KEY,

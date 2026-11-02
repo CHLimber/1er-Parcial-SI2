@@ -168,6 +168,29 @@
   background: var(--flame);
 }
 
+.comprobante-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.boton--sec {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+.boton--sec:hover {
+  background: var(--ink);
+  color: var(--white);
+}
+
+.boton:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .enlace-volver {
   align-self: flex-start;
   color: var(--flame-dark);

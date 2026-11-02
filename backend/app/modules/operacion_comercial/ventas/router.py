@@ -4,9 +4,17 @@ from uuid import UUID, uuid4
 
 import asyncpg
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from app.core.comprobante import (
+    cargar_datos,
+    correo_enmascarado,
+    enviar_comprobante,
+    generar_pdf,
+    nombre_archivo,
+)
 from app.core.config import settings
+from app.core.correo import correo_configurado
 from app.core.db import get_connection
 from app.core.deps import get_cajero_actual, get_current_usuario
 from app.core.tenant import empresa_de_sucursal
@@ -23,6 +31,7 @@ from app.modules.operacion_comercial.ventas.schemas import (
     ComprobanteOut,
     ItemRechazadoPosOut,
     PagoOut,
+    ReenvioComprobanteOut,
     VentaItemOut,
     VentaOut,
     VentaPosIn,
@@ -837,6 +846,79 @@ async def obtener_venta(
             else None
         ),
     )
+
+
+# Segundos minimos entre dos envios del comprobante a la misma venta: evita que un boton pulsado
+# varias veces (o un script) llene de correos la casilla de la clienta y agote el proveedor.
+ESPERA_REENVIO_SEGUNDOS = 30
+
+
+@router.get("/{venta_id}/comprobante.pdf")
+async def descargar_comprobante(
+    venta_id: UUID,
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> Response:
+    """El comprobante de la compra en PDF. Solo la clienta duena de la venta; ajena o sin pago
+    aprobado todavia da 404."""
+    _exigir_cliente(usuario)
+    datos = await _datos_de_mi_comprobante(conn, venta_id, usuario["id"])
+    return Response(
+        content=generar_pdf(datos),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre_archivo(datos)}"'},
+    )
+
+
+@router.post("/{venta_id}/comprobante/reenviar", response_model=ReenvioComprobanteOut)
+async def reenviar_comprobante(
+    venta_id: UUID,
+    usuario: dict = Depends(get_current_usuario),
+    conn: asyncpg.Connection = Depends(get_connection),
+) -> ReenvioComprobanteOut:
+    """Vuelve a mandar el comprobante (con el PDF) al correo de la cuenta, por si se perdio el
+    primero. Va siempre al correo de la propia cuenta, nunca a uno que mande el cliente."""
+    _exigir_cliente(usuario)
+    datos = await _datos_de_mi_comprobante(conn, venta_id, usuario["id"])
+    if not correo_configurado():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El envio de correos no esta disponible en este momento",
+        )
+    espera = await conn.fetchval(
+        """
+        SELECT GREATEST(0, CEIL($2 - EXTRACT(EPOCH FROM now() - correo_enviado_en)))::int
+        FROM comprobante WHERE venta_id = $1 AND correo_enviado_en IS NOT NULL
+        """,
+        venta_id,
+        float(ESPERA_REENVIO_SEGUNDOS),
+    )
+    if espera:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Ya te lo enviamos hace un momento. Proba de nuevo en {espera} s.",
+        )
+    if not await enviar_comprobante(conn, venta_id):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No pudimos enviar el correo. Intenta de nuevo en unos minutos.",
+        )
+    return ReenvioComprobanteOut(enviado=True, correo=correo_enmascarado(datos["cliente_email"]))
+
+
+async def _datos_de_mi_comprobante(conn: asyncpg.Connection, venta_id: UUID, usuario_id: UUID) -> dict:
+    """Datos del comprobante de una venta de la clienta, o 404. Ajena e inexistente dan lo mismo
+    para no revelar que el id existe."""
+    duena = await conn.fetchval(
+        "SELECT TRUE FROM venta WHERE id = $1 AND usuario_id = $2", venta_id, usuario_id
+    )
+    datos = await cargar_datos(conn, venta_id) if duena else None
+    if datos is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Esa compra todavia no tiene comprobante",
+        )
+    return datos
 
 
 @router.post("/pos", response_model=VentaPosOut, status_code=status.HTTP_201_CREATED)

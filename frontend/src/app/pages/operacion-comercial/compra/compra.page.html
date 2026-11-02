@@ -28,6 +28,20 @@
                 Comprobante <strong>{{ v.comprobante.numero }}</strong> emitido el
                 {{ v.comprobante.emitido_en | date: 'short' }}.
               </p>
+              <p class="confirmacion__linea">También te lo mandamos a tu correo.</p>
+              <div class="comprobante-acciones">
+                <button type="button" class="boton" (click)="descargarComprobante()" [disabled]="descargando()">
+                  {{ descargando() ? 'Descargando…' : 'Descargar comprobante (PDF)' }}
+                </button>
+                <button type="button" class="boton boton--sec" (click)="reenviarComprobante()" [disabled]="reenviando()">
+                  {{ reenviando() ? 'Enviando…' : 'Reenviar al correo' }}
+                </button>
+              </div>
+              @if (avisoComprobante(); as aviso) {
+                <p class="confirmacion__linea" [class.estado--error]="aviso.error" [attr.role]="aviso.error ? 'alert' : 'status'">
+                  {{ aviso.texto }}
+                </p>
+              }
             }
             <p class="confirmacion__linea">
               {{ v.sucursal }} · {{ v.entrega === 'DOMICILIO' ? 'Envío a domicilio' : 'Retiro en sucursal' }}

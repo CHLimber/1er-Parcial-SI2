@@ -117,7 +117,17 @@ class AuthService extends ChangeNotifier {
     );
   }
 
+  /// Lo asigna PushService: da de baja el telefono (necesita la sesion todavia viva, por eso va
+  /// antes de borrar el token). Un fallo aca nunca impide cerrar la sesion.
+  Future<void> Function()? antesDeCerrarSesion;
+
   Future<void> cerrarSesion() async {
+    final gancho = antesDeCerrarSesion;
+    if (gancho != null) {
+      try {
+        await gancho();
+      } catch (_) {}
+    }
     _token = null;
     _usuario = null;
     notifyListeners();

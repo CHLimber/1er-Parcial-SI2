@@ -123,3 +123,9 @@ export interface VentaPosOut {
   total: number;
   vuelto: number | null;
 }
+
+/** POST /ventas/{id}/comprobante/reenviar: `correo` viene enmascarado (an***@gmail.com). */
+export interface ReenvioComprobanteOut {
+  enviado: boolean;
+  correo: string;
+}

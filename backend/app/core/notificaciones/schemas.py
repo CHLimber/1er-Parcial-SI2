@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class NotificacionOut(BaseModel):
@@ -34,3 +34,11 @@ class CantidadNoLeidasOut(BaseModel):
 
 class LeerTodasOut(BaseModel):
     marcadas: int
+
+
+class DispositivoIn(BaseModel):
+    """Token de Firebase del celular. Lo manda la app al iniciar sesion y cada vez que Firebase lo
+    renueva; al cerrar sesion lo da de baja."""
+
+    token: str = Field(min_length=20, max_length=4096)
+    plataforma: str = Field(default="ANDROID", max_length=20)

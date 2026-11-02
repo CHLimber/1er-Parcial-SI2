@@ -100,6 +100,25 @@ canal cobra con un objeto distinto de Stripe:
 Si falta la segunda familia, un pago hecho desde la app se le cobra a la clienta pero la venta se
 queda en PENDIENTE para siempre: el detalle de la venta se escribe recien cuando llega el webhook.
 
+**Comprobante por correo y push al celular.** Cuando un pago se aprueba, el job `core/avisos.py`
+(cada `AVISOS_INTERVALO_SEGUNDOS`) manda al correo de la clienta el comprobante en PDF y, si hay
+Firebase, un push a sus celulares; tambien convierte en push cualquier aviso de la campana (reservas,
+envios...). La clienta puede bajar el PDF y reenviarlo desde Mis compras (web y movil).
+
+1. Aplicar `db/reparaciones/avisos_correo_y_push.sql` **antes** de desplegar el backend: agrega
+   `comprobante.correo_enviado_en/correo_intentos`, `notificacion.push_enviado_en` y la tabla
+   `dispositivo_push`, y marca lo ya emitido como enviado (si no, el job mandaria un correo viejo
+   a cada clienta).
+2. **Correo:** en Railway solo sirve Resend (`RESEND_API_KEY`): el SMTP saliente esta bloqueado.
+   Sin dominio verificado en Resend el remitente es `onboarding@resend.dev` y **solo entrega al
+   correo con el que se creo la cuenta de Resend**; para mandar a cualquier clienta hay que
+   verificar un dominio y ajustar `RESEND_FROM`.
+3. **Push:** crear un proyecto en Firebase, registrar la app Android `bo.fashionstore.fashionstore_movil`,
+   generar la clave de la cuenta de servicio y pegar el JSON en una linea en
+   `FIREBASE_CREDENCIALES_JSON` (servicio backend). Las cuatro claves publicas de la app van en
+   `movil/lib/core/nucleo/push/firebase_opciones.dart` (o como `--dart-define=FIREBASE_*`). Sin
+   Google Play Services en el telefono (Huawei posteriores al veto) el push no llega.
+
 ## 3. Frontend (Angular + Nginx)
 
 1. **New Service → GitHub Repo** (mismo repo) → **Root Directory** = `frontend`.

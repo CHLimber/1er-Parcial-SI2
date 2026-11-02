@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../compartido/widgets.dart';
 import '../../core/operacion_comercial/carrito/carrito_service.dart';
@@ -41,6 +42,8 @@ class _CompraPaginaState extends State<CompraPagina> {
   EnvioOut? _envio;
   bool _cargando = true;
   bool _refrescando = false;
+  bool _descargando = false;
+  bool _reenviando = false;
   String? _error;
 
   int _pasoSimulado = 0;
@@ -52,6 +55,40 @@ class _CompraPaginaState extends State<CompraPagina> {
   void initState() {
     super.initState();
     _cargar();
+  }
+
+  /// Baja el PDF y abre el menu de compartir de Android (guardar en Drive, WhatsApp, correo...):
+  /// asi queda en el telefono sin pedir permisos de almacenamiento.
+  Future<void> _descargarComprobante(VentaOut venta) async {
+    setState(() => _descargando = true);
+    try {
+      final pdf = await ventasService.descargarComprobante(venta.id);
+      final nombre = 'comprobante-${venta.comprobante?.numero ?? venta.numero}.pdf';
+      if (!mounted) return;
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile.fromData(pdf, mimeType: 'application/pdf', name: nombre)],
+          fileNameOverrides: [nombre],
+          subject: 'Comprobante ${venta.numero}',
+        ),
+      );
+    } catch (error) {
+      if (mounted) mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _descargando = false);
+    }
+  }
+
+  Future<void> _reenviarComprobante(VentaOut venta) async {
+    setState(() => _reenviando = true);
+    try {
+      final correo = await ventasService.reenviarComprobante(venta.id);
+      if (mounted) mostrarAviso(context, 'Te lo enviamos a $correo.');
+    } catch (error) {
+      if (mounted) mostrarAviso(context, interpretarError(error), esError: true);
+    } finally {
+      if (mounted) setState(() => _reenviando = false);
+    }
   }
 
   @override
@@ -195,6 +232,30 @@ class _CompraPaginaState extends State<CompraPagina> {
                       ],
                     ),
                   ),
+                  if (venta.comprobante != null) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Tambien te mandamos el comprobante a tu correo.',
+                      style: TextStyle(color: Paleta.inkSuave, fontSize: 13),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _descargando ? null : () => _descargarComprobante(venta),
+                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                          label: Text(_descargando ? 'Preparando...' : 'Descargar PDF'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _reenviando ? null : () => _reenviarComprobante(venta),
+                          icon: const Icon(Icons.mail_outline, size: 18),
+                          label: Text(_reenviando ? 'Enviando...' : 'Reenviar al correo'),
+                        ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   if (_envio != null) ...[
                     const EtiquetaDato('Tu envio'),

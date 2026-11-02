@@ -73,6 +73,12 @@ class ComprobanteOut(BaseModel):
     emitido_en: datetime
 
 
+class ReenvioComprobanteOut(BaseModel):
+    enviado: bool
+    # correo de la cuenta con el medio enmascarado (an***@gmail.com), para confirmar a donde fue
+    correo: str
+
+
 class VentaOut(BaseModel):
     id: UUID
     numero: str

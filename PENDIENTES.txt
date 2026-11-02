@@ -2873,3 +2873,12 @@
       /caja/pedidos-por-retirar y /reportes/indicadores -> 200 con admin.
       [DOCKER LOCAL HECHO 2026-09-29] Aplicadas esta y ajuste_stock_a_cero.sql sobre el volumen
       existente (sin down -v) y backend reconstruido; mismos 3 endpoints -> 200.
+
+10. Comprobante por correo, push y reenvio (2026-11-02)
+    [HECHO backend+web+movil] Al aprobarse un pago, core/avisos.py (job) manda el comprobante en PDF
+    (core/comprobante.py, fpdf2) al correo y, con Firebase, un push (core/push.py, FCM v1). Mis compras:
+    GET /ventas/{id}/comprobante.pdf y POST /ventas/{id}/comprobante/reenviar (espera 30 s). Movil:
+    core/nucleo/push/ + botones en compra_pagina. Migracion db/reparaciones/avisos_correo_y_push.sql.
+    [FALTA] Aplicarla en Railway; crear el proyecto de Firebase (FIREBASE_CREDENCIALES_JSON y las 4
+    claves en firebase_opciones.dart); verificar dominio en Resend para correos a cualquier clienta;
+    probar el push en un telefono con Google Play Services (no llega a un Huawei sin GMS).

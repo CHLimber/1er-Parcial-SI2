@@ -6,6 +6,7 @@ import { environment } from '../../../../environments/environment';
 import {
   CheckoutIn,
   CheckoutOut,
+  ReenvioComprobanteOut,
   VentaOut,
   VentaPosIn,
   VentaPosOut,
@@ -27,6 +28,16 @@ export class VentasService {
 
   listarMisCompras(): Observable<VentaResumenOut[]> {
     return this.http.get<VentaResumenOut[]>(this.base);
+  }
+
+  /** El comprobante en PDF (solo la dueña de la compra). */
+  descargarComprobante(ventaId: string): Observable<Blob> {
+    return this.http.get(`${this.base}/${ventaId}/comprobante.pdf`, { responseType: 'blob' });
+  }
+
+  /** Vuelve a mandar el comprobante al correo de la cuenta (por si se perdió el primero). */
+  reenviarComprobante(ventaId: string): Observable<ReenvioComprobanteOut> {
+    return this.http.post<ReenvioComprobanteOut>(`${this.base}/${ventaId}/comprobante/reenviar`, {});
   }
 
   registrarVentaPos(datos: VentaPosIn): Observable<VentaPosOut> {

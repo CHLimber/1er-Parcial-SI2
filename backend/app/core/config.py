@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # correo con el que se creo la cuenta de Resend.
     resend_api_key: str = ""
     resend_from: str = "FashionStore <onboarding@resend.dev>"
+    # Push al celular (Firebase Cloud Messaging, API HTTP v1). Es el JSON de la cuenta de servicio
+    # (Firebase -> Configuracion del proyecto -> Cuentas de servicio -> Generar clave nueva),
+    # pegado en UNA linea, o en base64. Vacio = no sale ningun push y todo lo demas sigue igual.
+    firebase_credenciales_json: str = ""
+    # cada cuantos segundos el job de avisos (core/avisos.py) revisa correos y push pendientes
+    avisos_intervalo_segundos: int = 10
     recuperacion_minutos: int = 30
     recuperacion_mostrar_enlace: bool = False
 

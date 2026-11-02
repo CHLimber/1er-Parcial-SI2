@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -93,6 +94,25 @@ class ApiClient {
       conexion?.marcarDatosGuardados(guardada.$2);
       return guardada.$1;
     }
+  }
+
+  /// GET de un archivo (p.ej. el comprobante en PDF). Misma autenticacion y misma traduccion de
+  /// errores que el resto; no pasa por la cache de GET porque no es JSON.
+  Future<Uint8List> getBytes(String ruta) async {
+    late final http.Response respuesta;
+    try {
+      respuesta = await _http
+          .get(_uri(ruta), headers: _cabeceras()..['Accept'] = '*/*')
+          .timeout(const Duration(seconds: 30));
+    } catch (_) {
+      throw ApiException('No se pudo conectar con el servidor. Revisa tu conexion a internet.');
+    }
+    if (respuesta.statusCode >= 200 && respuesta.statusCode < 300) return respuesta.bodyBytes;
+    if (respuesta.statusCode == 401) alExpirarSesion?.call();
+    throw ApiException(
+      mensajeDesdeCuerpo(utf8.decode(respuesta.bodyBytes, allowMalformed: true), respuesta.statusCode),
+      statusCode: respuesta.statusCode,
+    );
   }
 
   Future<dynamic> post(
