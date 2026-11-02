@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import '../../compartido/markdown_chat.dart';
 import '../../compartido/widgets.dart';
 import '../../core/acceso_y_organizacion/auth/auth_service.dart';
 import '../../core/catalogo_e_inventario/catalogo/catalogo_models.dart';
@@ -1093,7 +1095,13 @@ class _PestanaIaState extends State<_PestanaIa> {
                   titulo: vista.titulo,
                   columnas: vista.columnas,
                   tabla: vista.tabla,
-                  child: Text(vista.mensaje.texto),
+                  child: esUsuario
+                      ? Text(vista.mensaje.texto)
+                      : MarkdownBody(
+                          data: vista.mensaje.texto,
+                          selectable: false,
+                          styleSheet: hojaEstiloMarkdown(context),
+                        ),
                 );
               },
             ),

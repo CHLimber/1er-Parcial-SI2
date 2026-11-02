@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, ElementRef, OnDestroy, OnInit, ViewChild, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Stripe, StripeEmbeddedCheckout, loadStripe } from '@stripe/stripe-js';
@@ -60,6 +60,32 @@ export class AtenderReservasPage implements OnInit, OnDestroy {
 
   protected readonly cargandoCola = signal(true);
   protected readonly reservas = signal<ReservaStaffOut[]>([]);
+
+  protected readonly busqueda = signal('');
+  protected readonly orden = signal<'RECIENTES' | 'ANTIGUAS' | 'VISITA'>('RECIENTES');
+
+  /** La cola ya filtrada por la busqueda (codigo, clienta, correo, telefono) y ordenada. */
+  protected readonly reservasVisibles = computed<ReservaStaffOut[]>(() => {
+    const q = this.busqueda().trim().toLowerCase();
+    const lista = q
+      ? this.reservas().filter((r) =>
+          [r.codigo, r.cliente.nombre, r.cliente.apellido, r.cliente.email, r.cliente.telefono ?? '']
+            .join(' ')
+            .toLowerCase()
+            .includes(q),
+        )
+      : [...this.reservas()];
+    const creada = (r: ReservaStaffOut) => new Date(r.creada_en).getTime();
+    const visita = (r: ReservaStaffOut) => new Date(`${r.fecha_visita}T${r.hora_visita}`).getTime();
+    switch (this.orden()) {
+      case 'ANTIGUAS':
+        return lista.sort((a, b) => creada(a) - creada(b));
+      case 'VISITA':
+        return lista.sort((a, b) => visita(a) - visita(b));
+      default:
+        return lista.sort((a, b) => creada(b) - creada(a));
+    }
+  });
   protected readonly errorCola = signal<string | null>(null);
 
   protected readonly seleccionada = signal<ReservaStaffOut | null>(null);
@@ -451,6 +477,14 @@ export class AtenderReservasPage implements OnInit, OnDestroy {
   protected cerrarSesion(): void {
     this.auth.cerrarSesion();
     this.router.navigateByUrl('/login');
+  }
+
+  /** "02/11/2026 14:30" a partir del instante en que la clienta creo la reserva. */
+  protected fechaCreada(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? '—'
+      : d.toLocaleString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   protected formatearPrecio(precio: number): string {

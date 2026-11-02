@@ -201,7 +201,7 @@ Es la narrativa CU26 de `ICONIX_SEGUNDO_PARCIAL.md`, con este cambio: el plan qu
 
 Ver la robustez `28`.
 
-- **CU29:**
+- **CU29** (actor: Administrador de empresa, plan Profesional):
   1. El sistema genera datos sintéticos con una semilla: demanda diaria por sucursal y tipo de
      prenda, y clientas con perfiles.
   2. Entrena un Random Forest de demanda y lo compara con una regresión lineal y con el

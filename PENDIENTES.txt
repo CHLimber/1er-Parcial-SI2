@@ -2385,7 +2385,13 @@
         borraron los .drawio viejos (CU20-CU38). Validados por script (XML, ids, grilla,
         sin solapes); NO abiertos en draw.io.
 
-[7.2] PENDIENTE (decision del usuario) Actor de CU29 "Entrenar y evaluar modelos de ML".
+[7.2] [HECHO 2026-11-02: opcion A] Actor de CU29 = Administrador de empresa. Cambiados
+      PARCIALES 1.2, CAPITULOS_I_II (A2/A3), ICONIX_SAAS_MULTITENANT, la guia de pruebas (.md y
+      .txt), CU_general.drawio (asociacion as_AE_29 con un quiebre) y CU29
+      secuencia/robustez/clases (specs3 regenerado) y comunicacion (ajustar_actores.py). El
+      SUPERADMIN conserva analitica.* en el seed (sin pantalla); no se toco el codigo.
+      Texto original:
+      Actor de CU29 "Entrenar y evaluar modelos de ML".
       El catalogo dice Administrador de plataforma. En el codigo SUPERADMIN y ADMIN de
       empresa tienen analitica.actualizar, pero la web le oculta "Analitica ML" a la
       plataforma (!esPlataforma() y tieneFuncion('analitica_ml')). En la practica entrena
@@ -2432,6 +2438,12 @@
         el examen 8.3 ("tabla o grafico").
       - Sin llamador en la web: GET /analitica/modelo (las metricas vienen en
         /analitica/dashboard) y GET /saas/suscripciones.
+      - [2026-11-02] POST /analitica/entrenar usa requiere_funcion_plan(None, ...): solo
+        exige suscripcion vigente, no `analitica_ml`. Un ADMIN de plan Basico (admin@andina.bo)
+        puede reentrenar por API el modelo, que es UNO para toda la plataforma, y cambiarle el
+        pronostico a las empresas Profesional. Se cierra junto con la decision de 7.2.
+      - [2026-11-02] Muestra y CSV de datos sinteticos (AnaliticaService.muestra/csv) no mandan
+        la semilla: siempre muestran la 42 aunque se haya reentrenado con otra.
       - ClientesService (web) manda sucursal_id que clientes/router.py ignora (el tenant es
         la empresa); el comentario del servicio dice "clientas de la sucursal".
       - Movil: no tiene nota de devolucion imprimible, export de reportes, dashboard

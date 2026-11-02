@@ -50,6 +50,7 @@ import {
 import { SucursalOut } from '../../../core/acceso-y-organizacion/sucursales/sucursales.models';
 import { SucursalesService } from '../../../core/acceso-y-organizacion/sucursales/sucursales.service';
 import { interpretarError } from '../../../shared/errores';
+import { MarkdownPipe } from '../../../shared/markdown.pipe';
 import { PanelShell } from '../../../shared/panel/panel-shell';
 import { crearReconocedorVoz, ReconocedorVoz, soportaVoz } from '../../../shared/voz';
 
@@ -264,9 +265,9 @@ function opcionesBase(mostrarLeyenda: boolean, indiceHorizontal = false): ChartO
 @Component({
   selector: 'app-panel-reportes-page',
   standalone: true,
-  imports: [DecimalPipe, PanelShell, ReactiveFormsModule],
+  imports: [DecimalPipe, MarkdownPipe, PanelShell, ReactiveFormsModule],
   templateUrl: './panel-reportes.page.html',
-  styleUrls: ['../../../shared/panel/panel-comun.css', './panel-reportes.page.css'],
+  styleUrls: ['../../../shared/panel/panel-comun.css', '../../../shared/markdown.css', './panel-reportes.page.css'],
 })
 export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
   private readonly servicio = inject(ReportesService);
@@ -998,7 +999,10 @@ export class PanelReportesPage implements OnInit, AfterViewInit, OnDestroy {
         this.enviarConsultaIa();
       }
     };
-    reconocedor.onerror = () => this.iaEscuchando.set(false);
+    reconocedor.onerror = () => {
+      this.iaEscuchando.set(false);
+      this.iaError.set('No se pudo usar el micrófono. Revisá el permiso del navegador o escribí tu consulta.');
+    };
     reconocedor.onend = () => this.iaEscuchando.set(false);
 
     this.reconocedorVoz = reconocedor;

@@ -1063,7 +1063,11 @@
         }
         @for (m of iaMensajes(); track $index) {
           <div class="ia-mensaje" [class.ia-mensaje--usuario]="m.rol === 'user'">
-            <span class="ia-mensaje__texto">{{ m.texto }}</span>
+            @if (m.rol === 'assistant') {
+              <div class="ia-mensaje__texto markdown" [innerHTML]="m.texto | markdown"></div>
+            } @else {
+              <span class="ia-mensaje__texto ia-mensaje__texto--usuario">{{ m.texto }}</span>
+            }
           </div>
         }
         @if (iaCargando()) {
@@ -1076,20 +1080,28 @@
           type="text"
           class="ia-form__campo"
           formControlName="texto"
-          placeholder="Escribí tu consulta…"
+          [placeholder]="iaEscuchando() ? 'Escuchando…' : 'Escribí tu consulta…'"
           [disabled]="iaCargando()"
         />
-        @if (iaSoportaVoz()) {
-          <button
-            type="button"
-            class="boton boton--secundario"
-            [class.boton--grabando]="iaEscuchando()"
-            (click)="alternarEscucha()"
-            [disabled]="iaCargando()"
-          >
-            {{ iaEscuchando() ? 'Escuchando…' : 'Usar voz' }}
-          </button>
-        }
+        <!-- Micrófono siempre visible; en un navegador sin Web Speech API queda deshabilitado
+             (el aviso de arriba explica por qué) en vez de desaparecer. -->
+        <button
+          type="button"
+          class="ia-mic"
+          [class.ia-mic--grabando]="iaEscuchando()"
+          [disabled]="iaCargando() || !iaSoportaVoz()"
+          [attr.aria-label]="iaEscuchando() ? 'Detener dictado' : 'Dictar por voz'"
+          [attr.aria-pressed]="iaEscuchando()"
+          [title]="!iaSoportaVoz() ? 'Tu navegador no soporta dictado por voz' : iaEscuchando() ? 'Detener dictado' : 'Dictar por voz'"
+          (click)="alternarEscucha()"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="2" width="6" height="11" rx="3"></rect>
+            <path d="M5 10a7 7 0 0 0 14 0"></path>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+          </svg>
+        </button>
         <button type="submit" class="boton" [disabled]="iaCargando() || !iaForm.controls.texto.value.trim()">
           Consultar
         </button>

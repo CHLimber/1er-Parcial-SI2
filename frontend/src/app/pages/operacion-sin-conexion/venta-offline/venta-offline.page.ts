@@ -24,6 +24,9 @@ interface LineaCarrito extends LineaLocal {
 /** a partir de cuantas horas se avisa que las existencias pueden haber cambiado */
 const HORAS_DESACTUALIZADO = 2;
 
+/** tope de prendas que se dibujan a la vez; la busqueda sigue recorriendo todo el catalogo */
+const LIMITE_PRENDAS = 40;
+
 const ETIQUETA_ESTADO: Record<EstadoLocal, string> = {
   REGISTRADA: 'Solo en este equipo',
   ENVIADA: 'Enviada, sin respuesta',
@@ -71,13 +74,75 @@ export class VentaOfflinePage implements OnInit {
 
   protected readonly etiquetas = ETIQUETA_ESTADO;
 
-  protected readonly productos = computed<ProductoOffline[]>(() => {
-    const q = this.busqueda().trim().toLowerCase();
+  /** Prendas que coinciden con la busqueda: todas las palabras escritas tienen que aparecer (nombre, codigo, categoria, SKU, talla o color). */
+  private readonly coincidencias = computed<ProductoOffline[]>(() => {
+    const palabras = this.busqueda().trim().toLowerCase().split(/\s+/).filter(Boolean);
     const todos = this.sync.paquete()?.productos ?? [];
-    return (q
-      ? todos.filter((p) => `${p.nombre} ${p.codigo} ${p.categoria} ${p.variantes.map((v) => v.sku).join(' ')}`.toLowerCase().includes(q))
-      : todos
-    ).slice(0, 40);
+    if (palabras.length === 0) return todos;
+    return todos.filter((p) => {
+      const texto = [
+        p.nombre,
+        p.codigo,
+        p.categoria,
+        ...p.variantes.flatMap((v) => [v.sku, v.talla, v.color]),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return palabras.every((palabra) => texto.includes(palabra));
+    });
+  });
+
+  protected readonly productos = computed<ProductoOffline[]>(() => this.coincidencias().slice(0, LIMITE_PRENDAS));
+  protected readonly totalCoincidencias = computed(() => this.coincidencias().length);
+  protected readonly totalCatalogo = computed(() => this.sync.paquete()?.productos.length ?? 0);
+
+  /** Variantes de una prenda agrupadas por color, para mostrar "Negro: S M L" en vez de una tira de botones iguales. */
+  protected porColor(p: ProductoOffline): { color: string; hex: string; variantes: VarianteOffline[] }[] {
+    const grupos = new Map<string, { color: string; hex: string; variantes: VarianteOffline[] }>();
+    for (const v of p.variantes) {
+      const grupo = grupos.get(v.color) ?? { color: v.color, hex: v.codigo_hex, variantes: [] };
+      grupo.variantes.push(v);
+      grupos.set(v.color, grupo);
+    }
+    return [...grupos.values()];
+  }
+
+  /** Prendas cuya foto no cargo (sin red y sin cache): se dibuja la inicial sobre el color. */
+  protected readonly imagenFallida = signal<ReadonlySet<string>>(new Set());
+
+  protected marcarImagenFallida(id: string): void {
+    this.imagenFallida.update((s) => new Set(s).add(id));
+  }
+
+  protected unidades(p: ProductoOffline): number {
+    return p.variantes.reduce((suma, v) => suma + v.disponible, 0);
+  }
+
+  protected desde(p: ProductoOffline): number {
+    return p.variantes.length ? Math.min(...p.variantes.map((v) => v.precio)) : p.precio_base;
+  }
+
+  /** Cuantas unidades de esa variante ya estan en el carrito de esta pantalla. */
+  protected enCarrito(v: VarianteOffline): number {
+    return this.carrito().find((l) => l.variante_id === v.id)?.cantidad ?? 0;
+  }
+
+  protected readonly busquedaOp = signal('');
+
+  /** Operaciones de este equipo, mas recientes primero, filtradas por id, descripcion, estado o numero generado. */
+  protected readonly operacionesVisibles = computed<OperacionLocal[]>(() => {
+    const q = this.busquedaOp().trim().toLowerCase();
+    const lista = [...this.sync.operaciones()].sort(
+      (a, b) => new Date(b.op.registrada_en).getTime() - new Date(a.op.registrada_en).getTime(),
+    );
+    if (!q) return lista;
+    return lista.filter((o) =>
+      [o.id, o.descripcion, ETIQUETA_ESTADO[o.estado], o.respuesta?.motivo, o.respuesta?.codigo_motivo, this.numeroDe(o)]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
   });
 
   protected readonly total = computed(() =>

@@ -89,6 +89,7 @@ class OperacionServidorOut(ResultadoOperacionOut):
 
     sucursal: str
     usuario: str
+    resuelta_por: str | None = None  # quien cerro el conflicto (auditoria)
     registrada_en: datetime
     payload: dict[str, Any]
 

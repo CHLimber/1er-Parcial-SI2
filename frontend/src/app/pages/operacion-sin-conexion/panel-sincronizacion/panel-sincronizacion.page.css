@@ -1,3 +1,13 @@
+.campo--buscar {
+  flex: 1 1 18rem;
+  min-width: 14rem;
+}
+
+.tarjeta__id {
+  font-size: 0.72rem;
+  color: var(--flame-dark);
+}
+
 .kpis-sync {
   display: flex;
   flex-wrap: wrap;

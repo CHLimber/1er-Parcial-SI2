@@ -89,6 +89,10 @@ export class CarritoPage implements OnInit, OnDestroy {
         if (sucursales.length > 0 && !this.sucursalId) {
           this.sucursalId = sucursales[0].id;
         }
+        // Si el carrito llego antes que las sucursales, Stripe todavia no pudo armarse (no habia
+        // sucursal que mandar): se arma ahora, y la cotizacion del envio tambien.
+        this.cotizarEnvio();
+        this.iniciarStripeSiFalta();
       },
     });
     this.direccionesService.listar().subscribe({
@@ -121,15 +125,25 @@ export class CarritoPage implements OnInit, OnDestroy {
         this.cotizarEnvio();
         // Stripe es la pasarela por defecto: apenas se conoce el carrito, se carga su formulario
         // para que ya este listo cuando la clienta mire hacia abajo, sin tener que tocar nada.
-        if (this.metodoPago === 'STRIPE' && carrito.items.length > 0) {
-          this.iniciarStripe();
-        }
+        this.iniciarStripeSiFalta();
       },
       error: () => {
         this.cargando.set(false);
         this.errorMensaje.set('No se pudo cargar tu carrito por ahora.');
       },
     });
+  }
+
+  /** Arma Stripe solo cuando ya se sabe todo lo que el checkout necesita: carrito con prendas y
+   * sucursal elegida (o una reserva, que fija la sucursal). Las dos cargas del `ngOnInit` llegan
+   * en cualquier orden; sin esta espera, si el carrito llegaba primero salia el cartel
+   * "Elegi la sucursal..." sin que la clienta hubiera hecho nada. */
+  private iniciarStripeSiFalta(): void {
+    const carrito = this.carrito();
+    if (this.metodoPago !== 'STRIPE' || !carrito || carrito.items.length === 0) return;
+    if (!carrito.reserva_id && !this.sucursalId) return;
+    if (this.mostrandoStripe() || this.montandoStripe()) return;
+    this.iniciarStripe();
   }
 
   /**

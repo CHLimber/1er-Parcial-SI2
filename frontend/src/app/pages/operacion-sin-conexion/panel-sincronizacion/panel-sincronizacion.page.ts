@@ -57,6 +57,22 @@ export class PanelSincronizacionPage implements OnInit {
   protected readonly seleccionada = signal<OperacionServidor | null>(null);
   protected nota = '';
 
+  protected readonly busqueda = signal('');
+
+  /**
+   * Busqueda en el navegador sobre lo ya cargado: id (completo o un pedazo), tipo, estado, quien la
+   * registro, sucursal, motivo, numero de venta/reserva generado y correo de la clienta. Las mas
+   * recientes primero, para que en una demostracion lo ultimo que se hizo quede arriba.
+   */
+  protected readonly visibles = computed<OperacionServidor[]>(() => {
+    const q = this.busqueda().trim().toLowerCase();
+    const lista = [...this.operaciones()].sort(
+      (a, b) => new Date(b.registrada_en).getTime() - new Date(a.registrada_en).getTime(),
+    );
+    if (!q) return lista;
+    return lista.filter((o) => this.textoBuscable(o).includes(q));
+  });
+
   protected readonly resumen = computed(() => {
     const ops = this.operaciones();
     return {
@@ -137,6 +153,31 @@ export class PanelSincronizacionPage implements OnInit {
     if (p.venta) return `${unidades} prenda(s), Bs ${p.venta.total} en efectivo`;
     if (p.reserva) return `${unidades} prenda(s) para ${p.reserva.cliente_email}, visita ${p.reserva.fecha_visita}`;
     return '';
+  }
+
+  private textoBuscable(o: OperacionServidor): string {
+    const p = o.payload;
+    return [
+      o.id,
+      o.tipo === 'VENTA' ? 'venta' : 'reserva',
+      ETIQUETA_ESTADO[o.estado],
+      o.usuario,
+      o.sucursal,
+      o.codigo_motivo,
+      o.motivo,
+      o.resolucion,
+      this.resultadoTexto(o),
+      p.venta?.cliente_email,
+      p.reserva?.cliente_email,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  /** Los primeros 8 caracteres del UUID: alcanzan para reconocerla y buscarla. */
+  protected idCorto(id: string): string {
+    return id.slice(0, 8);
   }
 
   protected fecha(iso: string | null): string {

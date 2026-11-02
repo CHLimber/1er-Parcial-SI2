@@ -97,7 +97,7 @@ nuevo del segundo parcial.
 | CU26 | Solicitar reporte en lenguaje natural (texto o voz; tabla o gráfico) | Encargado, Admin. empresa, Claude API | - | 2P | V (8.1-8.3) |
 | CU27 | Exportar reporte a Excel o PDF | Encargado, Admin. empresa | extend de CU26 | 2P | V (8.1, 8.5) |
 | CU28 | Consultar dashboard analítico | Encargado, Admin. empresa | - | 2P | V (8.4) |
-| CU29 | Entrenar y evaluar modelos de ML (datos sintéticos, métricas) | Admin. plataforma | - | 2P | V (8.4, 8.5) |
+| CU29 | Entrenar y evaluar modelos de ML (datos sintéticos, métricas) | Admin. empresa | - | 2P | V (8.4, 8.5) |
 
 Total: 22 casos 2P y 7 casos 1P.
 

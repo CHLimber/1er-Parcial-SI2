@@ -66,28 +66,63 @@
         <section class="panel">
           <div class="campo">
             <label for="buscar">Buscar prenda</label>
-            <input id="buscar" type="search" placeholder="Nombre, código o SKU" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" />
+            <input id="buscar" type="search" placeholder="Ej.: vestido negro M, nombre, código o SKU" [ngModel]="busqueda()" (ngModelChange)="busqueda.set($event)" />
+            <span class="campo__ayuda">
+              Podés combinar palabras: nombre, categoría, color, talla o SKU. Tocá una talla para agregarla.
+            </span>
           </div>
+          <p class="catalogo__conteo">
+            @if (totalCoincidencias() > productos().length) {
+              Mostrando {{ productos().length }} de {{ totalCoincidencias() }} prendas: escribí más para acotar.
+            } @else {
+              {{ totalCoincidencias() }} de {{ totalCatalogo() }} prenda(s)
+            }
+          </p>
           <ul class="catalogo">
             @for (p of productos(); track p.id) {
-              <li class="catalogo__item">
-                <div>
-                  <strong>{{ p.nombre }}</strong>
-                  <span class="secundario"> · {{ p.categoria }}</span>
+              <li class="catalogo__item" [class.catalogo__item--agotada]="unidades(p) === 0">
+                <div class="prenda__cabecera">
+                  <div class="prenda__foto" [style.--tono]="porColor(p)[0]?.hex ?? '#ccc'">
+                    @if (p.imagen_url && !imagenFallida().has(p.id)) {
+                      <img [src]="p.imagen_url" [alt]="p.nombre" width="72" height="96" loading="lazy" decoding="async"
+                        (error)="marcarImagenFallida(p.id)" />
+                    } @else {
+                      <span class="prenda__inicial" aria-hidden="true">{{ p.nombre.charAt(0) }}</span>
+                    }
+                  </div>
+                  <div class="prenda__datos">
+                    <strong class="prenda__nombre">{{ p.nombre }}</strong>
+                    <span class="prenda__meta secundario"><span class="mono">{{ p.codigo }}</span> · {{ p.categoria }}</span>
+                    <span class="prenda__precio">desde Bs {{ desde(p).toFixed(2) }}</span>
+                    <span class="prenda__stock" [class.prenda__agotada]="unidades(p) === 0">
+                      {{ unidades(p) === 0 ? 'Agotada en la sucursal' : unidades(p) + ' unidades en la sucursal' }}
+                    </span>
+                  </div>
                 </div>
-                <div class="variantes">
-                  @for (v of p.variantes; track v.id) {
-                    <button type="button" class="variante" [disabled]="v.disponible === 0" (click)="agregar(p, v)"
-                      [title]="v.sku">
-                      <span class="punto" [style.background]="v.codigo_hex"></span>
-                      {{ v.talla }} · {{ v.color }} · Bs {{ v.precio.toFixed(2) }}
-                      <span class="variante__stock">({{ v.disponible }})</span>
-                    </button>
+                <div class="colores">
+                  @for (g of porColor(p); track g.color) {
+                    <div class="color">
+                      <span class="color__nombre"><span class="punto" [style.background]="g.hex"></span>{{ g.color }}</span>
+                      <div class="tallas">
+                        @for (v of g.variantes; track v.id) {
+                          <button type="button" class="talla" [class.talla--agotada]="v.disponible === 0"
+                            [disabled]="v.disponible === 0" (click)="agregar(p, v)"
+                            [title]="v.sku + ' · Bs ' + v.precio.toFixed(2)"
+                            [attr.aria-label]="p.nombre + ' talla ' + v.talla + ' ' + g.color + ', ' + v.disponible + ' disponibles'">
+                            <span class="talla__nombre">{{ v.talla }}</span>
+                            <span class="talla__stock">{{ v.disponible === 0 ? 'agotada' : v.disponible + ' disp.' }}</span>
+                            @if (enCarrito(v) > 0) {
+                              <span class="talla__carrito">{{ enCarrito(v) }} en la {{ solapa === 'vender' ? 'venta' : 'reserva' }}</span>
+                            }
+                          </button>
+                        }
+                      </div>
+                    </div>
                   }
                 </div>
               </li>
             } @empty {
-              <li class="estado">Ninguna prenda coincide.</li>
+              <li class="estado">Ninguna prenda coincide con «{{ busqueda() }}».</li>
             }
           </ul>
         </section>
@@ -181,8 +216,16 @@
         <span class="barra__espacio"></span>
         <button type="button" class="boton boton--secundario" (click)="archivar()">Archivar las cerradas</button>
       </div>
+      @if (sync.operaciones().length > 0) {
+        <div class="campo">
+          <label for="buscar-op">Buscar operación</label>
+          <input id="buscar-op" type="search" placeholder="Id (completo o parte), estado, número de venta…" [ngModel]="busquedaOp()" (ngModelChange)="busquedaOp.set($event)" />
+        </div>
+      }
       @if (sync.operaciones().length === 0) {
         <p class="estado">Todavía no registraste operaciones en este equipo.</p>
+      } @else if (operacionesVisibles().length === 0) {
+        <p class="estado">Ninguna operación coincide con «{{ busquedaOp() }}».</p>
       } @else {
         <div class="tabla-envoltorio">
           <table class="tabla tabla--ancha">
@@ -197,7 +240,7 @@
               </tr>
             </thead>
             <tbody>
-              @for (o of sync.operaciones(); track o.id) {
+              @for (o of operacionesVisibles(); track o.id) {
                 <tr>
                   <td>{{ fecha(o.op.registrada_en) }} <div class="secundario mono">{{ o.id.slice(0, 8) }}</div></td>
                   <td>{{ o.descripcion }}</td>

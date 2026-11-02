@@ -20,7 +20,7 @@
           [class.burbuja--assistant]="mensaje.rol === 'assistant'"
         >
           @if (mensaje.rol === 'assistant') {
-            <div class="burbuja__texto burbuja__markdown" [innerHTML]="mensaje.texto | markdown"></div>
+            <div class="burbuja__texto markdown" [innerHTML]="mensaje.texto | markdown"></div>
           } @else {
             <p class="burbuja__texto">{{ mensaje.texto }}</p>
           }

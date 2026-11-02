@@ -24,8 +24,8 @@ El escenario lo arma `scripts/preparar_escenario_pruebas.py` sobre el seed (`db/
 
 | Email | Rol / cargo | Tienda y sucursal | Para probar |
 |---|---|---|---|
-| `superadmin@fashionstore.bo` | SUPERADMIN | Plataforma (sin empresa) | CU01-CU05, CU29, CU30 general |
-| `admin@fashionstore.bo` | ADMIN + ENCARGADO de Equipetrol | FashionStore, SC-01 | Casi todo el panel; es el "encargado" de los casos de abajo |
+| `superadmin@fashionstore.bo` | SUPERADMIN | Plataforma (sin empresa) | CU01-CU05, CU30 general |
+| `admin@fashionstore.bo` | ADMIN + ENCARGADO de Equipetrol | FashionStore, SC-01 | Casi todo el panel, incluido CU28-CU29; es el "encargado" de los casos de abajo |
 | `cajera.scz@fashionstore.bo` | CAJERO | FashionStore, SC-01 | Caja, POS, pagos online, reservas en vestidor, sin conexión (venta y reserva) |
 | `encargada.lapaz@fashionstore.bo` | ENCARGADO | FashionStore, LP-01 | Recibe el traspaso en tránsito |
 | `encargada.sucre@`, `encargada.tarija@`, `encargado.oruro@` `fashionstore.bo` | ENCARGADO | SU-01, TJ-01, OR-01 | Alcance por sucursal (403 al pedir otra) |
@@ -289,15 +289,32 @@ Algunos casos dependen de otros. Seguí este orden y no te trabás:
 - Notas:
 
 #### CU28 Consultar dashboard analítico
-- **Entra:** `admin@fashionstore.bo` → `/panel/analitica` (solo Profesional).
-- **Pasos:** mirá demanda prevista por sucursal, segmentos de clientas (KMeans) y días atípicos (IsolationForest) sobre las ventas reales.
-- **Por dentro:** `GET /analitica/dashboard` aplica los modelos entrenados a las ventas de la empresa.
+- **Entra:** `admin@fashionstore.bo` → **Clientas y negocio → Analítica ML** (`/panel/analitica`). Contraste: un encargado (permiso `analitica.leer`) ve solo su sucursal y no tiene el selector; `admin@andina.bo` (Básico) ve el aviso «tu plan no incluye…» y la API responde 403.
+- **Pasos:**
+  1. Esperá a que los 4 indicadores dejen de decir «Aplicando los modelos…»: unidades pronosticadas, unidades de los últimos N días con su variación, clientas segmentadas y días atípicos de los últimos 90 días.
+  2. Leé **Hallazgos**: frases armadas a partir de los datos (qué tipo de prenda sube o baja en qué sucursal, el segmento más grande, cuántas clientas inactivas hay, el último día atípico).
+  3. **Pronóstico de demanda:** gráfico apilado por tipo de prenda (verano / invierno / atemporal / accesorio) y tabla sucursal × tipo con lo real, lo pronosticado y la variación (verde si sube más de 5 %, rojo si baja más de 5 %).
+  4. Cambiá el **Horizonte** (7 / 14 / 30 días) y la **Sucursal** (por ejemplo, solo Santa Cruz): todo se recalcula.
+  5. **Segmentos de clientas:** nombre del grupo (VIP, Frecuentes, Cazadoras de ofertas, Ocasionales, Inactivas), cuántas clientas tiene, monto y compras en 90 días, días sin comprar y nombres de ejemplo.
+  6. **Días atípicos:** día, sucursal, pico o caída, total del día contra la mediana de la sucursal.
+- **Por dentro:** `GET /analitica/dashboard?horizonte=&sucursal_id=`. Los modelos se entrenan **solo con datos sintéticos** y se **aplican** a las ventas PAGADA/ENTREGADA de la empresa: Random Forest predice día a día (cada predicción alimenta la siguiente), llevando las ventas reales a la escala sintética y de vuelta; el clima sale de la ciudad (Santa Cruz cálido, La Paz y Oruro frío, el resto templado). KMeans clasifica a cada clienta con 6 variables (compras y monto en 90 días, recencia, ticket promedio, % con promoción, % online). IsolationForest se entrena en el momento con los últimos 90 días de cada sucursal (contaminación 6 %, hacen falta al menos 20 días con ventas).
+- **Debería pasar:** con el historial de `04_historial_demo.sql` aparecen días atípicos y segmentos; ningún dato de Boutique Andina entra en el tablero de FashionStore; Santa Cruz pesa verano y La Paz, invierno.
 - Notas:
 
 #### CU29 Entrenar y evaluar modelos de ML
-- **Entra:** `superadmin` → `/panel/analitica`.
-- **Pasos:** **Reentrenar**; mirá métricas (MAE, RMSE, R², MAPE de Random Forest vs. regresión lineal), **Ver muestra** de los datos sintéticos y **Descargar CSV**.
-- **Por dentro:** `POST /analitica/entrenar` genera datos sintéticos con semilla (42) y entrena scikit-learn.
+- **Entra:** `admin@fashionstore.bo` → `/panel/analitica` (el actor es el Administrador de empresa con plan Profesional; el encargado ve el tablero pero no el botón).
+- **Pasos:**
+  1. Bajá a **Evaluación de los modelos** y anotá la fecha de entrenamiento y las métricas.
+  2. Arriba, dejá **Semilla** en 42 y pulsá **Reentrenar modelos** (tarda unos segundos; el botón dice «Entrenando…»). La fecha cambia y **las métricas son las mismas**: con la misma semilla el resultado es reproducible.
+  3. Probá con otra semilla (por ejemplo, 7): las métricas cambian un poco.
+  4. **Demanda:** tabla MAE / RMSE / R² / MAPE de Random Forest contra la regresión lineal y el pronóstico ingenuo «igual que la semana anterior» (Random Forest tiene que ganarle a ambos); debajo, el MAE de los 5 cortes de la validación cruzada temporal.
+  5. **Segmentación:** tabla de k = 3…7 con silueta e inercia, el k elegido resaltado y el índice de Rand ajustado contra los perfiles con que se generaron las clientas.
+  6. **Variables más importantes** del Random Forest (gráfico de barras).
+  7. **Datos sintéticos:** elegí **Demanda diaria** o **Clientas** → **Ver muestra** (12 filas) → **Descargar CSV** (`sinteticos_demanda.csv`, 540 días × 3 climas × 4 tipos = 6480 filas; `sinteticos_clientes.csv`, 1500 filas) y abrilo en Excel.
+- **Por dentro:** `POST /analitica/entrenar {semilla, dias: 540, clientes: 1500}` regenera los datos sintéticos y entrena con scikit-learn: partición **temporal** (entrena con el pasado y evalúa con los últimos 90 días; mezclar fechas filtraría el futuro), `TimeSeriesSplit`, y KMeans con StandardScaler eligiendo k por silueta. El paquete se guarda con joblib en `MODELOS_DIR` y queda en memoria. Deja rastro en la auditoría (entidad `modelo_ml`, ACTUALIZAR). La muestra y el CSV se piden por `GET /analitica/datos-sinteticos?tipo=&formato=`.
+- **Ojo:**
+  - El modelo es **uno solo para toda la plataforma**: si reentrena una empresa, cambia el de todas.
+  - La muestra y el CSV usan siempre la semilla 42, aunque hayas reentrenado con otra.
 - Notas:
 
 ### Copias de seguridad

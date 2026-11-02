@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import '../../compartido/markdown_chat.dart';
 import '../../compartido/widgets.dart';
 import '../../core/relacion_con_la_clienta/asistente/asistente_models.dart';
 import '../../core/relacion_con_la_clienta/asistente/asistente_service.dart';
@@ -183,7 +184,7 @@ class _AsistentePaginaState extends State<AsistentePagina> {
                           : MarkdownBody(
                               data: vista.mensaje.texto,
                               selectable: false,
-                              styleSheet: _hojaEstiloMarkdown(context),
+                              styleSheet: hojaEstiloMarkdown(context),
                             ),
                     );
                   },
@@ -236,14 +237,6 @@ class _AsistentePaginaState extends State<AsistentePagina> {
         ),
       );
 }
-
-MarkdownStyleSheet _hojaEstiloMarkdown(BuildContext context) =>
-    MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-      p: const TextStyle(color: Paleta.ink, fontSize: 14.5, height: 1.4),
-      strong: const TextStyle(color: Paleta.ink, fontWeight: FontWeight.w700),
-      listBullet: const TextStyle(color: Paleta.ink, fontSize: 14.5),
-      code: fuenteMono(fontSize: 12.5, color: Paleta.ink),
-    );
 
 class _Burbuja extends StatelessWidget {
   const _Burbuja({

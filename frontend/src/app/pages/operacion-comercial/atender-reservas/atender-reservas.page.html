@@ -17,15 +17,44 @@
         }
       </div>
 
+      <div class="buscador">
+        <input
+          type="search"
+          class="buscador__campo"
+          placeholder="Buscar por código o clienta"
+          aria-label="Buscar reserva por código, clienta, correo o teléfono"
+          [ngModel]="busqueda()"
+          (ngModelChange)="busqueda.set($event)"
+          name="buscar-reserva"
+        />
+        <select
+          class="buscador__orden"
+          aria-label="Orden de la lista"
+          [ngModel]="orden()"
+          (ngModelChange)="orden.set($event)"
+          name="orden-reservas"
+        >
+          <option value="RECIENTES">Más recientes primero</option>
+          <option value="ANTIGUAS">Más antiguas primero</option>
+          <option value="VISITA">Por día de visita</option>
+        </select>
+      </div>
+
       @if (cargandoCola()) {
         <p class="estado">Cargando reservas…</p>
       } @else if (errorCola()) {
         <p class="formulario__error" role="alert">{{ errorCola() }}</p>
       } @else if (reservas().length === 0) {
         <p class="estado">No hay reservas en esta vista.</p>
+      } @else if (reservasVisibles().length === 0) {
+        <p class="estado">
+          Ninguna reserva de esta vista coincide con «{{ busqueda() }}». Si ya se cerró, probá en
+          Convertidas, Canceladas o Expiradas.
+        </p>
       } @else {
+        <p class="cola__conteo">{{ reservasVisibles().length }} de {{ reservas().length }} reserva(s)</p>
         <ul class="lista">
-          @for (reserva of reservas(); track reserva.id) {
+          @for (reserva of reservasVisibles(); track reserva.id) {
             <li>
               <button
                 type="button"
@@ -35,7 +64,8 @@
               >
                 <span class="tarjeta__codigo">{{ reserva.codigo }}</span>
                 <span class="tarjeta__cliente">{{ reserva.cliente.nombre }} {{ reserva.cliente.apellido }}</span>
-                <span class="tarjeta__fecha">{{ reserva.fecha_visita }} · {{ reserva.hora_visita }}</span>
+                <span class="tarjeta__fecha">Visita: {{ reserva.fecha_visita }} · {{ reserva.hora_visita }}</span>
+                <span class="tarjeta__fecha">Creada: {{ fechaCreada(reserva.creada_en) }}</span>
                 <span class="tarjeta__estado">{{ etiquetaEstado(reserva.estado) }}</span>
               </button>
             </li>

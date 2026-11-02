@@ -98,6 +98,8 @@ export interface LoteOut {
 export interface OperacionServidor extends ResultadoOperacion {
   sucursal: string;
   usuario: string;
+  /** Quien cerro el conflicto (null mientras siga abierto). */
+  resuelta_por?: string | null;
   registrada_en: string;
   payload: OperacionIn;
 }

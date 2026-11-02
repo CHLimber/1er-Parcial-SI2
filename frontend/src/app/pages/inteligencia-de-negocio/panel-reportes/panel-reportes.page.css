@@ -138,8 +138,13 @@
   border-color: var(--ink);
 }
 
-.ia-mensaje__texto {
+.ia-mensaje__texto--usuario {
   white-space: pre-wrap;
+}
+
+/* Las respuestas con tablas o listas necesitan mas ancho que una frase corta. */
+.ia-mensaje:has(.markdown) {
+  max-width: min(44rem, 100%);
 }
 
 .ia-form {
@@ -332,6 +337,58 @@
 
 .ia-form .boton {
   min-width: 8.5rem;
+}
+
+/* Micrófono redondo (mismo que el del asistente, CU18): silueta SVG de línea; al escuchar se
+   rellena de color y pulsa. */
+.ia-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.7rem;
+  height: 2.7rem;
+  padding: 0;
+  border: 1px solid var(--paper-line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.ia-mic svg {
+  display: block;
+}
+
+.ia-mic:hover:not(:disabled) {
+  border-color: var(--flame);
+  color: var(--flame);
+}
+
+.ia-mic:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ia-mic--grabando {
+  background: var(--flame);
+  border-color: var(--flame);
+  color: var(--white);
+  animation: ia-mic-pulso 1.1s ease-in-out infinite;
+}
+
+@keyframes ia-mic-pulso {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .ia-form__campo {

@@ -166,10 +166,12 @@ SELECT_LOG = """
 SELECT o.id, o.tipo::text AS tipo, o.estado::text AS estado, o.codigo_motivo, o.motivo,
        o.resultado, o.intentos, o.recibida_en, o.resuelta_en, o.resolucion, o.registrada_en,
        o.payload, o.usuario_id, o.sucursal_id,
-       COALESCE(s.nombre, '-') AS sucursal, (u.nombre || ' ' || u.apellido) AS usuario
+       COALESCE(s.nombre, '-') AS sucursal, (u.nombre || ' ' || u.apellido) AS usuario,
+       (res.nombre || ' ' || res.apellido) AS resuelta_por
 FROM operacion_sync o
-LEFT JOIN sucursal s ON s.id = o.sucursal_id
-JOIN usuario u       ON u.id = o.usuario_id
+LEFT JOIN sucursal s  ON s.id = o.sucursal_id
+JOIN usuario u        ON u.id = o.usuario_id
+LEFT JOIN usuario res ON res.id = o.resuelta_por_id
 """
 
 
@@ -179,6 +181,7 @@ def _log_out(fila: asyncpg.Record) -> OperacionServidorOut:
         **base.model_dump(),
         sucursal=fila["sucursal"],
         usuario=fila["usuario"],
+        resuelta_por=fila["resuelta_por"],
         registrada_en=fila["registrada_en"],
         payload=json.loads(fila["payload"]),
     )
